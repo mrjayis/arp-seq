@@ -29,6 +29,13 @@ held notes ──► ARPEGGIATOR ──► note ──► SEQUENCER step n ─�
 - **MIDI Clock In:** follows 0xF8 ticks and Start/Continue/Stop, and shows the tempo it detects. *Play* starts it by hand for sources that never send Start.
 - **Send MIDI clock:** sends clock plus Start/Stop to the selected MIDI output when running on the internal clock.
 
+### Rhythm
+- **Play: Arp / Chord.** Arp plays the held notes one at a time. Chord plays the whole held chord at once, across the Octaves setting.
+- **Euclidean rhythm** (on/off): **Hits** spread as evenly as possible over **Steps** (2–16), shifted by **Rotate**. Examples: 3 in 8 = `x..x..x.`, 4 in 16 = four on the floor.
+  - Each step lasts one arp-rate step and stays locked to the bar.
+  - Only hits play. The arp and the sequencer move on only when a hit plays, so rests don't skip notes or sequencer steps.
+- In Chord mode each hit takes the next sequencer step: the whole chord is shifted by the step's offset and scaled by its volume. Oscillator 2 follows each chord note, in Same or Inverted mode.
+
 ### Sequencer
 - **Length:** 2, 3, 4 or 5 steps
 - **Each step:** a **pitch** offset of ±24 semitones (slider, ±1 / ±12 buttons, double-click resets to 0) and its own **volume** of 0–100%, which scales the note's velocity. 0% mutes the step, but the step still counts.

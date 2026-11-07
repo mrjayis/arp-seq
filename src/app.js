@@ -1,7 +1,7 @@
 import {
   ArpSeqEngine, MODES, MODE_LABELS, RATES, PITCH_RANGE,
   MIN_SEQ_LENGTH, MAX_SEQ_LENGTH, noteName, defaultSteps, CHORDS, chordNotes,
-  OSC2_MODES, osc2Note,
+  OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS,
 } from './core.js';
 import { InternalClock, ExternalClock, pulseToStep } from './clock.js';
 import { Synth } from './synth.js';
@@ -41,6 +41,11 @@ const settings = {
   osc2Detune: 0,
   osc2Level: 70,
   osc2MidiCh: -1,
+  playStyle: 'arp',
+  rhythmOn: false,
+  euclidSteps: 8,
+  euclidHits: 3,
+  euclidRotate: 0,
 };
 
 try {
@@ -88,40 +93,70 @@ const audioTime = () => (ctx ? ctx.currentTime : performance.now() / 1000);
 // Map AudioContext time to performance.now() ms for timestamped MIDI output.
 const toPerfMs = (t) => performance.now() + (t - audioTime()) * 1000;
 
+function playVoice(note, note2, velocity, time, gateLen) {
+  const on = toPerfMs(time);
+  const off = toPerfMs(time + gateLen);
+  if (settings.synthOn && synth) synth.play(note, velocity, time, gateLen);
+  midi.noteOn(note, velocity, on);
+  midi.noteOff(note, off);
+  if (note2 === null) return;
+  if (settings.synthOn && synth && settings.osc2Level > 0) {
+    synth.play(note2, velocity, time, gateLen, {
+      wave: settings.osc2Wave,
+      detune: settings.osc2Detune,
+      level: settings.osc2Level / 100,
+    });
+  }
+  if (settings.osc2MidiCh >= 0) {
+    midi.noteOn(note2, velocity, on, settings.osc2MidiCh);
+    midi.noteOff(note2, off, settings.osc2MidiCh);
+  }
+}
+
 function onPulse(time, pulse, pulseDuration) {
   if (settings.clockOut && settings.sync === 'internal') midi.clock(toPerfMs(time));
   const step = pulseToStep(pulse, time, pulseDuration, RATES[settings.rate], settings.swing / 100);
   if (!step) return;
 
-  const ev = engine.next();
-  if (!ev) return;
+  // Euclidean rhythm: only "hit" steps play; rests leave the arp and sequencer where they are.
+  const rhythmPos = step.stepNumber % settings.euclidSteps;
+  if (settings.rhythmOn) {
+    const pattern = euclid(settings.euclidHits, settings.euclidSteps, settings.euclidRotate);
+    if (!pattern[rhythmPos]) {
+      if (engine.active.size) uiEvents.push({ time: step.time, rhythmPos, rest: true });
+      return;
+    }
+  }
+
+  let ev;
+  let voices;
+  if (settings.playStyle === 'chord') {
+    ev = engine.nextChord();
+    if (!ev) return;
+    voices = ev.notes;
+  } else {
+    ev = engine.next();
+    if (!ev) return;
+    voices = [ev];
+  }
 
   // Off-beat steps that are swung late have less room before the next step.
   const room = step.stepNumber % 2 === 1 ? step.duration - step.delay : step.duration;
   const gateLen = room * Math.min(settings.gate / 100, 0.98);
 
-  const note2 = settings.osc2On ? osc2Note(ev, settings.osc2Mode, settings.osc2Transpose) : null;
-  if (ev.velocity > 0) {
-    const on = toPerfMs(step.time);
-    const off = toPerfMs(step.time + gateLen);
-    if (settings.synthOn && synth) synth.play(ev.note, ev.velocity, step.time, gateLen);
-    midi.noteOn(ev.note, ev.velocity, on);
-    midi.noteOff(ev.note, off);
-    if (note2 !== null) {
-      if (settings.synthOn && synth && settings.osc2Level > 0) {
-        synth.play(note2, ev.velocity, step.time, gateLen, {
-          wave: settings.osc2Wave,
-          detune: settings.osc2Detune,
-          level: settings.osc2Level / 100,
-        });
-      }
-      if (settings.osc2MidiCh >= 0) {
-        midi.noteOn(note2, ev.velocity, on, settings.osc2MidiCh);
-        midi.noteOff(note2, off, settings.osc2MidiCh);
-      }
-    }
+  const out = voices.map((v) => ({
+    note: v.note,
+    sourceNote: v.sourceNote,
+    velocity: v.velocity,
+    note2: settings.osc2On ? osc2Note(v, settings.osc2Mode, settings.osc2Transpose) : null,
+  }));
+  for (const v of out) {
+    if (v.velocity > 0) playVoice(v.note, v.note2, v.velocity, step.time, gateLen);
   }
-  uiEvents.push({ time: step.time, off: step.time + gateLen, note2, ...ev });
+  uiEvents.push({
+    time: step.time, off: step.time + gateLen, rhythmPos,
+    stepIndex: ev.stepIndex, velocity: ev.velocity, voices: out,
+  });
 }
 
 const internalClock = new InternalClock({ getTime: audioTime, onPulse, bpm: settings.bpm });
@@ -334,6 +369,92 @@ midi.init().then((ok) => {
   for (const id of ['midi-in', 'midi-out', 'midi-in-ch', 'midi-out-ch', 'osc2-midi-ch', 'clock-out']) $(id).disabled = !ok;
   if (!ok) $('sync').querySelector('[value="external"]').disabled = true;
 });
+
+// ---------------------------------------------------------------- UI: rhythm
+function segmented(id, key, options, onChange) {
+  const wrap = $(id);
+  for (const [value, label] of options) {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.dataset.value = value;
+    b.setAttribute('role', 'radio');
+    b.addEventListener('click', () => {
+      settings[key] = value;
+      renderSegmented(id, key);
+      onChange?.(value);
+      save();
+    });
+    wrap.append(b);
+  }
+  renderSegmented(id, key);
+}
+
+function renderSegmented(id, key) {
+  $(id).querySelectorAll('button').forEach((b) => {
+    const sel = b.dataset.value === String(settings[key]);
+    b.setAttribute('aria-pressed', String(sel));
+    b.setAttribute('aria-checked', String(sel));
+  });
+}
+
+function fillNumberSelect(id, from, to) {
+  const el = $(id);
+  const keep = el.value;
+  el.replaceChildren();
+  for (let v = from; v <= to; v++) el.add(new Option(String(v), String(v)));
+  if (keep !== '') el.value = keep;
+}
+
+let rhythmDots = [];
+function renderRhythm() {
+  const n = settings.euclidSteps;
+  settings.euclidHits = Math.min(settings.euclidHits, n);
+  settings.euclidRotate = Math.min(settings.euclidRotate, n - 1);
+  fillNumberSelect('euclid-hits', 0, n);
+  fillNumberSelect('euclid-rotate', 0, n - 1);
+  $('euclid-steps').value = String(n);
+  $('euclid-hits').value = String(settings.euclidHits);
+  $('euclid-rotate').value = String(settings.euclidRotate);
+  $('rhythm-on').setAttribute('aria-pressed', String(settings.rhythmOn));
+  $('rhythm-on').textContent = settings.rhythmOn ? 'On' : 'Off';
+  $('rhythm-panel').classList.toggle('off', !settings.rhythmOn);
+  $('mode').disabled = settings.playStyle === 'chord';
+
+  const pattern = euclid(settings.euclidHits, n, settings.euclidRotate);
+  const wrap = $('euclid-pattern');
+  wrap.replaceChildren();
+  rhythmDots = pattern.map((hit, i) => {
+    const d = document.createElement('span');
+    d.className = `dot${hit ? ' hit' : ''}`;
+    d.title = `Step ${i + 1}: ${hit ? 'hit' : 'rest'}`;
+    wrap.append(d);
+    return d;
+  });
+  wrap.setAttribute('aria-label', `Pattern ${pattern.map((h) => (h ? 'x' : '.')).join('')}`);
+}
+
+let lastRhythmDot = null;
+function showRhythmPos(pos) {
+  lastRhythmDot?.classList.remove('now');
+  lastRhythmDot = settings.rhythmOn ? rhythmDots[pos] : null;
+  lastRhythmDot?.classList.add('now');
+}
+
+segmented('play-style', 'playStyle', [['arp', 'Arp'], ['chord', 'Chord']], renderRhythm);
+$('rhythm-on').addEventListener('click', () => {
+  settings.rhythmOn = !settings.rhythmOn;
+  renderRhythm();
+  save();
+});
+fillNumberSelect('euclid-steps', 2, MAX_EUCLID_STEPS);
+for (const [id, key] of [['euclid-steps', 'euclidSteps'], ['euclid-hits', 'euclidHits'], ['euclid-rotate', 'euclidRotate']]) {
+  $(id).addEventListener('change', () => {
+    settings[key] = Number($(id).value);
+    renderRhythm();
+    save();
+  });
+}
+renderRhythm();
 
 // ---------------------------------------------------------------- UI: oscillator 2
 function renderOsc2() {
@@ -692,23 +813,27 @@ function frame() {
   const now = audioTime();
   while (uiEvents.length && uiEvents[0].time <= now) {
     const ev = uiEvents.shift();
+    showRhythmPos(ev.rhythmPos);
+    if (ev.rest) continue;
     lastStepEl?.classList.remove('current');
     lastStepEl = stepEls[ev.stepIndex];
     lastStepEl.classList.add('current');
-    $('out-src').textContent = noteName(ev.sourceNote);
-    $('out-note').textContent = ev.velocity ? noteName(ev.note) : '(muted)';
+    const names = (key) => ev.voices.map((v) => noteName(v[key])).join(' ');
+    const hasOsc2 = ev.voices[0].note2 !== null;
+    $('out-src').textContent = names('sourceNote');
+    $('out-note').textContent = ev.velocity ? names('note') : '(muted)';
     $('out-vel').textContent = ev.velocity ? `vel ${ev.velocity}` : '';
-    $('out-osc2-wrap').hidden = ev.note2 === null;
-    if (ev.note2 !== null) $('out-osc2').textContent = ev.velocity ? noteName(ev.note2) : '(muted)';
-    const key2 = keyEls.get(ev.note2);
-    if (key2 && ev.velocity) {
-      key2.classList.add('sounding');
-      soundingTimers.push({ key: key2, off: ev.off });
-    }
-    const key = keyEls.get(ev.note);
-    if (key && ev.velocity) {
-      key.classList.add('sounding');
-      soundingTimers.push({ key, off: ev.off });
+    $('out-osc2-wrap').hidden = !hasOsc2;
+    if (hasOsc2) $('out-osc2').textContent = ev.velocity ? names('note2') : '(muted)';
+    if (ev.velocity) {
+      for (const v of ev.voices) {
+        for (const n of [v.note, v.note2]) {
+          const key = keyEls.get(n);
+          if (!key) continue;
+          key.classList.add('sounding');
+          soundingTimers.push({ key, off: ev.off });
+        }
+      }
     }
   }
   for (let i = soundingTimers.length - 1; i >= 0; i--) {
