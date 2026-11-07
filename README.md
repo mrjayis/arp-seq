@@ -7,6 +7,7 @@ no dependencies.
 ```sh
 npm start        # serves http://localhost:8080 (ES modules and Web MIDI need http, not file://)
 npm test         # unit tests for the arp, sequencer and clock logic (Node 18+)
+npm run bump     # bump the ?v= stamp on asset URLs; do this before each release
 ```
 
 ## How it works

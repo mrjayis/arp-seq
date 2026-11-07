@@ -2,10 +2,10 @@ import {
   ArpSeqEngine, MODES, MODE_LABELS, RATES, PITCH_RANGE,
   MIN_SEQ_LENGTH, MAX_SEQ_LENGTH, noteName, defaultSteps, CHORDS, chordNotes,
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS,
-} from './core.js';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js';
-import { Synth } from './synth.js';
-import { Midi } from './midi.js';
+} from './core.js?v=1';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=1';
+import { Synth } from './synth.js?v=1';
+import { Midi } from './midi.js?v=1';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
