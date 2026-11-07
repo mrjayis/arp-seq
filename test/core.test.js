@@ -100,3 +100,20 @@ test('random mode stays in the pool and avoids immediate repeats', () => {
     prev = sourceNote;
   }
 });
+
+import { chordNotes } from '../src/core.js';
+
+test('chordNotes builds Maj, min, min7 and maj7 from a root', () => {
+  assert.deepEqual(chordNotes(60, 'maj'), [60, 64, 67]);
+  assert.deepEqual(chordNotes(57, 'min'), [57, 60, 64]);
+  assert.deepEqual(chordNotes(62, 'min7'), [62, 65, 69, 72]);
+  assert.deepEqual(chordNotes(65, 'maj7'), [65, 69, 72, 76]);
+  assert.deepEqual(chordNotes(125, 'maj'), [125]);
+});
+
+test('a chord played into the arp is arpeggiated through the sequencer', () => {
+  const e = new ArpSeqEngine();
+  for (let i = 0; i < 5; i++) e.setStep(i, { offset: 0, volume: 100 });
+  chordNotes(60, 'maj7').forEach((n) => e.noteOn(n));
+  assert.deepEqual(Array.from({ length: 5 }, () => e.next().note), [60, 64, 67, 71, 60]);
+});

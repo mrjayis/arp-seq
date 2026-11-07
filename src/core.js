@@ -193,3 +193,17 @@ const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 
 export function noteName(n) {
   return NOTE_NAMES[n % 12] + (Math.floor(n / 12) - 1);
 }
+
+// Chord pads: intervals in semitones above the root.
+export const CHORDS = {
+  maj: { label: 'Maj', intervals: [0, 4, 7] },
+  min: { label: 'min', intervals: [0, 3, 7] },
+  min7: { label: 'min7', intervals: [0, 3, 7, 10] },
+  maj7: { label: 'maj7', intervals: [0, 4, 7, 11] },
+};
+
+export function chordNotes(root, type) {
+  const chord = CHORDS[type];
+  if (!chord) return [];
+  return chord.intervals.map((i) => root + i).filter((n) => n >= 0 && n <= 127);
+}

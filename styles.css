@@ -220,6 +220,46 @@ input[type="range"] { accent-color: var(--accent); width: 100%; }
   font-size: 12px;
 }
 
+/* ---------- chord pads ---------- */
+.chords {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 14px;
+  margin-top: 12px;
+}
+.chords-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  padding-bottom: 10px;
+}
+.chord-pads {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(64px, 1fr));
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+.chord-pad {
+  min-height: 48px;
+  font-weight: 600;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  touch-action: none;
+  user-select: none;
+}
+.chord-pad small {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--muted);
+}
+.chord-pad[aria-pressed="true"] small { color: #3b2a08; }
+
 /* ---------- keyboard ---------- */
 .oct { display: inline-flex; align-items: center; gap: 6px; }
 .oct button { min-width: 34px; }
@@ -270,4 +310,5 @@ input[type="range"] { accent-color: var(--accent); width: 100%; }
   .readout { min-width: 0; width: 100%; }
   #seq-reset, #panic { margin-left: 0; }
   .keyboard { height: 110px; }
+  .chord-pads { flex-basis: 100%; grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }

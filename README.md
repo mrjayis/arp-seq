@@ -34,6 +34,11 @@ held notes ──► ARPEGGIATOR ──► note ──► SEQUENCER step n ─�
 - **Each step:** a **pitch** offset of ±24 semitones (slider, ±1 / ±12 buttons, double-click resets to 0) and its own **volume** of 0–100%, which scales the note's velocity. 0% mutes the step, but the step still counts.
 - Each arpeggiated note moves the sequencer one step. A new chord resets both the arp and the sequencer to the start.
 
+### Chord pads
+- **Maj, min, min7, maj7** pads play a whole chord into the arpeggiator while you hold them (keys `1`–`4` work too). The chord is built on the **Root** you pick, in the keyboard's current octave.
+- With **Latch** on, tap a pad and the chord keeps playing. Tapping another pad switches chords.
+- Pads, keys and MIDI can all be used together. A note shared by two of them keeps sounding until both let go.
+
 ### Input / output
 - On-screen keyboard (click and drag), computer keys `A W S E D F T G Y H U J K O L P ;`, `Z`/`X` to change octave, `Space` to play or stop
 - MIDI in, with a channel filter or omni
