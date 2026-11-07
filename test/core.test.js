@@ -145,15 +145,28 @@ test('euclid spreads hits evenly and rotates', () => {
   assert.equal(show(euclid(9, 4)), 'xxxx');
 });
 
-test('nextChord plays all held notes shifted by the current step', () => {
-  const e = engineWith([{ offset: 0, volume: 100 }, { offset: 5, volume: 50 }], 2);
-  [60, 64, 67].forEach((n) => e.noteOn(n, 100));
-  const a = e.nextChord();
-  const b = e.nextChord();
-  assert.deepEqual(a.notes.map((n) => n.note), [60, 64, 67]);
-  assert.deepEqual(b.notes.map((n) => n.note), [65, 69, 72]);
-  assert.deepEqual(b.notes.map((n) => n.velocity), [50, 50, 50]);
-  assert.deepEqual([a.stepIndex, b.stepIndex, e.nextChord().stepIndex], [0, 1, 0]);
-  e.setOctaves(2);
-  assert.deepEqual(e.nextChord().notes.map((n) => n.note), [65, 69, 72, 77, 81, 84]);
+import { chordVoicing } from '../src/core.js';
+
+test('chord layer repeats the held chord untouched unless it follows the sequencer', () => {
+  const held = [{ note: 67, vel: 90 }, { note: 60, vel: 100 }, { note: 64, vel: 100 }];
+  assert.deepEqual(chordVoicing(held), [
+    { note: 60, velocity: 100 }, { note: 64, velocity: 100 }, { note: 67, velocity: 90 },
+  ]);
+  assert.deepEqual(chordVoicing(held, { octave: -1 }).map((n) => n.note), [48, 52, 55]);
+  const step = { offset: 7, volume: 50 };
+  assert.deepEqual(chordVoicing(held, { step }), [
+    { note: 67, velocity: 50 }, { note: 71, velocity: 50 }, { note: 74, velocity: 45 },
+  ]);
+  assert.deepEqual(chordVoicing(held, { step: { offset: 0, volume: 0 } }), []);
+  assert.deepEqual(chordVoicing([{ note: 120, vel: 100 }], { octave: 1 }), []);
+});
+
+test('currentStep is the step the arp last played and is not advanced by reading it', () => {
+  const e = engineWith([{ offset: 0 }, { offset: 12 }, { offset: 7 }], 3);
+  e.noteOn(60);
+  assert.equal(e.currentStep.offset, 0); // nothing played yet → step 1
+  e.next(); e.next();
+  assert.equal(e.currentStep.offset, 12);
+  assert.equal(e.currentStep.offset, 12);
+  assert.equal(e.next().stepIndex, 2);
 });

@@ -94,6 +94,7 @@ export class ArpSeqEngine {
     this.arpPos = 0;
     this.seqPos = 0;
     this.lastIndex = -1;
+    this.lastStepIndex = null;
   }
 
   noteOn(note, vel = 100) {
@@ -154,28 +155,9 @@ export class ArpSeqEngine {
     return { stepIndex, ...this.steps[stepIndex] };
   }
 
-  /**
-   * Play every active note at once (spread over the octave setting), shifted and
-   * scaled by the current sequencer step, then advance the sequencer one step.
-   * @returns {null | {notes: Array<{note, velocity, sourceNote, offset}>, stepIndex, offset, volume, velocity}}
-   */
-  nextChord() {
-    const chord = buildPattern([...this.active.values()], 'up', this.octaves);
-    if (!chord.length) return null;
-    const step = this.takeStep();
-    const notes = chord.map((src) => ({
-      note: clamp(src.note + step.offset, 0, 127),
-      velocity: step.volume === 0 ? 0 : clamp(Math.round((src.vel * step.volume) / 100), 1, 127),
-      sourceNote: src.note,
-      offset: step.offset,
-    }));
-    return {
-      notes,
-      stepIndex: step.stepIndex,
-      offset: step.offset,
-      volume: step.volume,
-      velocity: Math.max(...notes.map((n) => n.velocity)),
-    };
+  /** The sequencer step the arp played most recently (what a following chord layer uses). */
+  get currentStep() {
+    return this.steps[this.lastStepIndex ?? 0];
   }
 
   get pattern() {
@@ -205,6 +187,7 @@ export class ArpSeqEngine {
 
     const step = this.takeStep();
     const { stepIndex } = step;
+    this.lastStepIndex = stepIndex;
 
     const src = pattern[idx];
     const velocity = step.volume === 0 ? 0 : clamp(Math.round((src.vel * step.volume) / 100), 1, 127);
@@ -257,4 +240,24 @@ export function euclid(hits, steps, rotate = 0) {
   const r = ((Math.round(rotate) % n) + n) % n;
   const base = Array.from({ length: n }, (_, i) => (i * k) % n < k);
   return base.map((_, i) => base[(i - r + n) % n]);
+}
+
+/**
+ * The chord-rhythm layer's notes for one hit: every held note (lowest first),
+ * moved by `octave` and, only if a sequencer `step` is given, shifted by its
+ * offset and scaled by its volume.
+ * @returns {Array<{note:number, velocity:number}>}
+ */
+export function chordVoicing(held, { octave = 0, step = null } = {}) {
+  const offset = 12 * octave + (step ? step.offset : 0);
+  const volume = step ? step.volume : 100;
+  if (volume === 0) return [];
+  const seen = new Set();
+  return [...held]
+    .sort((a, b) => a.note - b.note)
+    .map((n) => ({
+      note: n.note + offset,
+      velocity: clamp(Math.round((n.vel * volume) / 100), 1, 127),
+    }))
+    .filter((n) => n.note >= 0 && n.note <= 127 && !seen.has(n.note) && seen.add(n.note));
 }
