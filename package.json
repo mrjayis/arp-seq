@@ -1,0 +1,12 @@
+{
+  "name": "arp-seq",
+  "version": "1.0.0",
+  "description": "Syncable arpeggiator feeding a 2-5 step pitch/volume sequencer (Web Audio + Web MIDI)",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": { "node": ">=18" }
+}
