@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Arp-Seq</title>
-  <link rel="stylesheet" href="styles.css?v=1" />
+  <link rel="stylesheet" href="styles.css?v=2" />
 </head>
 <body>
   <main class="device">
@@ -61,24 +61,41 @@
       </div>
     </section>
 
-    <section class="panel rhythm" id="rhythm-panel" aria-label="Rhythm">
-      <h2>Rhythm</h2>
-      <p class="hint"><b>Arp</b> plays the held notes one at a time; <b>Chord</b> plays them all at once.
-        With the Euclidean rhythm on, only the hits play: the hits are spread as evenly as possible
-        over the steps (one step = the arp rate).</p>
+    <section class="panel rhythm" id="chord-panel" aria-label="Chord rhythm">
+      <h2>Chord Rhythm</h2>
+      <p class="hint">Repeats the held chord in a Euclidean rhythm while the arpeggiator keeps playing.
+        <b>Hits</b> are spread as evenly as possible over the <b>Steps</b> (3 in 8 = x..x..x.).</p>
       <div class="row">
-        <div class="field">Play
-          <div class="seg" id="play-style" role="radiogroup" aria-label="Play style"></div>
-        </div>
-        <div class="field">Euclidean
-          <button id="rhythm-on" aria-pressed="false" title="Turn the Euclidean rhythm on or off">Off</button>
-        </div>
-        <label class="field">Steps <select id="euclid-steps"></select></label>
-        <label class="field">Hits <select id="euclid-hits"></select></label>
-        <label class="field">Rotate <select id="euclid-rotate"></select></label>
+        <button id="chord-on" aria-pressed="true" title="Turn the chord rhythm on or off">On</button>
+        <label class="field">Rate <select id="chord-rate"></select></label>
+        <label class="field">Steps <select id="chord-steps"></select></label>
+        <label class="field">Hits <select id="chord-hits"></select></label>
+        <label class="field">Rotate <select id="chord-rotate"></select></label>
         <div class="field pattern-field">Pattern
-          <div id="euclid-pattern" class="euclid" role="img"></div>
+          <div id="chord-pattern" class="euclid" role="img"></div>
         </div>
+      </div>
+      <div class="row">
+        <label class="field">Wave
+          <select id="chord-wave">
+            <option value="sawtooth">Saw</option>
+            <option value="square">Square</option>
+            <option value="triangle">Triangle</option>
+            <option value="sine">Sine</option>
+          </select>
+        </label>
+        <label class="field">Octave <select id="chord-octave"></select></label>
+        <label class="field slider">Gate <output id="chord-gate-val"></output>
+          <input id="chord-gate" type="range" min="5" max="100" value="80" />
+        </label>
+        <label class="field slider">Level <output id="chord-level-val"></output>
+          <input id="chord-level" type="range" min="0" max="100" value="45" />
+        </label>
+        <label class="check" title="Shift and scale the chord by the sequencer step the arp is on">
+          <input id="chord-follow" type="checkbox" /> Follow sequencer</label>
+        <label class="field">MIDI Out Ch
+          <select id="chord-midi-ch" title="Send the chords to their own MIDI channel"><option value="-1">Off</option></select>
+        </label>
       </div>
     </section>
 
@@ -88,8 +105,8 @@
         <div class="len" role="radiogroup" aria-label="Sequencer length" id="length"></div>
         <button id="seq-reset" title="Reset all steps">Reset steps</button>
       </div>
-      <p class="hint">Each arpeggiated note (or chord, in Chord mode) takes the next step: its pitch is
-        shifted by the step's semitones and its volume scaled by the step's level.</p>
+      <p class="hint">Each arpeggiated note takes the next step: its pitch is shifted by the step's
+        semitones and its volume scaled by the step's level.</p>
       <div id="steps" class="steps"></div>
     </section>
 
@@ -172,6 +189,6 @@
       <div id="keyboard" class="keyboard"></div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=1"></script>
+  <script type="module" src="src/app.js?v=2"></script>
 </body>
 </html>
