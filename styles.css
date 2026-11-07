@@ -220,6 +220,21 @@ input[type="range"] { accent-color: var(--accent); width: 100%; }
   font-size: 12px;
 }
 
+/* ---------- oscillator 2 ---------- */
+.osc2 .hint { margin-top: 0; }
+.osc2.off .row > :not(#osc2-on) { opacity: 0.45; }
+.seg { display: flex; }
+.seg button { border-radius: 0; min-width: 84px; }
+.seg button:first-child { border-radius: 6px 0 0 6px; }
+.seg button:last-child { border-radius: 0 6px 6px 0; margin-left: -1px; }
+.step .osc2-val {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: var(--muted);
+  min-height: 1.4em;
+}
+.readout .sep { color: var(--line); margin: 0 6px; }
+
 /* ---------- chord pads ---------- */
 .chords {
   display: flex;

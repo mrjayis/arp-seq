@@ -34,6 +34,14 @@ held notes ──► ARPEGGIATOR ──► note ──► SEQUENCER step n ─�
 - **Each step:** a **pitch** offset of ±24 semitones (slider, ±1 / ±12 buttons, double-click resets to 0) and its own **volume** of 0–100%, which scales the note's velocity. 0% mutes the step, but the step still counts.
 - Each arpeggiated note moves the sequencer one step. A new chord resets both the arp and the sequencer to the start.
 
+### Oscillator 2
+- A second voice plays on every arpeggiated note, using the same sequencer step as oscillator 1:
+  - **Same:** plays the step's offset as it is (doubles the sequence)
+  - **Inverted:** plays the offset flipped around the arp note, so +12 becomes −12 and +7 becomes −7
+- Its own **wave**, **transpose** (±24 semitones), **detune** (±50 cents) and **level**. It also follows each step's volume.
+- **MIDI Out Ch:** can send oscillator 2 to its own MIDI channel, so it can drive a second synth.
+- Each step card shows the offset oscillator 2 will play for that step.
+
 ### Chord pads
 - **Maj, min, min7, maj7** pads play a whole chord into the arpeggiator while you hold them (keys `1`–`4` work too). The chord is built on the **Root** you pick, in the keyboard's current octave.
 - With **Latch** on, tap a pad and the chord keeps playing. Tapping another pad switches chords.

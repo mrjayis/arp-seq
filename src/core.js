@@ -207,3 +207,12 @@ export function chordNotes(root, type) {
   if (!chord) return [];
   return chord.intervals.map((i) => root + i).filter((n) => n >= 0 && n <= 127);
 }
+
+// Oscillator 2 follows the same sequencer step as oscillator 1, using either the
+// step's offset ('same') or its mirror image ('invert': +7 → −7), plus a fixed transpose.
+export const OSC2_MODES = { same: 'Same', invert: 'Inverted' };
+
+export function osc2Note(ev, mode, transpose = 0) {
+  const offset = mode === 'invert' ? -ev.offset : ev.offset;
+  return clamp(ev.sourceNote + offset + transpose, 0, 127);
+}

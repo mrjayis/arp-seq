@@ -21,15 +21,19 @@ export class Synth {
     this.master.gain.setTargetAtTime(v, this.ctx.currentTime, 0.02);
   }
 
-  /** Play a note starting at `time` (ctx seconds) lasting `duration` seconds. */
-  play(note, velocity, time, duration) {
+  /**
+   * Play a note starting at `time` (ctx seconds) lasting `duration` seconds.
+   * opts: {wave, detune (cents), level (0..1)} override the synth defaults per voice.
+   */
+  play(note, velocity, time, duration, { wave = this.wave, detune = 0, level = 1 } = {}) {
     const ctx = this.ctx;
     const t0 = Math.max(time, ctx.currentTime);
     const tOff = t0 + Math.max(0.01, duration);
-    const peak = Math.pow(velocity / 127, 1.5) * 0.35;
+    const peak = Math.pow(velocity / 127, 1.5) * 0.35 * level;
 
     const osc = ctx.createOscillator();
-    osc.type = this.wave;
+    osc.type = wave;
+    osc.detune.setValueAtTime(detune, t0);
     osc.frequency.setValueAtTime(mtof(note), t0);
 
     const filter = ctx.createBiquadFilter();

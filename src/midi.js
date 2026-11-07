@@ -8,7 +8,7 @@ export class Midi {
     this.input = null;
     this.output = null;
     this.outChannel = 0; // 0-15
-    this.sounding = new Map(); // note -> pending note-on count
+    this.sounding = new Map(); // channel*128+note -> pending note-on count
   }
 
   get supported() {
@@ -51,21 +51,24 @@ export class Midi {
     if (this.output) this.output.send(bytes, at);
   }
 
-  noteOn(note, vel, at) {
+  // `ch` defaults to the main output channel; sounding notes are tracked per channel.
+  noteOn(note, vel, at, ch = this.outChannel) {
     if (!this.output) return;
-    this.sounding.set(note, (this.sounding.get(note) || 0) + 1);
-    this.send([0x90 | this.outChannel, note, vel], at);
+    const key = ch * 128 + note;
+    this.sounding.set(key, (this.sounding.get(key) || 0) + 1);
+    this.send([0x90 | ch, note, vel], at);
   }
 
-  noteOff(note, at) {
+  noteOff(note, at, ch = this.outChannel) {
     if (!this.output) return;
-    this.send([0x80 | this.outChannel, note, 0], at);
+    const key = ch * 128 + note;
+    this.send([0x80 | ch, note, 0], at);
     // Keep tracking the note until its note-off has actually gone out.
     const wait = at === undefined ? 0 : Math.max(0, at - performance.now());
     setTimeout(() => {
-      const left = (this.sounding.get(note) || 1) - 1;
-      if (left > 0) this.sounding.set(note, left);
-      else this.sounding.delete(note);
+      const left = (this.sounding.get(key) || 1) - 1;
+      if (left > 0) this.sounding.set(key, left);
+      else this.sounding.delete(key);
     }, wait + 5);
   }
 
@@ -76,8 +79,13 @@ export class Midi {
   allNotesOff() {
     if (!this.output) return;
     this.output.clear?.(); // drop queued (future) messages where supported
-    for (const n of this.sounding.keys()) this.output.send([0x80 | this.outChannel, n, 0]);
+    const channels = new Set([this.outChannel]);
+    for (const key of this.sounding.keys()) {
+      const ch = Math.floor(key / 128);
+      channels.add(ch);
+      this.output.send([0x80 | ch, key % 128, 0]);
+    }
     this.sounding.clear();
-    this.output.send([0xb0 | this.outChannel, 123, 0]);
+    for (const ch of channels) this.output.send([0xb0 | ch, 123, 0]);
   }
 }

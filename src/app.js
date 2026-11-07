@@ -1,6 +1,7 @@
 import {
   ArpSeqEngine, MODES, MODE_LABELS, RATES, PITCH_RANGE,
   MIN_SEQ_LENGTH, MAX_SEQ_LENGTH, noteName, defaultSteps, CHORDS, chordNotes,
+  OSC2_MODES, osc2Note,
 } from './core.js';
 import { InternalClock, ExternalClock, pulseToStep } from './clock.js';
 import { Synth } from './synth.js';
@@ -33,6 +34,13 @@ const settings = {
   midiOutCh: 0,
   baseOctave: 3,
   chordRoot: 0,
+  osc2On: true,
+  osc2Mode: 'invert',
+  osc2Wave: 'square',
+  osc2Transpose: 0,
+  osc2Detune: 0,
+  osc2Level: 70,
+  osc2MidiCh: -1,
 };
 
 try {
@@ -92,12 +100,28 @@ function onPulse(time, pulse, pulseDuration) {
   const room = step.stepNumber % 2 === 1 ? step.duration - step.delay : step.duration;
   const gateLen = room * Math.min(settings.gate / 100, 0.98);
 
+  const note2 = settings.osc2On ? osc2Note(ev, settings.osc2Mode, settings.osc2Transpose) : null;
   if (ev.velocity > 0) {
+    const on = toPerfMs(step.time);
+    const off = toPerfMs(step.time + gateLen);
     if (settings.synthOn && synth) synth.play(ev.note, ev.velocity, step.time, gateLen);
-    midi.noteOn(ev.note, ev.velocity, toPerfMs(step.time));
-    midi.noteOff(ev.note, toPerfMs(step.time + gateLen));
+    midi.noteOn(ev.note, ev.velocity, on);
+    midi.noteOff(ev.note, off);
+    if (note2 !== null) {
+      if (settings.synthOn && synth && settings.osc2Level > 0) {
+        synth.play(note2, ev.velocity, step.time, gateLen, {
+          wave: settings.osc2Wave,
+          detune: settings.osc2Detune,
+          level: settings.osc2Level / 100,
+        });
+      }
+      if (settings.osc2MidiCh >= 0) {
+        midi.noteOn(note2, ev.velocity, on, settings.osc2MidiCh);
+        midi.noteOff(note2, off, settings.osc2MidiCh);
+      }
+    }
   }
-  uiEvents.push({ time: step.time, off: step.time + gateLen, ...ev });
+  uiEvents.push({ time: step.time, off: step.time + gateLen, note2, ...ev });
 }
 
 const internalClock = new InternalClock({ getTime: audioTime, onPulse, bpm: settings.bpm });
@@ -307,9 +331,50 @@ $('midi-out').addEventListener('change', () => {
 
 midi.init().then((ok) => {
   $('midi-status').textContent = ok ? '' : 'Web MIDI unavailable — use Chrome/Edge/Firefox over http(s).';
-  for (const id of ['midi-in', 'midi-out', 'midi-in-ch', 'midi-out-ch', 'clock-out']) $(id).disabled = !ok;
+  for (const id of ['midi-in', 'midi-out', 'midi-in-ch', 'midi-out-ch', 'osc2-midi-ch', 'clock-out']) $(id).disabled = !ok;
   if (!ok) $('sync').querySelector('[value="external"]').disabled = true;
 });
+
+// ---------------------------------------------------------------- UI: oscillator 2
+function renderOsc2() {
+  $('osc2-on').setAttribute('aria-pressed', String(settings.osc2On));
+  $('osc2-on').textContent = settings.osc2On ? 'On' : 'Off';
+  $('osc2-panel').classList.toggle('off', !settings.osc2On);
+  $('osc2-mode').querySelectorAll('button').forEach((b) => {
+    const sel = b.dataset.mode === settings.osc2Mode;
+    b.setAttribute('aria-pressed', String(sel));
+    b.setAttribute('aria-checked', String(sel));
+  });
+  renderSteps();
+}
+
+$('osc2-on').addEventListener('click', () => {
+  settings.osc2On = !settings.osc2On;
+  renderOsc2();
+  save();
+});
+for (const [mode, label] of Object.entries(OSC2_MODES)) {
+  const b = document.createElement('button');
+  b.textContent = label;
+  b.dataset.mode = mode;
+  b.setAttribute('role', 'radio');
+  b.addEventListener('click', () => {
+    settings.osc2Mode = mode;
+    renderOsc2();
+    save();
+  });
+  $('osc2-mode').append(b);
+}
+for (let t = -24; t <= 24; t++) {
+  const oct = t % 12 === 0 && t !== 0 ? ` (${t > 0 ? '+' : ''}${t / 12} oct)` : '';
+  $('osc2-transpose').add(new Option(`${t > 0 ? '+' : ''}${t}${oct}`, String(t)));
+}
+bindSelect('osc2-wave', 'osc2Wave');
+bindSelect('osc2-transpose', 'osc2Transpose');
+bindRange('osc2-detune', 'osc2Detune', (v) => `${v > 0 ? '+' : ''}${v} ct`);
+bindRange('osc2-level', 'osc2Level', (v) => `${v}%`);
+for (let c = 1; c <= 16; c++) $('osc2-midi-ch').add(new Option(String(c), String(c - 1)));
+bindSelect('osc2-midi-ch', 'osc2MidiCh', null, () => midi.allNotesOff());
 
 // ---------------------------------------------------------------- UI: sequencer
 const stepEls = [];
@@ -347,6 +412,7 @@ function buildSteps() {
     el.innerHTML = `
       <div class="led"></div>
       <div class="num">STEP ${i + 1}</div>
+      <span class="osc2-val" title="Oscillator 2 offset for this step"></span>
       <div class="controls">
         <div class="col">
           <span class="cap">Pitch</span>
@@ -398,6 +464,8 @@ function renderStep(i) {
   pv.textContent = formatOffset(offset);
   pv.className = `value pitch-val${offset > 0 ? ' up' : offset < 0 ? ' down' : ''}`;
   el.querySelector('.vol-val').textContent = volume === 0 ? 'mute' : `${volume}%`;
+  const o2 = settings.osc2Mode === 'invert' ? -offset : offset;
+  el.querySelector('.osc2-val').textContent = settings.osc2On ? `osc 2: ${formatOffset(o2)}` : '';
 }
 
 function renderSteps() {
@@ -630,6 +698,13 @@ function frame() {
     $('out-src').textContent = noteName(ev.sourceNote);
     $('out-note').textContent = ev.velocity ? noteName(ev.note) : '(muted)';
     $('out-vel').textContent = ev.velocity ? `vel ${ev.velocity}` : '';
+    $('out-osc2-wrap').hidden = ev.note2 === null;
+    if (ev.note2 !== null) $('out-osc2').textContent = ev.velocity ? noteName(ev.note2) : '(muted)';
+    const key2 = keyEls.get(ev.note2);
+    if (key2 && ev.velocity) {
+      key2.classList.add('sounding');
+      soundingTimers.push({ key: key2, off: ev.off });
+    }
     const key = keyEls.get(ev.note);
     if (key && ev.velocity) {
       key.classList.add('sounding');
@@ -651,7 +726,7 @@ function frame() {
 // ---------------------------------------------------------------- boot
 buildSteps();
 renderLengthButtons();
-renderSteps();
+renderOsc2(); // also renders the steps
 buildChordPads();
 buildKeyboard();
 requestAnimationFrame(frame);
