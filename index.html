@@ -103,13 +103,18 @@
     <section class="panel keys-panel" aria-label="Keyboard">
       <div class="seq-head">
         <h2>Keyboard</h2>
-        <span class="hint">Play with A–; (W E T Y U O P for sharps) · Z / X octave · Space play/stop</span>
+        <span class="hint">Play with A–; (W E T Y U O P for sharps) · 1–4 chords · Z / X octave · Space play/stop</span>
         <span class="oct">
           <button id="oct-down" aria-label="Octave down">−</button>
           <span id="oct-label">C3</span>
           <button id="oct-up" aria-label="Octave up">+</button>
         </span>
         <button id="panic" title="Release all notes">Clear notes</button>
+      </div>
+      <div class="chords">
+        <span class="chords-label">Chords</span>
+        <label class="field">Root <select id="chord-root" aria-label="Chord root"></select></label>
+        <div id="chord-pads" class="chord-pads" aria-label="Chord pads — hold to play into the arpeggiator"></div>
       </div>
       <div id="keyboard" class="keyboard"></div>
     </section>

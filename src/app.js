@@ -1,6 +1,6 @@
 import {
   ArpSeqEngine, MODES, MODE_LABELS, RATES, PITCH_RANGE,
-  MIN_SEQ_LENGTH, MAX_SEQ_LENGTH, noteName, defaultSteps,
+  MIN_SEQ_LENGTH, MAX_SEQ_LENGTH, noteName, defaultSteps, CHORDS, chordNotes,
 } from './core.js';
 import { InternalClock, ExternalClock, pulseToStep } from './clock.js';
 import { Synth } from './synth.js';
@@ -32,6 +32,7 @@ const settings = {
   midiOut: '',
   midiOutCh: 0,
   baseOctave: 3,
+  chordRoot: 0,
 };
 
 try {
@@ -144,15 +145,25 @@ function setPlaying(on, { fromClock = false } = {}) {
 }
 
 // ---------------------------------------------------------------- note input
+// Several sources (keys, chord pads, MIDI) can hold the same note at once, so
+// the engine only sees a note-off once the last source lets go of it.
+const holdCount = new Map();
+
 function noteOn(note, vel = 100) {
   ensureAudio();
-  engine.noteOn(note, vel);
+  const count = holdCount.get(note) || 0;
+  holdCount.set(note, count + 1);
+  if (count === 0) engine.noteOn(note, vel);
   // Internal clock auto-starts on the first key so the arp responds immediately.
   if (!playing && settings.sync === 'internal') setPlaying(true);
   renderKeyState();
 }
 
 function noteOff(note) {
+  const count = holdCount.get(note) || 0;
+  if (count === 0) return;
+  if (count > 1) { holdCount.set(note, count - 1); return; }
+  holdCount.delete(note);
   engine.noteOff(note);
   renderKeyState();
 }
@@ -492,12 +503,83 @@ $('oct-down').addEventListener('click', () => shiftOctave(-1));
 $('oct-up').addEventListener('click', () => shiftOctave(1));
 $('panic').addEventListener('click', () => {
   engine.clearNotes();
+  holdCount.clear();
   pointerNotes.clear();
   heldKeys.clear();
+  heldChords.clear();
+  renderChordPads();
   synth?.panic();
   midi.allNotesOff();
   renderKeyState();
 });
+
+// ---------------------------------------------------------------- UI: chord pads
+const CHORD_KEYS = { 1: 'maj', 2: 'min', 3: 'min7', 4: 'maj7' };
+const heldChords = new Map(); // source id -> {type, notes}
+
+function chordRootNote() {
+  return (settings.baseOctave + 1) * 12 + settings.chordRoot;
+}
+
+function pressChord(id, type) {
+  if (heldChords.has(id)) return;
+  const notes = chordNotes(chordRootNote(), type);
+  heldChords.set(id, { type, notes });
+  notes.forEach((n) => noteOn(n, 100));
+  renderChordPads();
+}
+
+function releaseChord(id) {
+  const held = heldChords.get(id);
+  if (!held) return;
+  heldChords.delete(id);
+  held.notes.forEach((n) => noteOff(n));
+  renderChordPads();
+}
+
+function renderChordPads() {
+  const active = new Set([...heldChords.values()].map((c) => c.type));
+  document.querySelectorAll('.chord-pad').forEach((b) => {
+    b.setAttribute('aria-pressed', String(active.has(b.dataset.chord)));
+  });
+}
+
+function buildChordPads() {
+  const root = $('chord-root');
+  ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+    .forEach((name, i) => root.add(new Option(name, String(i))));
+  root.value = String(settings.chordRoot);
+  root.addEventListener('change', () => { settings.chordRoot = Number(root.value); save(); });
+
+  const wrap = $('chord-pads');
+  Object.entries(CHORDS).forEach(([type, { label }], i) => {
+    const b = document.createElement('button');
+    b.className = 'chord-pad';
+    b.dataset.chord = type;
+    b.setAttribute('aria-pressed', 'false');
+    b.title = `Hold to play ${label} (key ${i + 1})`;
+    b.innerHTML = `${label}<small>${i + 1}</small>`;
+    b.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      pressChord(`pointer:${e.pointerId}`, type);
+    });
+    // Keyboard activation (Enter/Space on a focused pad) taps the chord.
+    b.addEventListener('keydown', (e) => {
+      if ((e.key === 'Enter' || e.key === ' ') && !e.repeat) {
+        e.preventDefault();
+        e.stopPropagation();
+        pressChord(`focus:${type}`, type);
+      }
+    });
+    b.addEventListener('keyup', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') releaseChord(`focus:${type}`);
+    });
+    wrap.append(b);
+  });
+  const up = (e) => releaseChord(`pointer:${e.pointerId}`);
+  window.addEventListener('pointerup', up);
+  window.addEventListener('pointercancel', up);
+}
 
 const heldKeys = new Map();
 const typing = (el) => el instanceof HTMLInputElement && (el.type === 'number' || el.type === 'text');
@@ -511,6 +593,7 @@ window.addEventListener('keydown', (e) => {
     return;
   }
   if (e.repeat) { if (k in KEY_MAP) e.preventDefault(); return; }
+  if (k in CHORD_KEYS) return pressChord(`key:${k}`, CHORD_KEYS[k]);
   if (k === 'z') return shiftOctave(-1);
   if (k === 'x') return shiftOctave(1);
   if (k in KEY_MAP && !heldKeys.has(k)) {
@@ -522,6 +605,7 @@ window.addEventListener('keydown', (e) => {
 });
 window.addEventListener('keyup', (e) => {
   const k = e.key.toLowerCase();
+  if (k in CHORD_KEYS) releaseChord(`key:${k}`);
   if (heldKeys.has(k)) {
     noteOff(heldKeys.get(k));
     heldKeys.delete(k);
@@ -530,6 +614,7 @@ window.addEventListener('keyup', (e) => {
 window.addEventListener('blur', () => {
   for (const n of heldKeys.values()) noteOff(n);
   heldKeys.clear();
+  for (const id of [...heldChords.keys()]) releaseChord(id);
 });
 
 // ---------------------------------------------------------------- UI: animation loop
@@ -567,5 +652,6 @@ function frame() {
 buildSteps();
 renderLengthButtons();
 renderSteps();
+buildChordPads();
 buildKeyboard();
 requestAnimationFrame(frame);
