@@ -220,6 +220,27 @@ input[type="range"] { accent-color: var(--accent); width: 100%; }
   font-size: 12px;
 }
 
+/* ---------- rhythm ---------- */
+.rhythm .hint { margin-top: 0; }
+.rhythm.off .euclid, .rhythm.off label.field { opacity: 0.45; }
+.pattern-field { flex: 1; min-width: 200px; }
+.euclid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 34px;
+  align-items: center;
+}
+.euclid .dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid #4a4f58;
+  transition: transform 60ms;
+}
+.euclid .dot.hit { background: var(--accent); border-color: var(--accent); }
+.euclid .dot.now { transform: scale(1.3); border-color: var(--accent-2); box-shadow: 0 0 0 2px var(--accent-2); }
+
 /* ---------- oscillator 2 ---------- */
 .osc2 .hint { margin-top: 0; }
 .osc2.off .row > :not(#osc2-on) { opacity: 0.45; }

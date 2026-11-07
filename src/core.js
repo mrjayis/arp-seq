@@ -147,6 +147,37 @@ export class ArpSeqEngine {
     if (volume !== undefined) step.volume = clamp(Math.round(volume), 0, 100);
   }
 
+  /** Advance the sequencer one step and return it, with its index. */
+  takeStep() {
+    const stepIndex = this.seqPos;
+    this.seqPos = (this.seqPos + 1) % this.length;
+    return { stepIndex, ...this.steps[stepIndex] };
+  }
+
+  /**
+   * Play every active note at once (spread over the octave setting), shifted and
+   * scaled by the current sequencer step, then advance the sequencer one step.
+   * @returns {null | {notes: Array<{note, velocity, sourceNote, offset}>, stepIndex, offset, volume, velocity}}
+   */
+  nextChord() {
+    const chord = buildPattern([...this.active.values()], 'up', this.octaves);
+    if (!chord.length) return null;
+    const step = this.takeStep();
+    const notes = chord.map((src) => ({
+      note: clamp(src.note + step.offset, 0, 127),
+      velocity: step.volume === 0 ? 0 : clamp(Math.round((src.vel * step.volume) / 100), 1, 127),
+      sourceNote: src.note,
+      offset: step.offset,
+    }));
+    return {
+      notes,
+      stepIndex: step.stepIndex,
+      offset: step.offset,
+      volume: step.volume,
+      velocity: Math.max(...notes.map((n) => n.velocity)),
+    };
+  }
+
   get pattern() {
     return buildPattern([...this.active.values()], this.mode, this.octaves);
   }
@@ -172,9 +203,8 @@ export class ArpSeqEngine {
     }
     this.lastIndex = idx;
 
-    const stepIndex = this.seqPos;
-    const step = this.steps[stepIndex];
-    this.seqPos = (this.seqPos + 1) % this.length;
+    const step = this.takeStep();
+    const { stepIndex } = step;
 
     const src = pattern[idx];
     const velocity = step.volume === 0 ? 0 : clamp(Math.round((src.vel * step.volume) / 100), 1, 127);
@@ -215,4 +245,16 @@ export const OSC2_MODES = { same: 'Same', invert: 'Inverted' };
 export function osc2Note(ev, mode, transpose = 0) {
   const offset = mode === 'invert' ? -ev.offset : ev.offset;
   return clamp(ev.sourceNote + offset + transpose, 0, 127);
+}
+
+// Euclidean rhythms: `hits` onsets spread as evenly as possible over `steps`,
+// rotated right by `rotate` (e.g. 3 in 8 → x..x..x.).
+export const MAX_EUCLID_STEPS = 16;
+
+export function euclid(hits, steps, rotate = 0) {
+  const n = clamp(Math.round(steps), 1, MAX_EUCLID_STEPS);
+  const k = clamp(Math.round(hits), 0, n);
+  const r = ((Math.round(rotate) % n) + n) % n;
+  const base = Array.from({ length: n }, (_, i) => (i * k) % n < k);
+  return base.map((_, i) => base[(i - r + n) % n]);
 }

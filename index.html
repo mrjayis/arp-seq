@@ -61,14 +61,35 @@
       </div>
     </section>
 
+    <section class="panel rhythm" id="rhythm-panel" aria-label="Rhythm">
+      <h2>Rhythm</h2>
+      <p class="hint"><b>Arp</b> plays the held notes one at a time; <b>Chord</b> plays them all at once.
+        With the Euclidean rhythm on, only the hits play: the hits are spread as evenly as possible
+        over the steps (one step = the arp rate).</p>
+      <div class="row">
+        <div class="field">Play
+          <div class="seg" id="play-style" role="radiogroup" aria-label="Play style"></div>
+        </div>
+        <div class="field">Euclidean
+          <button id="rhythm-on" aria-pressed="false" title="Turn the Euclidean rhythm on or off">Off</button>
+        </div>
+        <label class="field">Steps <select id="euclid-steps"></select></label>
+        <label class="field">Hits <select id="euclid-hits"></select></label>
+        <label class="field">Rotate <select id="euclid-rotate"></select></label>
+        <div class="field pattern-field">Pattern
+          <div id="euclid-pattern" class="euclid" role="img"></div>
+        </div>
+      </div>
+    </section>
+
     <section class="panel seq" aria-label="Sequencer">
       <div class="seq-head">
         <h2>Sequencer</h2>
         <div class="len" role="radiogroup" aria-label="Sequencer length" id="length"></div>
         <button id="seq-reset" title="Reset all steps">Reset steps</button>
       </div>
-      <p class="hint">Each arpeggiated note takes the next step: its pitch is shifted by the step's
-        semitones and its volume scaled by the step's level.</p>
+      <p class="hint">Each arpeggiated note (or chord, in Chord mode) takes the next step: its pitch is
+        shifted by the step's semitones and its volume scaled by the step's level.</p>
       <div id="steps" class="steps"></div>
     </section>
 

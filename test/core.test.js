@@ -130,3 +130,30 @@ test('osc 2 follows the same sequence or its inversion', () => {
   assert.deepEqual(evs.map((ev) => osc2Note(ev, 'invert', 12)), [72, 60, 65, 77]);
   assert.equal(osc2Note({ sourceNote: 5, offset: 12 }, 'invert', -12), 0);
 });
+
+import { euclid } from '../src/core.js';
+
+const show = (p) => p.map((h) => (h ? 'x' : '.')).join('');
+
+test('euclid spreads hits evenly and rotates', () => {
+  assert.equal(show(euclid(3, 8)), 'x..x..x.');
+  assert.equal(show(euclid(4, 16)), 'x...x...x...x...');
+  assert.equal(show(euclid(5, 8)).split('x').length - 1, 5);
+  assert.equal(show(euclid(3, 8, 1)), '.x..x..x');
+  assert.equal(show(euclid(3, 8, -1)), '..x..x.x');
+  assert.equal(show(euclid(0, 4)), '....');
+  assert.equal(show(euclid(9, 4)), 'xxxx');
+});
+
+test('nextChord plays all held notes shifted by the current step', () => {
+  const e = engineWith([{ offset: 0, volume: 100 }, { offset: 5, volume: 50 }], 2);
+  [60, 64, 67].forEach((n) => e.noteOn(n, 100));
+  const a = e.nextChord();
+  const b = e.nextChord();
+  assert.deepEqual(a.notes.map((n) => n.note), [60, 64, 67]);
+  assert.deepEqual(b.notes.map((n) => n.note), [65, 69, 72]);
+  assert.deepEqual(b.notes.map((n) => n.velocity), [50, 50, 50]);
+  assert.deepEqual([a.stepIndex, b.stepIndex, e.nextChord().stepIndex], [0, 1, 0]);
+  e.setOctaves(2);
+  assert.deepEqual(e.nextChord().notes.map((n) => n.note), [65, 69, 72, 77, 81, 84]);
+});
