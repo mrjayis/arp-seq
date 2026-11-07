@@ -222,7 +222,7 @@ input[type="range"] { accent-color: var(--accent); width: 100%; }
 
 /* ---------- rhythm ---------- */
 .rhythm .hint { margin-top: 0; }
-.rhythm.off .row > :not(#chord-on) { opacity: 0.45; }
+.rhythm.off .row > :not(#chord-on):not(.gate-arp) { opacity: 0.45; }
 .pattern-field { flex: 1; min-width: 200px; }
 .euclid {
   display: flex;

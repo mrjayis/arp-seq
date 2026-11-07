@@ -170,3 +170,13 @@ test('currentStep is the step the arp last played and is not advanced by reading
   assert.equal(e.currentStep.offset, 12);
   assert.equal(e.next().stepIndex, 2);
 });
+
+import { patternAt } from '../src/core.js';
+
+test('patternAt follows a pattern running at its own rate', () => {
+  // 3 in 8 at 1/8 notes (12 pulses per step): x..x..x.
+  const hitsAt16ths = Array.from({ length: 16 }, (_, i) => patternAt(i * 6, 12, 3, 8).hit);
+  // Each 1/8 hit lets two 1/16 steps through.
+  assert.equal(show(hitsAt16ths), 'xx....xx....xx..');
+  assert.deepEqual(patternAt(12 * 9, 12, 3, 8), { pos: 1, hit: false });
+});

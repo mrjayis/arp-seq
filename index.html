@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Arp-Seq</title>
-  <link rel="stylesheet" href="styles.css?v=2" />
+  <link rel="stylesheet" href="styles.css?v=3" />
 </head>
 <body>
   <main class="device">
@@ -67,6 +67,8 @@
         <b>Hits</b> are spread as evenly as possible over the <b>Steps</b> (3 in 8 = x..x..x.).</p>
       <div class="row">
         <button id="chord-on" aria-pressed="true" title="Turn the chord rhythm on or off">On</button>
+        <label class="check gate-arp" title="Arp only plays while this pattern is on a hit (works even with the chords off)">
+          <input id="chord-gate-arp" type="checkbox" /> Gate arp</label>
         <label class="field">Rate <select id="chord-rate"></select></label>
         <label class="field">Steps <select id="chord-steps"></select></label>
         <label class="field">Hits <select id="chord-hits"></select></label>
@@ -189,6 +191,6 @@
       <div id="keyboard" class="keyboard"></div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=2"></script>
+  <script type="module" src="src/app.js?v=3"></script>
 </body>
 </html>
