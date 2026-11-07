@@ -35,6 +35,7 @@ A separate layer that repeats the **held chord** in a Euclidean rhythm while the
 - **Steps** (2–16), **Hits** and **Rotate**: the hits are spread as evenly as possible over the steps. For example, 3 in 8 = `x..x..x.`. A dot display shows where the pattern is.
 - **Rate:** the chord layer has its own rate, separate from the arp's (default 1/8). It runs on the same clock.
 - **Sound:** its own wave, octave (±2), gate and level, plus an optional MIDI out channel.
+- **Gate arp:** the arp plays only while the chord pattern is on a hit. With the defaults (chord at 1/8, arp at 1/16), each hit lets two arp notes through. The arp and sequencer hold their place during rests. Works even with the chord layer turned off.
 - **Follow sequencer:** off by default, so the chord repeats unchanged. When on, the chord takes the pitch offset and volume of the step the arp is on. It never moves the sequencer forward.
 
 ### Sequencer

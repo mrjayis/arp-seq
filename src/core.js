@@ -261,3 +261,13 @@ export function chordVoicing(held, { octave = 0, step = null } = {}) {
     }))
     .filter((n) => n.note >= 0 && n.note <= 127 && !seen.has(n.note) && seen.add(n.note));
 }
+
+/**
+ * Where a Euclidean pattern running at `pulsesPerStep` is at clock `pulse`, and
+ * whether that position is a hit. Used to gate the arp with the chord rhythm.
+ */
+export function patternAt(pulse, pulsesPerStep, hits, steps, rotate = 0) {
+  const pattern = euclid(hits, steps, rotate);
+  const pos = Math.floor(pulse / pulsesPerStep) % pattern.length;
+  return { pos, hit: pattern[pos] };
+}

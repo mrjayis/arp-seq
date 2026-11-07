@@ -1,11 +1,11 @@
 import {
   ArpSeqEngine, MODES, MODE_LABELS, RATES, PITCH_RANGE,
   MIN_SEQ_LENGTH, MAX_SEQ_LENGTH, noteName, defaultSteps, CHORDS, chordNotes,
-  OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing,
-} from './core.js?v=2';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=2';
-import { Synth } from './synth.js?v=2';
-import { Midi } from './midi.js?v=2';
+  OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
+} from './core.js?v=3';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=3';
+import { Synth } from './synth.js?v=3';
+import { Midi } from './midi.js?v=3';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -51,6 +51,7 @@ const settings = {
   chordGate: 80,
   chordLevel: 45,
   chordFollowSeq: false,
+  chordGateArp: false,
   chordMidiCh: -1,
 };
 
@@ -167,10 +168,17 @@ function onPulse(time, pulse, pulseDuration) {
   // Arp first, so a chord that follows the sequencer uses the same step as the
   // arp note sounding with it.
   const step = pulseToStep(pulse, time, pulseDuration, RATES[settings.rate], swing);
-  if (step) playArp(step);
-  if (settings.chordOn) {
-    const cstep = pulseToStep(pulse, time, pulseDuration, RATES[settings.chordRate], swing);
-    if (cstep) playChord(cstep);
+  // Gate arp: arp steps only play while the chord rhythm is on a hit. Rests don't
+  // advance the arp or the sequencer.
+  const gated = settings.chordGateArp
+    && !patternAt(pulse, RATES[settings.chordRate], settings.chordHits, settings.chordSteps, settings.chordRotate).hit;
+  if (step && !gated) playArp(step);
+  const cstep = pulseToStep(pulse, time, pulseDuration, RATES[settings.chordRate], swing);
+  if (!cstep) return;
+  if (settings.chordOn) playChord(cstep);
+  else if (settings.chordGateArp && engine.active.size) {
+    // Keep the pattern display moving when only the gate is in use.
+    uiEvents.push({ kind: 'chord', time: cstep.time, rhythmPos: cstep.stepNumber % settings.chordSteps, notes: [] });
   }
 }
 
@@ -448,6 +456,8 @@ for (let o = -2; o <= 2; o++) $('chord-octave').add(new Option(o > 0 ? `+${o}` :
 bindSelect('chord-octave', 'chordOctave');
 bindRange('chord-gate', 'chordGate', (v) => `${v}%`);
 bindRange('chord-level', 'chordLevel', (v) => `${v}%`);
+$('chord-gate-arp').checked = settings.chordGateArp;
+$('chord-gate-arp').addEventListener('change', () => { settings.chordGateArp = $('chord-gate-arp').checked; save(); });
 $('chord-follow').checked = settings.chordFollowSeq;
 $('chord-follow').addEventListener('change', () => { settings.chordFollowSeq = $('chord-follow').checked; save(); });
 for (let c = 1; c <= 16; c++) $('chord-midi-ch').add(new Option(String(c), String(c - 1)));
