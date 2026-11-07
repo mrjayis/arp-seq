@@ -15,6 +15,8 @@
         <span class="arrow">→</span>
         <span class="label">Out</span> <span id="out-note">—</span>
         <span id="out-vel" class="vel"></span>
+        <span id="out-osc2-wrap" hidden><span class="sep">|</span>
+          <span class="label">Osc 2</span> <span id="out-osc2">—</span></span>
       </div>
     </header>
 
@@ -70,11 +72,41 @@
       <div id="steps" class="steps"></div>
     </section>
 
+    <section class="panel osc2" id="osc2-panel" aria-label="Oscillator 2">
+      <h2>Oscillator 2</h2>
+      <p class="hint">A second voice on every arpeggiated note. It plays each sequencer step's offset
+        as-is (<b>Same</b>) or flipped (<b>Inverted</b>: +7 becomes −7, −12 becomes +12).</p>
+      <div class="row">
+        <button id="osc2-on" aria-pressed="true" title="Turn oscillator 2 on or off">On</button>
+        <div class="field">Sequence
+          <div class="seg" id="osc2-mode" role="radiogroup" aria-label="Oscillator 2 sequence"></div>
+        </div>
+        <label class="field">Wave
+          <select id="osc2-wave">
+            <option value="sawtooth">Saw</option>
+            <option value="square">Square</option>
+            <option value="triangle">Triangle</option>
+            <option value="sine">Sine</option>
+          </select>
+        </label>
+        <label class="field">Transpose <select id="osc2-transpose"></select></label>
+        <label class="field slider">Detune <output id="osc2-detune-val"></output>
+          <input id="osc2-detune" type="range" min="-50" max="50" value="0" />
+        </label>
+        <label class="field slider">Level <output id="osc2-level-val"></output>
+          <input id="osc2-level" type="range" min="0" max="100" value="70" />
+        </label>
+        <label class="field">MIDI Out Ch
+          <select id="osc2-midi-ch" title="Send oscillator 2 to its own MIDI channel"><option value="-1">Off</option></select>
+        </label>
+      </div>
+    </section>
+
     <section class="panel io" aria-label="Sound and MIDI">
       <h2>Sound &amp; MIDI</h2>
       <div class="row">
         <label class="check"><input id="synth-on" type="checkbox" checked /> Built-in synth</label>
-        <label class="field">Wave
+        <label class="field">Osc 1 Wave
           <select id="wave">
             <option value="sawtooth">Saw</option>
             <option value="square">Square</option>

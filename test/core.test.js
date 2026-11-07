@@ -117,3 +117,16 @@ test('a chord played into the arp is arpeggiated through the sequencer', () => {
   chordNotes(60, 'maj7').forEach((n) => e.noteOn(n));
   assert.deepEqual(Array.from({ length: 5 }, () => e.next().note), [60, 64, 67, 71, 60]);
 });
+
+import { osc2Note } from '../src/core.js';
+
+test('osc 2 follows the same sequence or its inversion', () => {
+  const e = engineWith([{ offset: 0 }, { offset: 12 }, { offset: 7 }, { offset: -5 }], 4);
+  e.noteOn(60);
+  const evs = Array.from({ length: 4 }, () => e.next());
+  assert.deepEqual(evs.map((ev) => ev.note), [60, 72, 67, 55]);
+  assert.deepEqual(evs.map((ev) => osc2Note(ev, 'same')), [60, 72, 67, 55]);
+  assert.deepEqual(evs.map((ev) => osc2Note(ev, 'invert')), [60, 48, 53, 65]);
+  assert.deepEqual(evs.map((ev) => osc2Note(ev, 'invert', 12)), [72, 60, 65, 77]);
+  assert.equal(osc2Note({ sourceNote: 5, offset: 12 }, 'invert', -12), 0);
+});
