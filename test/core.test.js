@@ -180,3 +180,32 @@ test('patternAt follows a pattern running at its own rate', () => {
   assert.equal(show(hitsAt16ths), 'xx....xx....xx..');
   assert.deepEqual(patternAt(12 * 9, 12, 3, 8), { pos: 1, hit: false });
 });
+
+import { progressionAt, slotNotes, PPQN } from '../src/core.js';
+
+test('progressionAt walks the slots by their beat lengths and loops', () => {
+  const slots = [{ beats: 4 }, { beats: 2 }, { beats: 2 }];
+  const at = (beat) => progressionAt(beat * PPQN, slots);
+  assert.deepEqual([0, 3.9, 4, 5.99, 6, 7.9, 8, 12].map(at), [0, 0, 1, 1, 2, 2, 0, 1]);
+  assert.equal(progressionAt(0, []), -1);
+});
+
+test('slotNotes builds the slot chord in an octave, rests are silent', () => {
+  assert.deepEqual(slotNotes({ root: 7, type: 'dom7' }, 3), [55, 59, 62, 65]);
+  assert.deepEqual(slotNotes({ root: 2, type: 'min7' }, 3), [50, 53, 57, 60]);
+  assert.deepEqual(slotNotes({ root: 0, type: 'rest' }, 3), []);
+});
+
+test('the arp plays the progression chord merged with held notes', () => {
+  const e = new ArpSeqEngine();
+  for (let i = 0; i < 5; i++) e.setStep(i, { offset: 0, volume: 100 });
+  e.setProgressionNotes([48, 52, 55]);
+  assert.deepEqual([1, 2, 3].map(() => e.next().note), [48, 52, 55]);
+  e.noteOn(72); // a held key adds to the chord
+  assert.deepEqual(e.pattern.map((n) => n.note), [48, 52, 55, 72]);
+  e.setProgressionNotes([53, 57, 60]); // chord change keeps the held key
+  assert.deepEqual(e.pattern.map((n) => n.note), [53, 57, 60, 72]);
+  e.noteOff(72);
+  e.setProgressionNotes([]);
+  assert.equal(e.next(), null);
+});
