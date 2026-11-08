@@ -14,6 +14,7 @@ export class Synth {
     const comp = ctx.createDynamicsCompressor();
     comp.threshold.value = -12;
     this.master.connect(comp).connect(ctx.destination);
+    this.out = comp; // shared bus for other sound sources (percussion)
     this.voices = new Set();
   }
 

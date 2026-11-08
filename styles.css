@@ -256,6 +256,38 @@ input[type="range"] { accent-color: var(--accent); width: 100%; }
 }
 .slot.current .name { color: var(--accent); }
 
+/* ---------- percussion ---------- */
+.drums.off .drum-grid { opacity: 0.55; }
+.field.inline.slider { min-width: 0; }
+.field.inline.slider input { width: 110px; }
+.drum-grid {
+  display: grid;
+  grid-template-columns: 76px repeat(16, minmax(0, 1fr));
+  gap: 3px;
+}
+.drum-name {
+  min-height: 26px;
+  padding: 0 6px;
+  font-size: 11px;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: background 60ms;
+}
+.drum-name.muted { color: var(--muted); text-decoration: line-through; opacity: 0.6; }
+.drum-name.hit { background: var(--accent-2); color: #0b1f1e; }
+.drum-grid .cell {
+  min-height: 26px;
+  padding: 0;
+  border-radius: 4px;
+  background: #2b2e35;
+}
+.drum-grid .cell.beat { background: #353942; }
+.drum-grid .cell.on { background: #b9811f; border-color: #b9811f; }
+.drum-grid .cell.acc { background: var(--accent); border-color: var(--accent); }
+.drum-grid .cell.now { box-shadow: inset 0 0 0 2px var(--accent-2); }
+
 /* ---------- rhythm ---------- */
 .rhythm .hint { margin-top: 0; }
 .rhythm.off .row > :not(#chord-on):not(.gate-arp) { opacity: 0.45; }
@@ -383,5 +415,8 @@ input[type="range"] { accent-color: var(--accent); width: 100%; }
   #seq-reset, #panic { margin-left: 0; }
   .keyboard { height: 110px; }
   .prog-slots { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .drum-grid { grid-template-columns: 52px repeat(16, minmax(0, 1fr)); gap: 2px; }
+  .drum-name { font-size: 9px; padding: 0 3px; }
+  .drum-grid .cell, .drum-name { min-height: 22px; }
   .chord-pads { flex-basis: 100%; grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }

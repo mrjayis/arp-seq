@@ -4,10 +4,11 @@ import {
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   defaultProgression,
-} from './core.js?v=4';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=4';
-import { Synth } from './synth.js?v=4';
-import { Midi } from './midi.js?v=4';
+} from './core.js?v=5';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=5';
+import { Synth } from './synth.js?v=5';
+import { Midi } from './midi.js?v=5';
+import { DrumSynth, DRUM_PRESETS, DRUM_STEPS, VOICES, parsePattern, hitsAt } from './percussion.js?v=5';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -58,6 +59,12 @@ const settings = {
   progLength: 4,
   progOctave: 3,
   progression: defaultProgression(),
+  drumOn: false,
+  drumPreset: 'Bossa Nova',
+  drumRows: null, // the pattern being played (a preset, possibly edited)
+  drumLevel: 70,
+  drumMuted: {},
+  drumMidiCh: -1,
   chordMidiCh: -1,
 };
 
@@ -101,6 +108,7 @@ applyEngineSettings();
 // ---------------------------------------------------------------- audio + clocks
 let ctx = null;
 let synth = null;
+let drums = null;
 let playing = false;
 const uiEvents = []; // {time, ...} drained by the animation loop
 
@@ -111,6 +119,8 @@ function ensureAudio() {
     synth.wave = settings.wave;
     synth.cutoff = settings.cutoff;
     synth.setVolume(settings.volume / 100);
+    drums = new DrumSynth(ctx, synth.out);
+    drums.setLevel(settings.drumLevel / 100);
   }
   if (ctx.state === 'suspended') ctx.resume();
   return ctx;
@@ -214,12 +224,31 @@ function onPulse(time, pulse, pulseDuration) {
     && !patternAt(pulse, RATES[settings.chordRate], settings.chordHits, settings.chordSteps, settings.chordRotate).hit;
   if (step && !gated) playArp(step);
   const cstep = pulseToStep(pulse, time, pulseDuration, RATES[settings.chordRate], swing);
-  if (!cstep) return;
-  if (settings.chordOn) playChord(cstep);
-  else if (settings.chordGateArp && engine.notes.length) {
-    // Keep the pattern display moving when only the gate is in use.
-    uiEvents.push({ kind: 'chord', time: cstep.time, rhythmPos: cstep.stepNumber % settings.chordSteps, notes: [] });
+  if (cstep) {
+    if (settings.chordOn) playChord(cstep);
+    else if (settings.chordGateArp && engine.notes.length) {
+      // Keep the pattern display moving when only the gate is in use.
+      uiEvents.push({ kind: 'chord', time: cstep.time, rhythmPos: cstep.stepNumber % settings.chordSteps, notes: [] });
+    }
   }
+  if (settings.drumOn) {
+    const dstep = pulseToStep(pulse, time, pulseDuration, RATES['1/16'], swing);
+    if (dstep) playDrums(dstep);
+  }
+}
+
+// Percussion: one-bar 16th-note pattern, locked to the clock and swing.
+function playDrums(step) {
+  const hits = hitsAt(settings.drumRows, step.stepNumber, settings.drumMuted);
+  for (const { id, gain } of hits) {
+    if (drums && settings.drumLevel > 0) drums.play(id, step.time, gain);
+    if (settings.drumMidiCh >= 0) {
+      const { gm } = VOICES.find((v) => v.id === id);
+      midi.noteOn(gm, Math.round(gain * 127), toPerfMs(step.time), settings.drumMidiCh);
+      midi.noteOff(gm, toPerfMs(step.time + 0.05), settings.drumMidiCh);
+    }
+  }
+  uiEvents.push({ kind: 'drum', time: step.time, step: step.stepNumber % DRUM_STEPS, hits: hits.map((h) => h.id) });
 }
 
 const internalClock = new InternalClock({ getTime: audioTime, onPulse, bpm: settings.bpm });
@@ -265,6 +294,7 @@ function setPlaying(on, { fromClock = false } = {}) {
     showRhythmPos(-1);
     resetProgression();
     showProgSlot(-1);
+    showDrumStep(-1, []);
     renderKeyState();
   }
   $('play').setAttribute('aria-pressed', String(on));
@@ -435,7 +465,7 @@ $('midi-out').addEventListener('change', () => {
 
 midi.init().then((ok) => {
   $('midi-status').textContent = ok ? '' : 'Web MIDI unavailable — use Chrome/Edge/Firefox over http(s).';
-  for (const id of ['midi-in', 'midi-out', 'midi-in-ch', 'midi-out-ch', 'osc2-midi-ch', 'chord-midi-ch', 'clock-out']) $(id).disabled = !ok;
+  for (const id of ['midi-in', 'midi-out', 'midi-in-ch', 'midi-out-ch', 'osc2-midi-ch', 'chord-midi-ch', 'drum-midi-ch', 'clock-out']) $(id).disabled = !ok;
   if (!ok) $('sync').querySelector('[value="external"]').disabled = true;
 });
 
@@ -630,6 +660,103 @@ function showProgSlot(i) {
 
 buildProgression();
 renderProgression();
+
+// ---------------------------------------------------------------- UI: percussion
+const drumCells = {}; // voice id -> [cell elements]
+const drumLabels = {};
+let drumCol = -1;
+
+function validDrumRows(rows) {
+  return rows && VOICES.every(({ id }) => Array.isArray(rows[id]) && rows[id].length === DRUM_STEPS);
+}
+if (!DRUM_PRESETS[settings.drumPreset] && settings.drumPreset !== 'custom') settings.drumPreset = 'Bossa Nova';
+if (!validDrumRows(settings.drumRows)) settings.drumRows = parsePattern(DRUM_PRESETS[settings.drumPreset] || {});
+if (!settings.drumMuted || typeof settings.drumMuted !== 'object') settings.drumMuted = {};
+
+function buildDrums() {
+  const preset = $('drum-preset');
+  for (const name of Object.keys(DRUM_PRESETS)) preset.add(new Option(name, name));
+  preset.add(new Option('Custom (edited)', 'custom'));
+  preset.value = settings.drumPreset;
+  preset.addEventListener('change', () => {
+    if (preset.value === 'custom') return;
+    settings.drumPreset = preset.value;
+    settings.drumRows = parsePattern(DRUM_PRESETS[preset.value]);
+    renderDrumGrid();
+    save();
+  });
+
+  const grid = $('drum-grid');
+  for (const { id, label } of VOICES) {
+    const name = document.createElement('button');
+    name.className = 'drum-name';
+    name.textContent = label;
+    name.title = `Mute / unmute ${label}`;
+    name.addEventListener('click', () => {
+      settings.drumMuted[id] = !settings.drumMuted[id];
+      renderDrumGrid();
+      save();
+    });
+    grid.append(name);
+    drumLabels[id] = name;
+    drumCells[id] = [];
+    for (let s = 0; s < DRUM_STEPS; s++) {
+      const c = document.createElement('button');
+      c.className = `cell${s % 4 === 0 ? ' beat' : ''}`;
+      c.setAttribute('aria-label', `${label} step ${s + 1}`);
+      c.addEventListener('click', () => {
+        // Cycle: off → hit → accent → off.
+        const v = settings.drumRows[id][s];
+        settings.drumRows[id][s] = v === 0 ? 0.65 : v < 1 ? 1 : 0;
+        settings.drumPreset = 'custom';
+        $('drum-preset').value = 'custom';
+        renderDrumGrid();
+        save();
+      });
+      grid.append(c);
+      drumCells[id].push(c);
+    }
+  }
+
+  $('drum-on').addEventListener('click', () => {
+    settings.drumOn = !settings.drumOn;
+    if (settings.drumOn) {
+      ensureAudio();
+      // Start the transport so the percussion plays without holding any keys.
+      if (!playing && settings.sync === 'internal') setPlaying(true);
+    } else showDrumStep(-1, []);
+    renderDrumGrid();
+    save();
+  });
+  bindRange('drum-level', 'drumLevel', (v) => `${v}%`, (v) => drums?.setLevel(v / 100));
+  for (let c = 1; c <= 16; c++) $('drum-midi-ch').add(new Option(String(c), String(c - 1)));
+  bindSelect('drum-midi-ch', 'drumMidiCh', null, () => midi.allNotesOff());
+}
+
+function renderDrumGrid() {
+  $('drum-on').setAttribute('aria-pressed', String(settings.drumOn));
+  $('drum-on').textContent = settings.drumOn ? 'On' : 'Off';
+  $('drum-panel').classList.toggle('off', !settings.drumOn);
+  for (const { id } of VOICES) {
+    drumLabels[id].classList.toggle('muted', !!settings.drumMuted[id]);
+    drumLabels[id].setAttribute('aria-pressed', String(!settings.drumMuted[id]));
+    drumCells[id].forEach((c, s) => {
+      const v = settings.drumRows[id][s];
+      c.classList.toggle('on', v > 0);
+      c.classList.toggle('acc', v >= 1);
+    });
+  }
+}
+
+function showDrumStep(step, hits) {
+  if (drumCol >= 0) for (const { id } of VOICES) drumCells[id][drumCol].classList.remove('now');
+  drumCol = step;
+  if (step >= 0) for (const { id } of VOICES) drumCells[id][step].classList.add('now');
+  for (const { id } of VOICES) drumLabels[id].classList.toggle('hit', hits.includes(id));
+}
+
+buildDrums();
+renderDrumGrid();
 
 // ---------------------------------------------------------------- UI: oscillator 2
 function renderOsc2() {
@@ -988,6 +1115,10 @@ function frame() {
   const now = audioTime();
   while (uiEvents.length && uiEvents[0].time <= now) {
     const ev = uiEvents.shift();
+    if (ev.kind === 'drum') {
+      showDrumStep(ev.step, ev.hits);
+      continue;
+    }
     if (ev.kind === 'prog') {
       showProgSlot(ev.index);
       renderKeyState();

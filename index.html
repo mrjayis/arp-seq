@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Arp-Seq</title>
-  <link rel="stylesheet" href="styles.css?v=4" />
+  <link rel="stylesheet" href="styles.css?v=5" />
 </head>
 <body>
   <main class="device">
@@ -116,6 +116,23 @@
       </div>
     </section>
 
+    <section class="panel drums" id="drum-panel" aria-label="Percussion">
+      <div class="seq-head">
+        <h2>Percussion</h2>
+        <button id="drum-on" aria-pressed="false" title="Play the percussion">Off</button>
+        <label class="field inline">Rhythm <select id="drum-preset"></select></label>
+        <label class="field inline slider">Level <output id="drum-level-val"></output>
+          <input id="drum-level" type="range" min="0" max="100" value="70" />
+        </label>
+        <label class="field inline">MIDI Out Ch
+          <select id="drum-midi-ch" title="Send the percussion as General MIDI drum notes (usually channel 10)"><option value="-1">Off</option></select>
+        </label>
+      </div>
+      <p class="hint">Vintage rhythm-box style Latin percussion, in time with the clock and swing. Tap a
+        cell to cycle off → hit → accent; tap a name to mute it.</p>
+      <div id="drum-grid" class="drum-grid"></div>
+    </section>
+
     <section class="panel seq" aria-label="Sequencer">
       <div class="seq-head">
         <h2>Sequencer</h2>
@@ -206,6 +223,6 @@
       <div id="keyboard" class="keyboard"></div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=4"></script>
+  <script type="module" src="src/app.js?v=5"></script>
 </body>
 </html>
