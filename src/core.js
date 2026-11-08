@@ -328,3 +328,23 @@ export function defaultProgression() {
     return { root, type, beats: 4 };
   });
 }
+
+// Filter cutoff sliders are logarithmic: equal slider travel = equal musical
+// interval, so the low end gets as much room as the top. Positions run 0..1000.
+export const CUTOFF_MIN = 60;
+export const CUTOFF_MAX = 12000;
+export const SLIDER_STEPS = 1000;
+
+export function sliderToFreq(pos, min = CUTOFF_MIN, max = CUTOFF_MAX) {
+  const x = clamp(pos, 0, SLIDER_STEPS) / SLIDER_STEPS;
+  return Math.round(min * Math.pow(max / min, x));
+}
+
+export function freqToSlider(freq, min = CUTOFF_MIN, max = CUTOFF_MAX) {
+  const f = clamp(freq, min, max);
+  return Math.round((Math.log(f / min) / Math.log(max / min)) * SLIDER_STEPS);
+}
+
+export function formatHz(f) {
+  return f < 1000 ? `${Math.round(f)} Hz` : `${(f / 1000).toFixed(f < 10000 ? 2 : 1)} kHz`;
+}

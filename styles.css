@@ -256,6 +256,15 @@ input[type="range"] { accent-color: var(--accent); width: 100%; }
 }
 .slot.current .name { color: var(--accent); }
 
+.row-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--accent-2);
+  padding-bottom: 10px;
+}
+
 /* ---------- percussion ---------- */
 .drums.off .drum-grid { opacity: 0.55; }
 .field.inline.slider { min-width: 0; }

@@ -3,12 +3,12 @@ import {
   MIN_SEQ_LENGTH, MAX_SEQ_LENGTH, noteName, defaultSteps, CHORDS, chordNotes,
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
-  defaultProgression,
-} from './core.js?v=6';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=6';
-import { Synth } from './synth.js?v=6';
-import { Midi } from './midi.js?v=6';
-import { DrumSynth, DRUM_PRESETS, DRUM_STEPS, VOICES, parsePattern, hitsAt } from './percussion.js?v=6';
+  defaultProgression, sliderToFreq, freqToSlider, formatHz,
+} from './core.js?v=7';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=7';
+import { Synth, Chorus } from './synth.js?v=7';
+import { Midi } from './midi.js?v=7';
+import { DrumSynth, DRUM_PRESETS, DRUM_STEPS, VOICES, parsePattern, hitsAt } from './percussion.js?v=7';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -53,6 +53,11 @@ const settings = {
   chordOctave: 0,
   chordGate: 80,
   chordLevel: 45,
+  chordCutoff: 1800,
+  chordResonance: 2,
+  chordChorusMix: 50,
+  chordChorusRate: 0.6,
+  chordChorusDepth: 50,
   chordFollowSeq: false,
   chordGateArp: false,
   progOn: false,
@@ -109,6 +114,7 @@ applyEngineSettings();
 let ctx = null;
 let synth = null;
 let drums = null;
+let chorus = null; // chord layer effect
 let playing = false;
 const uiEvents = []; // {time, ...} drained by the animation loop
 
@@ -120,6 +126,10 @@ function ensureAudio() {
     synth.cutoff = settings.cutoff;
     synth.setVolume(settings.volume / 100);
     drums = new DrumSynth(ctx, synth.out);
+    chorus = new Chorus(ctx, synth.master);
+    chorus.setMix(settings.chordChorusMix / 100);
+    chorus.setRate(settings.chordChorusRate);
+    chorus.setDepth(settings.chordChorusDepth / 100);
     drums.setLevel(settings.drumLevel / 100);
   }
   if (ctx.state === 'suspended') ctx.resume();
@@ -182,7 +192,13 @@ function playChord(step) {
   const off = toPerfMs(step.time + gateLen);
   for (const { note, velocity } of notes) {
     if (settings.synthOn && synth && settings.chordLevel > 0) {
-      synth.play(note, velocity, step.time, gateLen, { wave: settings.chordWave, level: settings.chordLevel / 100 });
+      synth.play(note, velocity, step.time, gateLen, {
+        wave: settings.chordWave,
+        level: settings.chordLevel / 100,
+        cutoff: settings.chordCutoff,
+        resonance: settings.chordResonance,
+        out: chorus.input,
+      });
     }
     if (settings.chordMidiCh >= 0) {
       midi.noteOn(note, velocity, on, settings.chordMidiCh);
@@ -389,6 +405,21 @@ function bindRange(id, key, format, onChange) {
   });
 }
 
+/** A cutoff slider: logarithmic position (0..1000) ↔ frequency in Hz stored in settings. */
+function bindCutoff(id, key, onChange) {
+  const el = $(id);
+  const out = $(`${id}-val`);
+  el.value = freqToSlider(settings[key]);
+  const show = () => { out.textContent = formatHz(settings[key]); };
+  show();
+  el.addEventListener('input', () => {
+    settings[key] = sliderToFreq(Number(el.value));
+    show();
+    onChange?.(settings[key]);
+    save();
+  });
+}
+
 function setLatch(on) {
   settings.latch = on;
   engine.setLatch(on);
@@ -446,7 +477,7 @@ $('synth-on').addEventListener('change', () => {
   save();
 });
 bindSelect('wave', 'wave', null, (w) => { if (synth) synth.wave = w; });
-bindRange('cutoff', 'cutoff', (v) => `${v} Hz`, (v) => { if (synth) synth.cutoff = v; });
+bindCutoff('cutoff', 'cutoff', (v) => { if (synth) synth.cutoff = v; });
 bindRange('volume', 'volume', (v) => `${v}%`, (v) => synth?.setVolume(v / 100));
 
 for (let c = 1; c <= 16; c++) {
@@ -530,6 +561,11 @@ for (let o = -2; o <= 2; o++) $('chord-octave').add(new Option(o > 0 ? `+${o}` :
 bindSelect('chord-octave', 'chordOctave');
 bindRange('chord-gate', 'chordGate', (v) => `${v}%`);
 bindRange('chord-level', 'chordLevel', (v) => `${v}%`);
+bindCutoff('chord-cutoff', 'chordCutoff');
+bindRange('chord-res', 'chordResonance', (v) => v.toFixed(1));
+bindRange('chorus-mix', 'chordChorusMix', (v) => `${v}%`, (v) => chorus?.setMix(v / 100));
+bindRange('chorus-rate', 'chordChorusRate', (v) => `${v.toFixed(2)} Hz`, (v) => chorus?.setRate(v));
+bindRange('chorus-depth', 'chordChorusDepth', (v) => `${v}%`, (v) => chorus?.setDepth(v / 100));
 $('chord-gate-arp').checked = settings.chordGateArp;
 $('chord-gate-arp').addEventListener('change', () => { settings.chordGateArp = $('chord-gate-arp').checked; save(); });
 $('chord-follow').checked = settings.chordFollowSeq;

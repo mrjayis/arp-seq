@@ -209,3 +209,21 @@ test('the arp plays the progression chord merged with held notes', () => {
   e.setProgressionNotes([]);
   assert.equal(e.next(), null);
 });
+
+import { sliderToFreq, freqToSlider, formatHz, CUTOFF_MIN, CUTOFF_MAX } from '../src/core.js';
+
+test('cutoff sliders are logarithmic, giving the low end more travel', () => {
+  assert.equal(sliderToFreq(0), CUTOFF_MIN);
+  assert.equal(sliderToFreq(1000), CUTOFF_MAX);
+  // Halfway is the geometric mean (~849 Hz), not the arithmetic one (~6 kHz).
+  assert.equal(sliderToFreq(500), Math.round(Math.sqrt(CUTOFF_MIN * CUTOFF_MAX)));
+  // Each octave gets the same slider travel.
+  const octave = freqToSlider(400) - freqToSlider(200);
+  assert.ok(Math.abs(freqToSlider(4000) - freqToSlider(2000) - octave) <= 1);
+  // Below 1 kHz now covers over half the slider (it was ~10% of the old linear one).
+  assert.ok(freqToSlider(1000) > 500);
+  for (const f of [60, 250, 2400, 9000]) assert.ok(Math.abs(sliderToFreq(freqToSlider(f)) - f) / f < 0.01);
+  assert.equal(freqToSlider(10), 0);
+  assert.equal(formatHz(450), '450 Hz');
+  assert.equal(formatHz(2400), '2.40 kHz');
+});
