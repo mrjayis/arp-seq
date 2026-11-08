@@ -20,7 +20,7 @@ held notes ──► ARPEGGIATOR ──► note ──► SEQUENCER step n ─�
 
 ### Arpeggiator
 - **Modes:** Up, Down, Up/Down, Down/Up, Random (never the same note twice in a row), As Played
-- **Rate:** 1/4, 1/8, 1/8T, 1/16, 1/16T, 1/32, placed on a 24 PPQN grid so rate changes stay in time
+- **Rate:** 1/4, 1/8D (dotted 8th), 1/8, 1/8T, 1/16, 1/16T, 1/32, placed on a 24 PPQN grid so rate changes stay in time
 - **Octaves:** 1–4 · **Gate:** 5–100% · **Swing:** 0–75% (delays off-beat steps)
 - **Latch:** keeps notes after you let go; a new chord replaces them. The sustain pedal (CC64) also toggles latch.
 - **Tempo:** 20–300 BPM, with tap tempo
