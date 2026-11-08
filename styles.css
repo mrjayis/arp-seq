@@ -220,6 +220,42 @@ input[type="range"] { accent-color: var(--accent); width: 100%; }
   font-size: 12px;
 }
 
+/* ---------- progression ---------- */
+.field.inline { flex-direction: row; align-items: center; gap: 6px; }
+.prog.off .prog-slots, .prog.off .len, .prog.off .field.inline { opacity: 0.5; }
+.prog-slots {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 8px;
+}
+.slot {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 6px;
+  display: grid;
+  gap: 6px;
+  justify-items: stretch;
+  text-align: center;
+  transition: border-color 60ms, box-shadow 60ms, opacity 120ms;
+}
+.slot .num { font-size: 11px; color: var(--muted); letter-spacing: 0.1em; }
+.slot .name {
+  font-size: 18px;
+  font-weight: 600;
+  min-height: 1.4em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.slot select { width: 100%; padding: 4px 6px; min-height: 30px; font-size: 13px; }
+.slot.disabled { opacity: 0.3; }
+.slot.current {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), 0 0 18px rgba(255, 180, 58, 0.25);
+}
+.slot.current .name { color: var(--accent); }
+
 /* ---------- rhythm ---------- */
 .rhythm .hint { margin-top: 0; }
 .rhythm.off .row > :not(#chord-on):not(.gate-arp) { opacity: 0.45; }
@@ -346,5 +382,6 @@ input[type="range"] { accent-color: var(--accent); width: 100%; }
   .readout { min-width: 0; width: 100%; }
   #seq-reset, #panic { margin-left: 0; }
   .keyboard { height: 110px; }
+  .prog-slots { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .chord-pads { flex-basis: 100%; grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }

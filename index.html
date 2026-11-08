@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Arp-Seq</title>
-  <link rel="stylesheet" href="styles.css?v=3" />
+  <link rel="stylesheet" href="styles.css?v=4" />
 </head>
 <body>
   <main class="device">
@@ -59,6 +59,21 @@
         </label>
         <button id="latch" aria-pressed="false" title="Hold notes after release">Latch</button>
       </div>
+    </section>
+
+    <section class="panel prog" id="prog-panel" aria-label="Chord progression">
+      <div class="seq-head">
+        <h2>Progression</h2>
+        <button id="prog-on" aria-pressed="false" title="Play the chord progression">Off</button>
+        <div class="len" id="prog-length" aria-label="Number of chords"></div>
+        <label class="field inline">Octave <select id="prog-octave"></select></label>
+        <label class="field inline">Preset
+          <select id="prog-preset"><option value="">Load…</option></select>
+        </label>
+      </div>
+      <p class="hint">Program up to 8 chords; each plays for its number of beats, then the next, looping.
+        The arpeggiator and chord rhythm play whatever chord is up; keys you hold are added to it.</p>
+      <div id="prog-slots" class="prog-slots"></div>
     </section>
 
     <section class="panel rhythm" id="chord-panel" aria-label="Chord rhythm">
@@ -191,6 +206,6 @@
       <div id="keyboard" class="keyboard"></div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=3"></script>
+  <script type="module" src="src/app.js?v=4"></script>
 </body>
 </html>

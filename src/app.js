@@ -2,10 +2,12 @@ import {
   ArpSeqEngine, MODES, MODE_LABELS, RATES, PITCH_RANGE,
   MIN_SEQ_LENGTH, MAX_SEQ_LENGTH, noteName, defaultSteps, CHORDS, chordNotes,
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
-} from './core.js?v=3';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=3';
-import { Synth } from './synth.js?v=3';
-import { Midi } from './midi.js?v=3';
+  PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
+  defaultProgression,
+} from './core.js?v=4';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=4';
+import { Synth } from './synth.js?v=4';
+import { Midi } from './midi.js?v=4';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -52,6 +54,10 @@ const settings = {
   chordLevel: 45,
   chordFollowSeq: false,
   chordGateArp: false,
+  progOn: false,
+  progLength: 4,
+  progOctave: 3,
+  progression: defaultProgression(),
   chordMidiCh: -1,
 };
 
@@ -77,6 +83,20 @@ function applyEngineSettings() {
   settings.steps = engine.steps.map((s) => ({ ...s }));
 }
 applyEngineSettings();
+
+// Repair a stored progression (older saves have none, or a different shape).
+{
+  const fallback = defaultProgression();
+  const saved = Array.isArray(settings.progression) ? settings.progression : [];
+  settings.progression = fallback.map((def, i) => {
+    const s = saved[i] || {};
+    return {
+      root: Number.isInteger(s.root) && s.root >= 0 && s.root < 12 ? s.root : def.root,
+      type: s.type === 'rest' || CHORDS[s.type] ? s.type : def.type,
+      beats: PROGRESSION_BEATS.includes(s.beats) ? s.beats : def.beats,
+    };
+  });
+}
 
 // ---------------------------------------------------------------- audio + clocks
 let ctx = null;
@@ -138,12 +158,12 @@ function playArp(step) {
 // Chord layer: repeats the held chord on the hits of its own Euclidean rhythm,
 // alongside the arpeggiator. It only follows the sequencer if asked to.
 function playChord(step) {
-  if (!engine.active.size) return;
+  if (!engine.notes.length) return;
   const rhythmPos = step.stepNumber % settings.chordSteps;
   const hit = euclid(settings.chordHits, settings.chordSteps, settings.chordRotate)[rhythmPos];
   const gateLen = gateLength(step, settings.chordGate);
   const notes = hit
-    ? chordVoicing(engine.active.values(), {
+    ? chordVoicing(engine.notes, {
       octave: settings.chordOctave,
       step: settings.chordFollowSeq ? engine.currentStep : null,
     })
@@ -162,8 +182,28 @@ function playChord(step) {
   uiEvents.push({ kind: 'chord', time: step.time, off: step.time + gateLen, rhythmPos, notes });
 }
 
+// ---- chord progression: swaps the chord the arp and chord layer play, on the clock.
+let progIndex = -1;
+
+function stepProgression(time, pulse) {
+  if (!settings.progOn) return;
+  const slots = settings.progression.slice(0, settings.progLength);
+  const i = progressionAt(pulse, slots);
+  if (i === progIndex) return;
+  progIndex = i;
+  engine.setProgressionNotes(slotNotes(slots[i], settings.progOctave));
+  uiEvents.push({ kind: 'prog', time, index: i });
+}
+
+/** Stop the progression feeding notes; it restarts from the current clock position. */
+function resetProgression() {
+  progIndex = -1;
+  engine.setProgressionNotes([]);
+}
+
 function onPulse(time, pulse, pulseDuration) {
   if (settings.clockOut && settings.sync === 'internal') midi.clock(toPerfMs(time));
+  stepProgression(time, pulse);
   const swing = settings.swing / 100;
   // Arp first, so a chord that follows the sequencer uses the same step as the
   // arp note sounding with it.
@@ -176,7 +216,7 @@ function onPulse(time, pulse, pulseDuration) {
   const cstep = pulseToStep(pulse, time, pulseDuration, RATES[settings.chordRate], swing);
   if (!cstep) return;
   if (settings.chordOn) playChord(cstep);
-  else if (settings.chordGateArp && engine.active.size) {
+  else if (settings.chordGateArp && engine.notes.length) {
     // Keep the pattern display moving when only the gate is in use.
     uiEvents.push({ kind: 'chord', time: cstep.time, rhythmPos: cstep.stepNumber % settings.chordSteps, notes: [] });
   }
@@ -186,7 +226,7 @@ const internalClock = new InternalClock({ getTime: audioTime, onPulse, bpm: sett
 const externalClock = new ExternalClock({
   getTime: audioTime,
   onPulse,
-  onStart: () => { engine.reset(); setPlaying(true, { fromClock: true }); },
+  onStart: () => { engine.reset(); resetProgression(); setPlaying(true, { fromClock: true }); },
   onStop: () => setPlaying(false, { fromClock: true }),
 });
 
@@ -204,6 +244,7 @@ function setPlaying(on, { fromClock = false } = {}) {
     if (on) {
       ensureAudio();
       engine.reset();
+      resetProgression();
       if (settings.clockOut) midi.send([0xfa]);
       internalClock.start();
       timerWorker.postMessage(25);
@@ -222,6 +263,9 @@ function setPlaying(on, { fromClock = false } = {}) {
     uiEvents.length = 0;
     clearCurrentStep();
     showRhythmPos(-1);
+    resetProgression();
+    showProgSlot(-1);
+    renderKeyState();
   }
   $('play').setAttribute('aria-pressed', String(on));
   $('play').textContent = on ? '■ Stop' : '▶ Play';
@@ -239,7 +283,7 @@ function noteOn(note, vel = 100) {
   if (count === 0) engine.noteOn(note, vel);
   // Internal clock auto-starts on the first key so the arp responds immediately.
   // Deferred a microtask so every note of a chord press is in before the first step.
-  if (!playing && settings.sync === 'internal') queueMicrotask(() => { if (!playing && engine.active.size) setPlaying(true); });
+  if (!playing && settings.sync === 'internal') queueMicrotask(() => { if (!playing && engine.notes.length) setPlaying(true); });
   renderKeyState();
 }
 
@@ -464,6 +508,129 @@ for (let c = 1; c <= 16; c++) $('chord-midi-ch').add(new Option(String(c), Strin
 bindSelect('chord-midi-ch', 'chordMidiCh', null, () => midi.allNotesOff());
 renderChordRhythm();
 
+// ---------------------------------------------------------------- UI: progression
+const NOTE_CLASSES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+const CHORD_SUFFIX = { maj: '', min: 'm', min7: 'm7', maj7: 'maj7', dom7: '7', dim: 'dim', sus4: 'sus4' };
+const slotEls = [];
+
+function slotName(slot) {
+  return slot.type === 'rest' ? '—' : NOTE_CLASSES[slot.root] + CHORD_SUFFIX[slot.type];
+}
+
+function progEdited() {
+  progIndex = -1; // pick up the change on the next clock pulse
+  save();
+}
+
+function buildProgression() {
+  const wrap = $('prog-slots');
+  for (let i = 0; i < MAX_PROGRESSION; i++) {
+    const el = document.createElement('div');
+    el.className = 'slot';
+    el.innerHTML = `
+      <div class="num">${i + 1}</div>
+      <div class="name"></div>
+      <select class="root" aria-label="Slot ${i + 1} root"></select>
+      <select class="type" aria-label="Slot ${i + 1} chord"></select>
+      <select class="beats" aria-label="Slot ${i + 1} length"></select>`;
+    const root = el.querySelector('.root');
+    const type = el.querySelector('.type');
+    const beats = el.querySelector('.beats');
+    NOTE_CLASSES.forEach((n, v) => root.add(new Option(n, String(v))));
+    for (const [t, { label }] of Object.entries(CHORDS)) type.add(new Option(label, t));
+    type.add(new Option('Rest', 'rest'));
+    for (const b of PROGRESSION_BEATS) beats.add(new Option(`${b} beat${b > 1 ? 's' : ''}`, String(b)));
+    const update = () => {
+      settings.progression[i] = { root: Number(root.value), type: type.value, beats: Number(beats.value) };
+      renderSlot(i);
+      progEdited();
+    };
+    [root, type, beats].forEach((s) => s.addEventListener('change', update));
+    wrap.append(el);
+    slotEls.push(el);
+  }
+
+  const len = $('prog-length');
+  for (let n = 1; n <= MAX_PROGRESSION; n++) {
+    const b = document.createElement('button');
+    b.textContent = n;
+    b.dataset.n = n;
+    b.title = `${n} chord${n > 1 ? 's' : ''}`;
+    b.addEventListener('click', () => {
+      settings.progLength = n;
+      renderProgression();
+      progEdited();
+    });
+    len.append(b);
+  }
+
+  for (let o = 1; o <= 6; o++) $('prog-octave').add(new Option(`C${o}`, String(o)));
+  bindSelect('prog-octave', 'progOctave', null, () => progEdited());
+
+  const preset = $('prog-preset');
+  for (const name of Object.keys(PROGRESSION_PRESETS)) preset.add(new Option(name, name));
+  preset.addEventListener('change', () => {
+    const chords = PROGRESSION_PRESETS[preset.value];
+    preset.value = '';
+    if (!chords) return;
+    chords.forEach(([root, type], i) => { settings.progression[i] = { root, type, beats: 4 }; });
+    settings.progLength = chords.length;
+    renderProgression();
+    progEdited();
+  });
+
+  $('prog-on').addEventListener('click', () => {
+    settings.progOn = !settings.progOn;
+    if (settings.progOn) {
+      progIndex = -1;
+      ensureAudio();
+      // Start the transport so the progression plays without holding any keys.
+      if (!playing && settings.sync === 'internal') setPlaying(true);
+    } else {
+      resetProgression();
+      showProgSlot(-1);
+      renderKeyState();
+    }
+    renderProgression();
+    save();
+  });
+}
+
+function renderSlot(i) {
+  const el = slotEls[i];
+  const slot = settings.progression[i];
+  el.querySelector('.root').value = String(slot.root);
+  el.querySelector('.type').value = slot.type;
+  el.querySelector('.beats').value = String(slot.beats);
+  el.querySelector('.root').disabled = slot.type === 'rest' || i >= settings.progLength;
+  el.querySelector('.name').textContent = slotName(slot);
+}
+
+function renderProgression() {
+  $('prog-on').setAttribute('aria-pressed', String(settings.progOn));
+  $('prog-on').textContent = settings.progOn ? 'On' : 'Off';
+  $('prog-panel').classList.toggle('off', !settings.progOn);
+  $('prog-length').querySelectorAll('button').forEach((b) => {
+    b.setAttribute('aria-pressed', String(Number(b.dataset.n) === settings.progLength));
+  });
+  slotEls.forEach((el, i) => {
+    const off = i >= settings.progLength;
+    el.classList.toggle('disabled', off);
+    el.querySelectorAll('select').forEach((s) => { s.disabled = off; });
+    renderSlot(i);
+  });
+}
+
+let lastSlotEl = null;
+function showProgSlot(i) {
+  lastSlotEl?.classList.remove('current');
+  lastSlotEl = slotEls[i] || null;
+  lastSlotEl?.classList.add('current');
+}
+
+buildProgression();
+renderProgression();
+
 // ---------------------------------------------------------------- UI: oscillator 2
 function renderOsc2() {
   $('osc2-on').setAttribute('aria-pressed', String(settings.osc2On));
@@ -687,7 +854,7 @@ $('keyboard').addEventListener('pointerover', (e) => {
 function renderKeyState() {
   for (const [n, k] of keyEls) {
     k.classList.toggle('held', engine.physical.has(n));
-    k.classList.toggle('latched', engine.active.has(n));
+    k.classList.toggle('latched', engine.notes.some((x) => x.note === n));
   }
 }
 
@@ -749,7 +916,7 @@ function buildChordPads() {
   root.addEventListener('change', () => { settings.chordRoot = Number(root.value); save(); });
 
   const wrap = $('chord-pads');
-  Object.entries(CHORDS).forEach(([type, { label }], i) => {
+  PAD_CHORDS.map((type) => [type, CHORDS[type]]).forEach(([type, { label }], i) => {
     const b = document.createElement('button');
     b.className = 'chord-pad';
     b.dataset.chord = type;
@@ -821,6 +988,11 @@ function frame() {
   const now = audioTime();
   while (uiEvents.length && uiEvents[0].time <= now) {
     const ev = uiEvents.shift();
+    if (ev.kind === 'prog') {
+      showProgSlot(ev.index);
+      renderKeyState();
+      continue;
+    }
     if (ev.kind === 'chord') {
       showRhythmPos(ev.rhythmPos);
       for (const { note } of ev.notes) {

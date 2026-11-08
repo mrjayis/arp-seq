@@ -87,6 +87,7 @@ export class ArpSeqEngine {
     this.physical = new Map(); // keys currently held down
     this.active = new Map(); // notes the arp plays (held or latched)
     this.orderCounter = 0;
+    this.progression = []; // notes supplied by the chord-progression sequencer
     this.reset();
   }
 
@@ -102,7 +103,7 @@ export class ArpSeqEngine {
       // Fresh chord while latched: replace the latched notes.
       this.active.clear();
     }
-    if (this.active.size === 0) this.reset();
+    if (this.notes.length === 0) this.reset();
     const entry = { note, vel: clamp(vel, 1, 127), order: this.orderCounter++ };
     this.physical.set(note, entry);
     this.active.set(note, entry);
@@ -160,8 +161,21 @@ export class ArpSeqEngine {
     return this.steps[this.lastStepIndex ?? 0];
   }
 
+  /** Notes the arp plays: held/latched notes plus the current progression chord. */
+  get notes() {
+    if (!this.progression.length) return [...this.active.values()];
+    return [...this.active.values(), ...this.progression.filter((n) => !this.active.has(n.note))];
+  }
+
+  /** Set the progression chord (MIDI note numbers); [] for none. */
+  setProgressionNotes(notes) {
+    if (notes.length && this.notes.length === 0) this.reset();
+    // Negative order: in As Played mode the progression chord comes first, root up.
+    this.progression = notes.map((note, i) => ({ note, vel: 100, order: i - notes.length }));
+  }
+
   get pattern() {
-    return buildPattern([...this.active.values()], this.mode, this.octaves);
+    return buildPattern(this.notes, this.mode, this.octaves);
   }
 
   /**
@@ -207,13 +221,18 @@ export function noteName(n) {
   return NOTE_NAMES[n % 12] + (Math.floor(n / 12) - 1);
 }
 
-// Chord pads: intervals in semitones above the root.
+// Chord types: intervals in semitones above the root. The pads use the first four;
+// the progression sequencer can use them all.
 export const CHORDS = {
   maj: { label: 'Maj', intervals: [0, 4, 7] },
   min: { label: 'min', intervals: [0, 3, 7] },
   min7: { label: 'min7', intervals: [0, 3, 7, 10] },
   maj7: { label: 'maj7', intervals: [0, 4, 7, 11] },
+  dom7: { label: '7', intervals: [0, 4, 7, 10] },
+  dim: { label: 'dim', intervals: [0, 3, 6] },
+  sus4: { label: 'sus4', intervals: [0, 5, 7] },
 };
+export const PAD_CHORDS = ['maj', 'min', 'min7', 'maj7'];
 
 export function chordNotes(root, type) {
   const chord = CHORDS[type];
@@ -270,4 +289,41 @@ export function patternAt(pulse, pulsesPerStep, hits, steps, rotate = 0) {
   const pattern = euclid(hits, steps, rotate);
   const pos = Math.floor(pulse / pulsesPerStep) % pattern.length;
   return { pos, hit: pattern[pos] };
+}
+
+// ---- chord progression sequencer
+export const MAX_PROGRESSION = 8;
+export const PROGRESSION_BEATS = [1, 2, 3, 4, 6, 8];
+
+/** Which slot is playing at clock `pulse`, for slots of {beats}. Loops forever. */
+export function progressionAt(pulse, slots) {
+  const total = slots.reduce((sum, s) => sum + s.beats, 0) * PPQN;
+  if (!total) return -1;
+  let t = pulse % total;
+  for (let i = 0; i < slots.length; i++) {
+    t -= slots[i].beats * PPQN;
+    if (t < 0) return i;
+  }
+  return slots.length - 1;
+}
+
+/** Notes for a progression slot {root (0-11), type, beats} in the given octave; [] for a rest. */
+export function slotNotes(slot, octave) {
+  if (!slot || slot.type === 'rest') return [];
+  return chordNotes((octave + 1) * 12 + slot.root, slot.type);
+}
+
+export const PROGRESSION_PRESETS = {
+  'I–V–vi–IV (C)': [[0, 'maj'], [7, 'maj'], [9, 'min'], [5, 'maj']],
+  'ii–V–I (C)': [[2, 'min7'], [7, 'dom7'], [0, 'maj7'], [0, 'maj7']],
+  'I–vi–ii–V (C)': [[0, 'maj7'], [9, 'min7'], [2, 'min7'], [7, 'dom7']],
+  'i–VI–III–VII (Am)': [[9, 'min'], [5, 'maj'], [0, 'maj'], [7, 'maj']],
+  'i–iv–v–i (Am)': [[9, 'min7'], [2, 'min7'], [4, 'min7'], [9, 'min7']],
+};
+
+export function defaultProgression() {
+  return Array.from({ length: MAX_PROGRESSION }, (_, i) => {
+    const [root, type] = PROGRESSION_PRESETS['I–V–vi–IV (C)'][i % 4];
+    return { root, type, beats: 4 };
+  });
 }

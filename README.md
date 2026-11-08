@@ -30,6 +30,13 @@ held notes ──► ARPEGGIATOR ──► note ──► SEQUENCER step n ─�
 - **MIDI Clock In:** follows 0xF8 ticks and Start/Continue/Stop, and shows the tempo it detects. *Play* starts it by hand for sources that never send Start.
 - **Send MIDI clock:** sends clock plus Start/Stop to the selected MIDI output when running on the internal clock.
 
+### Progression (meta sequencer)
+- Program **1–8 chords**. Each slot has a root, a chord type (Maj, min, min7, maj7, 7, dim, sus4, or Rest) and a length of 1–8 beats. The progression loops, locked to the clock (internal or MIDI clock in).
+- The current chord feeds the **arpeggiator** (and oscillator 2) and the **chord rhythm** layer. Keys or chord pads you hold are **added** to it.
+- **On** starts the transport. Stop and Play restart the progression from slot 1.
+- **Octave** sets the chord register. **Preset** loads I–V–vi–IV, ii–V–I, I–vi–ii–V, i–VI–III–VII or i–iv–v–i.
+- Edits take effect on the next clock pulse, so you can change chords while it plays.
+
 ### Chord rhythm
 A separate layer that repeats the **held chord** in a Euclidean rhythm while the arpeggiator (and oscillator 2) keep playing on top.
 - **Steps** (2–16), **Hits** and **Rotate**: the hits are spread as evenly as possible over the steps. For example, 3 in 8 = `x..x..x.`. A dot display shows where the pattern is.
