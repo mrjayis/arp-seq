@@ -45,6 +45,14 @@ A separate layer that repeats the **held chord** in a Euclidean rhythm while the
 - **Gate arp:** the arp plays only while the chord pattern is on a hit. With the defaults (chord at 1/8, arp at 1/16), each hit lets two arp notes through. The arp and sequencer hold their place during rests. Works even with the chord layer turned off.
 - **Follow sequencer:** off by default, so the chord repeats unchanged. When on, the chord takes the pitch offset and volume of the step the arp is on. It never moves the sequencer forward.
 
+### Percussion
+Latin percussion in the style of a 70s preset rhythm box, synthesized live with Web Audio (no samples).
+- **Voices:** bass drum, conga low and high, bongo low and high, claves, cowbell, maracas and guiro
+- **Rhythms:** Bossa Nova, Samba, Cha-Cha, Mambo, Rhumba, Beguine and Tango. Each is a one-bar, 16th-note pattern written from the standard groove of its style.
+- **Editing:** tap a cell to cycle off → hit → accent, which makes the pattern "Custom". Tap a voice name to mute it.
+- **Timing:** follows the clock (internal or MIDI clock) and the swing setting. Turning it on starts the transport, so it can play on its own.
+- **Level**, plus optional **MIDI out** as General MIDI drum notes (usually channel 10)
+
 ### Sequencer
 - **Length:** 2, 3, 4 or 5 steps
 - **Each step:** a **pitch** offset of ±24 semitones (slider, ±1 / ±12 buttons, double-click resets to 0) and its own **volume** of 0–100%, which scales the note's velocity. 0% mutes the step, but the step still counts.
@@ -76,4 +84,5 @@ A separate layer that repeats the **held chord** in a Euclidean rhythm while the
 | `src/clock.js` | Internal and external (MIDI) clocks, and pulse→step conversion with swing (pure, tested) |
 | `src/synth.js` | Polyphonic Web Audio synth |
 | `src/midi.js` | Web MIDI I/O |
+| `src/percussion.js` | Percussion voices, rhythm presets and pattern helpers (patterns tested) |
 | `src/app.js` | UI wiring |
