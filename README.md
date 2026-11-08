@@ -76,7 +76,8 @@ Latin percussion in the style of a 70s preset rhythm box, synthesized live with 
 ### Input / output
 - On-screen keyboard (click and drag), computer keys `A W S E D F T G Y H U J K O L P ;`, `Z`/`X` to change octave, `Space` to play or stop
 - MIDI in, with a channel filter or omni
-- Built-in synth (wave, cutoff, volume). The cutoff sliders are logarithmic, so each octave gets the same slider travel and the low end has much more room. and/or MIDI out on any channel, timestamped for tight timing
+- Built-in synth (wave, cutoff, volume) and/or MIDI out on any channel, timestamped for tight timing
+- Cutoff sliders are logarithmic (60 Hz – 12 kHz), so each octave gets the same slider travel and the low end has more room
 - Settings are saved in `localStorage`
 
 ## Layout
