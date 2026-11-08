@@ -43,6 +43,8 @@ A separate layer that repeats the **held chord** in a Euclidean rhythm while the
 - **Rate:** the chord layer has its own rate, separate from the arp's (default 1/8). It runs on the same clock.
 - **Sound:** its own wave, octave (±2), gate and level, plus an optional MIDI out channel.
 - **Gate arp:** the arp plays only while the chord pattern is on a hit. With the defaults (chord at 1/8, arp at 1/16), each hit lets two arp notes through. The arp and sequencer hold their place during rests. Works even with the chord layer turned off.
+- **Filter:** the chords have their own low-pass **Cutoff** and **Resonance**, separate from the main filter.
+- **Chorus:** a two-voice stereo chorus on the chords only, with **Mix**, **Rate** and **Depth** controls.
 - **Follow sequencer:** off by default, so the chord repeats unchanged. When on, the chord takes the pitch offset and volume of the step the arp is on. It never moves the sequencer forward.
 
 ### Percussion
@@ -74,7 +76,7 @@ Latin percussion in the style of a 70s preset rhythm box, synthesized live with 
 ### Input / output
 - On-screen keyboard (click and drag), computer keys `A W S E D F T G Y H U J K O L P ;`, `Z`/`X` to change octave, `Space` to play or stop
 - MIDI in, with a channel filter or omni
-- Built-in synth (wave, cutoff, volume) and/or MIDI out on any channel, timestamped for tight timing
+- Built-in synth (wave, cutoff, volume). The cutoff sliders are logarithmic, so each octave gets the same slider travel and the low end has much more room. and/or MIDI out on any channel, timestamped for tight timing
 - Settings are saved in `localStorage`
 
 ## Layout

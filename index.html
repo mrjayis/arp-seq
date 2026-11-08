@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Arp-Seq</title>
-  <link rel="stylesheet" href="styles.css?v=6" />
+  <link rel="stylesheet" href="styles.css?v=7" />
 </head>
 <body>
   <main class="device">
@@ -114,6 +114,25 @@
           <select id="chord-midi-ch" title="Send the chords to their own MIDI channel"><option value="-1">Off</option></select>
         </label>
       </div>
+      <div class="row">
+        <span class="row-label">Filter</span>
+        <label class="field slider">Cutoff <output id="chord-cutoff-val"></output>
+          <input id="chord-cutoff" type="range" min="0" max="1000" step="1" />
+        </label>
+        <label class="field slider">Resonance <output id="chord-res-val"></output>
+          <input id="chord-res" type="range" min="0.5" max="15" step="0.1" />
+        </label>
+        <span class="row-label">Chorus</span>
+        <label class="field slider">Mix <output id="chorus-mix-val"></output>
+          <input id="chorus-mix" type="range" min="0" max="100" />
+        </label>
+        <label class="field slider">Rate <output id="chorus-rate-val"></output>
+          <input id="chorus-rate" type="range" min="0.05" max="5" step="0.05" />
+        </label>
+        <label class="field slider">Depth <output id="chorus-depth-val"></output>
+          <input id="chorus-depth" type="range" min="0" max="100" />
+        </label>
+      </div>
     </section>
 
     <section class="panel drums" id="drum-panel" aria-label="Percussion">
@@ -187,7 +206,7 @@
           </select>
         </label>
         <label class="field slider">Cutoff <output id="cutoff-val"></output>
-          <input id="cutoff" type="range" min="200" max="8000" value="2400" />
+          <input id="cutoff" type="range" min="0" max="1000" step="1" />
         </label>
         <label class="field slider">Volume <output id="volume-val"></output>
           <input id="volume" type="range" min="0" max="100" value="50" />
@@ -223,6 +242,6 @@
       <div id="keyboard" class="keyboard"></div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=6"></script>
+  <script type="module" src="src/app.js?v=7"></script>
 </body>
 </html>
