@@ -17,6 +17,7 @@ export const MODE_LABELS = {
 export const PPQN = 24;
 export const RATES = {
   '1/4': 24,
+  '1/8D': 18, // dotted 8th
   '1/8': 12,
   '1/8T': 8,
   '1/16': 6,

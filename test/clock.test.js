@@ -47,3 +47,15 @@ test('external clock follows Start/Clock/Stop and estimates tempo', () => {
   assert.equal(pulses.length, 48);
   assert.ok(Math.abs(c.bpm - 100) < 0.01);
 });
+
+test('dotted 8th steps are 3/4 of a beat and repeat the bar every 3 beats', () => {
+  const pd = 60 / (120 * 24);
+  const steps = [];
+  for (let p = 0; p < 96 * 3; p++) {
+    const s = pulseToStep(p, p * pd, pd, RATES['1/8D'], 0);
+    if (s) steps.push(s);
+  }
+  assert.ok(Math.abs(steps[0].duration - 0.375) < 1e-9); // 3/4 of a 0.5 s beat
+  assert.deepEqual(steps.slice(0, 6).map((s) => Math.round(s.time / pd)), [0, 18, 36, 54, 72, 90]);
+  assert.equal(steps.length, 16); // 16 dotted 8ths = 3 bars of 4/4
+});
