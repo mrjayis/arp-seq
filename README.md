@@ -78,6 +78,14 @@ Three kits, all synthesized live with Web Audio (no samples). Each kit remembers
   - Storage: samples are kept in this browser only (IndexedDB) and never uploaded or committed.
   - Playback: the closed hat chokes the open hat, and accents play louder. The Linn-style patterns come mapped onto these rows.
 
+**Variation** (all kits):
+- **Trig conditions:** set **Tap sets** to *Conditions*, pick one, and tap hits to give them that condition (tap again to clear).
+  - **A:B** plays on the A-th of every B loops of that row (1:2, 2:2 … 4:4, 1:8, 8:8).
+  - **Fill / Not fill** follow the fill bars. **First / Not first** refer to the first loop after Play.
+  - **25 / 50 / 75%** are chance.
+- **Row length** (the menu at the end of each row, 1–16): a shorter row loops sooner and drifts against the others (polymeter). Its conditions count its own loops.
+- **Fill every 2 / 4 / 8 bars** turns on the last bar of each cycle (the light shows it). **Add fill** writes a snare/tom build on the last beat that plays only in fill bars.
+
 The Latin kit:
 - **Voices:** bass drum, conga low and high, bongo low and high, claves, cowbell, maracas and guiro
 - **Rhythms:** Bossa Nova, Samba, Cha-Cha, Mambo, Rhumba, Beguine and Tango. Each is a one-bar, 16th-note pattern written from the standard groove of its style.

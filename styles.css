@@ -44,6 +44,7 @@
 .top        { --mod: var(--ink); --mod-ink: var(--plate); }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; } /* layout rules must not un-hide things */
 
 body {
   margin: 0;
@@ -449,7 +450,7 @@ input[type="range"]::-moz-range-thumb {
 .drums.off .drum-grid { opacity: 0.55; }
 .drum-grid {
   display: grid;
-  grid-template-columns: 78px repeat(16, minmax(0, 1fr));
+  grid-template-columns: 78px repeat(16, minmax(0, 1fr)) 46px;
   gap: 3px;
 }
 .drum-name {
@@ -524,6 +525,33 @@ input[type="range"]::-moz-range-thumb {
 .trow.rolled .tstep { text-decoration: underline; }
 .trow input[type="number"] { -moz-appearance: textfield; }
 .trow input::-webkit-inner-spin-button { opacity: 0.4; }
+
+/* ---------- drum variation ---------- */
+.drum-vary { margin-bottom: 8px; }
+.drum-len { min-height: 26px; padding: 0 2px; font-size: 12px; }
+.drum-grid .cell { position: relative; }
+.drum-grid .cell.past { opacity: 0.25; background-image: repeating-linear-gradient(135deg, transparent 0 3px, color-mix(in srgb, var(--ink) 25%, transparent) 3px 4px); }
+.drum-grid .cell.cond::after {
+  content: attr(data-cond);
+  position: absolute;
+  inset: auto 0 1px 0;
+  font-size: 9px;
+  line-height: 1;
+  text-align: center;
+  color: var(--ink);
+  pointer-events: none;
+}
+.drum-grid .cell.cond.acc::after { color: var(--mod-ink); }
+.drum-grid .cell.cond { border-style: dashed; }
+.fill-led {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1.5px solid var(--line);
+  background: var(--field);
+  align-self: center;
+}
+.fill-led.lit { background: var(--mod); }
 
 /* ---------- oscillator 2 ---------- */
 .osc2.off .row:not(.mod-row) > :not(#osc2-on) { opacity: 0.45; }
@@ -668,7 +696,9 @@ input[type="range"]::-moz-range-thumb {
   .break-gen { margin-left: 0; }
   .slot:nth-child(4n + 1) { border-left: 0; }
   .slot:nth-child(n + 5) { border-top: 1.5px solid var(--line); }
-  .drum-grid { grid-template-columns: 54px repeat(16, minmax(0, 1fr)); gap: 2px; }
+  .drum-grid { grid-template-columns: 54px repeat(16, minmax(0, 1fr)) 34px; gap: 2px; }
+  .drum-len { font-size: 10px; padding: 0 1px; }
+  .drum-grid .cell.cond::after { font-size: 7px; }
   .drum-name { font-size: 10px; padding: 0 3px; }
   .drum-grid .cell, .drum-name { min-height: 22px; }
   .drum-grid .cell { border-width: 1px; }

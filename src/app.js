@@ -4,17 +4,19 @@ import {
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=38';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=38';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=38';
-import { Midi } from './midi.js?v=38';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=38';
-import { DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, hitsAt, assignSamples } from './percussion.js?v=38';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=38';
+} from './core.js?v=40';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=40';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=40';
+import { Midi } from './midi.js?v=40';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=40';
+import {
+  DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
+} from './percussion.js?v=40';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=40';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
-} from './breaks.js?v=38';
+} from './breaks.js?v=40';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -111,6 +113,11 @@ const settings = {
   drumLevel: 70,
   drumMuted: {},
   drumMidiCh: -1,
+  drumConds: {}, // per row: a trig condition per step ('' = always)
+  drumLens: {}, // per row: its own loop length (polymeter)
+  drumFillEvery: 0, // a fill bar every N bars (0 = off)
+  drumTapMode: 'hits', // what tapping a cell does: 'hits' | 'cond'
+  drumCondPick: '1:2',
   breakOn: false,
   breakSlices: 16,
   breakSteps: 32,
@@ -408,7 +415,10 @@ function onPulse(time, pulse, pulseDuration) {
 // Percussion: one-bar 16th-note pattern, locked to the clock and swing.
 function playDrums(step) {
   const voices = kitVoices();
-  const hits = hitsAt(settings.drumRows, step.stepNumber, settings.drumMuted, voices);
+  const hits = drumHits(settings.drumRows, step.stepNumber, {
+    conds: settings.drumConds, lens: settings.drumLens, muted: settings.drumMuted, voices,
+    fill: isFillBar(step.stepNumber, settings.drumFillEvery),
+  });
   for (const { id, gain } of hits) {
     // Your samples: each row has its own level (the sample mixer).
     const user = settings.drumKit === 'user';
@@ -421,7 +431,7 @@ function playDrums(step) {
       midi.noteOff(gm, toPerfMs(step.time + 0.05), settings.drumMidiCh);
     }
   }
-  uiEvents.push({ kind: 'drum', time: step.time, step: step.stepNumber % DRUM_STEPS, hits: hits.map((h) => h.id) });
+  uiEvents.push({ kind: 'drum', time: step.time, step: step.stepNumber, hits: hits.map((h) => h.id) });
 }
 
 const internalClock = new InternalClock({ getTime: audioTime, onPulse, bpm: settings.bpm });
@@ -946,6 +956,17 @@ function loadKitState() {
   settings.drumRows = normalizeRows(settings.drumRows, voices)
     || parsePattern(presets[settings.drumPreset] || {}, voices);
   if (!settings.drumMuted || typeof settings.drumMuted !== 'object') settings.drumMuted = {};
+  // Conditions and row lengths, made valid for the kit's rows.
+  const conds = settings.drumConds && typeof settings.drumConds === 'object' ? settings.drumConds : {};
+  const lens = settings.drumLens && typeof settings.drumLens === 'object' ? settings.drumLens : {};
+  settings.drumConds = {};
+  settings.drumLens = {};
+  for (const { id } of voices) {
+    const c = Array.isArray(conds[id]) ? conds[id] : [];
+    settings.drumConds[id] = Array.from({ length: DRUM_STEPS }, (_, i) => (CONDITIONS[c[i]] !== undefined ? c[i] : ''));
+    const n = Number(lens[id]);
+    settings.drumLens[id] = n >= 1 && n <= DRUM_STEPS ? n : DRUM_STEPS;
+  }
 }
 if (!settings.drumKitStore || typeof settings.drumKitStore !== 'object') settings.drumKitStore = {};
 loadKitState();
@@ -954,12 +975,15 @@ function switchKit(next) {
   if (next === settings.drumKit || !KITS[next]) return;
   settings.drumKitStore[settings.drumKit] = {
     preset: settings.drumPreset, rows: settings.drumRows, muted: settings.drumMuted,
+    conds: settings.drumConds, lens: settings.drumLens,
   };
   const stored = settings.drumKitStore[next] || {};
   settings.drumKit = next;
   settings.drumPreset = stored.preset;
   settings.drumRows = stored.rows;
   settings.drumMuted = stored.muted || {};
+  settings.drumConds = stored.conds || {};
+  settings.drumLens = stored.lens || {};
   loadKitState();
   showDrumStep(-1, []);
   $('sample-tools').hidden = settings.drumKit !== 'user';
@@ -1013,9 +1037,17 @@ function buildDrumGrid() {
       c.className = `cell${s % 4 === 0 ? ' beat' : ''}`;
       c.setAttribute('aria-label', `${label} step ${s + 1}`);
       c.addEventListener('click', () => {
-        // Cycle: off → hit → accent → off.
-        const v = settings.drumRows[id][s];
-        settings.drumRows[id][s] = v === 0 ? 0.65 : v < 1 ? 1 : 0;
+        if (settings.drumTapMode === 'cond') {
+          // Condition mode: give this step the chosen condition (tap again to clear it).
+          const conds = settings.drumConds[id];
+          if (settings.drumRows[id][s] === 0) settings.drumRows[id][s] = 0.65;
+          conds[s] = conds[s] === settings.drumCondPick ? '' : settings.drumCondPick;
+        } else {
+          // Cycle: off → hit → accent → off.
+          const v = settings.drumRows[id][s];
+          settings.drumRows[id][s] = v === 0 ? 0.65 : v < 1 ? 1 : 0;
+          if (settings.drumRows[id][s] === 0) settings.drumConds[id][s] = '';
+        }
         settings.drumPreset = 'custom';
         $('drum-preset').value = 'custom';
         renderDrumGrid();
@@ -1024,6 +1056,19 @@ function buildDrumGrid() {
       grid.append(c);
       drumCells[id].push(c);
     }
+    // This row's length: fewer steps than 16 and it loops early, drifting against the others.
+    const len = document.createElement('select');
+    len.className = 'drum-len';
+    len.setAttribute('aria-label', `${label} length`);
+    len.title = 'Row length: shorter rows loop sooner and drift against the others';
+    for (let n = DRUM_STEPS; n >= 1; n--) len.add(new Option(String(n), String(n)));
+    len.value = String(settings.drumLens[id]);
+    len.addEventListener('change', () => {
+      settings.drumLens[id] = Number(len.value);
+      renderDrumGrid();
+      save();
+    });
+    grid.append(len);
   }
 }
 
@@ -1037,6 +1082,8 @@ function buildDrums() {
     if (preset.value === 'custom') return;
     settings.drumPreset = preset.value;
     settings.drumRows = parsePattern(kit().presets[preset.value], kitVoices());
+    settings.drumConds = {};
+    loadKitState(); // fresh, empty conditions for the new preset
     renderDrumGrid();
     save();
   });
@@ -1073,21 +1120,63 @@ function renderDrumGrid() {
     }
     drumLabels[id].classList.toggle('muted', !!settings.drumMuted[id]);
     drumLabels[id].setAttribute('aria-pressed', String(!settings.drumMuted[id]));
+    const len = settings.drumLens[id];
     drumCells[id].forEach((c, s) => {
       const v = settings.drumRows[id][s];
+      const cond = v > 0 ? settings.drumConds[id][s] : '';
       c.classList.toggle('on', v > 0);
       c.classList.toggle('acc', v >= 1);
+      c.classList.toggle('past', s >= len);
+      c.classList.toggle('cond', !!cond);
+      c.dataset.cond = cond ? CONDITIONS[cond].replace('Not fill', '!F').replace('Not first', '!1st').replace('First', '1st').replace('Fill', 'F') : '';
+      c.title = cond ? `Plays: ${CONDITIONS[cond]}` : '';
     });
   }
 }
 
+/** Playhead: each row shows its own position (rows of different lengths drift apart). */
+let drumNowCells = [];
 function showDrumStep(step, hits) {
-  const ids = kitVoices().map((v) => v.id).filter((id) => drumCells[id]);
-  if (drumCol >= 0) for (const id of ids) drumCells[id][drumCol]?.classList.remove('now');
+  for (const c of drumNowCells) c.classList.remove('now');
+  drumNowCells = [];
   drumCol = step;
-  if (step >= 0) for (const id of ids) drumCells[id][step].classList.add('now');
+  const ids = kitVoices().map((v) => v.id).filter((id) => drumCells[id]);
+  if (step >= 0) {
+    for (const id of ids) {
+      const cell = drumCells[id][step % (settings.drumLens[id] || DRUM_STEPS)];
+      cell.classList.add('now');
+      drumNowCells.push(cell);
+    }
+  }
   for (const id of ids) drumLabels[id].classList.toggle('hit', hits.includes(id));
+  $('drum-fill-led')?.classList.toggle('lit', step >= 0 && isFillBar(step, settings.drumFillEvery));
 }
+
+// Variation controls: fill bars, what a tap does, and Add fill.
+for (const n of FILL_EVERY) $('drum-fill-every').add(new Option(n ? `every ${n} bars` : 'Off', String(n)));
+bindSelect('drum-fill-every', 'drumFillEvery');
+bindSelect('drum-tap', 'drumTapMode', [['hits', 'Hits'], ['cond', 'Conditions']], () => {
+  $('drum-cond').disabled = settings.drumTapMode !== 'cond';
+});
+bindSelect('drum-cond', 'drumCondPick', Object.entries(CONDITIONS).filter(([k]) => k));
+$('drum-cond').disabled = settings.drumTapMode !== 'cond';
+$('drum-add-fill').addEventListener('click', () => {
+  const n = addFill(settings.drumRows, settings.drumConds, kitVoices());
+  if (!settings.drumFillEvery) { settings.drumFillEvery = 4; $('drum-fill-every').value = '4'; }
+  settings.drumPreset = 'custom';
+  $('drum-preset').value = 'custom';
+  renderDrumGrid();
+  save();
+  $('drum-add-fill').textContent = n ? `Fill added (${n} hits)` : 'No room for a fill';
+  setTimeout(() => { $('drum-add-fill').textContent = 'Add fill'; }, 1800);
+});
+$('drum-clear-conds').addEventListener('click', () => {
+  for (const id of Object.keys(settings.drumConds)) settings.drumConds[id].fill('');
+  for (const id of Object.keys(settings.drumLens)) settings.drumLens[id] = DRUM_STEPS;
+  buildDrumGrid();
+  renderDrumGrid();
+  save();
+});
 
 // ---- "Your samples": recordings the user loads, kept in this browser only.
 const sampleStore = {}; // slot -> {name, data: ArrayBuffer}

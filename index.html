@@ -17,8 +17,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=38" />
-  <link rel="stylesheet" href="mac.css?v=38" />
+  <link rel="stylesheet" href="styles.css?v=40" />
+  <link rel="stylesheet" href="mac.css?v=40" />
 </head>
 <body>
   <main class="device">
@@ -206,7 +206,16 @@
         </label>
       </div>
       <p class="hint">Synthesized Latin, 808-style and Linn-style kits, or <b>Your samples</b>: load your own recordings (they stay in this browser). In time with the clock and swing. Tap a
-        cell to cycle off → hit → accent; tap a name to mute it.</p>
+        cell to cycle off → hit → accent; tap a name to mute it. Conditions make hits play only on some bars; a row's
+        length (right) lets it loop sooner and drift against the others.</p>
+      <div class="row drum-vary">
+        <label class="field inline">Tap sets <select id="drum-tap" title="Hits: tap cycles off → hit → accent. Conditions: tap gives a hit the chosen condition."></select></label>
+        <label class="field inline">Condition <select id="drum-cond"></select></label>
+        <label class="field inline">Fill <select id="drum-fill-every" title="Fill bars switch on hits marked Fill (and off those marked Not fill)"></select></label>
+        <span class="fill-led" id="drum-fill-led" title="Lit during a fill bar"></span>
+        <button id="drum-add-fill" title="Add a snare/tom fill on the last beat that plays only on fill bars">Add fill</button>
+        <button id="drum-clear-conds" title="Remove all conditions and reset row lengths to 16">Clear conditions</button>
+      </div>
       <div class="row sample-tools" id="sample-tools" hidden>
         <button id="sample-load" title="Pick audio files: they're matched to rows by name (Kick, Snare, HHOPEN…)">Load samples…</button>
         <input id="sample-file" type="file" multiple accept="audio/*,.wav,.aif,.aiff" hidden />
@@ -453,6 +462,6 @@
       <div id="keyboard" class="keyboard"></div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=38"></script>
+  <script type="module" src="src/app.js?v=40"></script>
 </body>
 </html>

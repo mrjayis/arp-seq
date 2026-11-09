@@ -627,3 +627,85 @@ export class DrumSynth {
     }
   }
 }
+
+// ------------------------------------------------------------------ variation
+// Trig conditions (per step), per-row lengths (polymeter) and fills.
+
+export const CONDITIONS = {
+  '': 'Always',
+  '1:2': '1:2', '2:2': '2:2',
+  '1:3': '1:3', '2:3': '2:3', '3:3': '3:3',
+  '1:4': '1:4', '2:4': '2:4', '3:4': '3:4', '4:4': '4:4',
+  '1:8': '1:8', '8:8': '8:8',
+  fill: 'Fill', '!fill': 'Not fill',
+  first: 'First', '!first': 'Not first',
+  '25%': '25%', '50%': '50%', '75%': '75%',
+};
+export const FILL_EVERY = [0, 2, 4, 8];
+
+/**
+ * Whether a conditioned hit plays. `cycle` is how many times this row has looped
+ * (0 on the first pass since Play), so "A:B" plays on the A-th of every B loops.
+ */
+export function condPasses(cond, { cycle = 0, fill = false, rng = Math.random } = {}) {
+  if (!cond) return true;
+  if (cond === 'fill') return fill;
+  if (cond === '!fill') return !fill;
+  if (cond === 'first') return cycle === 0;
+  if (cond === '!first') return cycle > 0;
+  const pct = /^(\d+)%$/.exec(cond);
+  if (pct) return rng() * 100 < Number(pct[1]);
+  const ab = /^(\d+):(\d+)$/.exec(cond);
+  if (ab) return cycle % Number(ab[2]) === Number(ab[1]) - 1;
+  return true;
+}
+
+/** Is the bar containing `step` (16ths since Play) a fill bar, for fills every `every` bars? */
+export function isFillBar(step, every) {
+  return every > 0 && Math.floor(step / DRUM_STEPS) % every === every - 1;
+}
+
+/**
+ * Hits for global step `step`: each row loops over its own length (polymeter) and
+ * each hit checks its condition. Returns [{id, gain}].
+ */
+export function drumHits(rows, step, { conds = {}, lens = {}, muted = {}, voices = VOICES, fill = false, rng = Math.random } = {}) {
+  const out = [];
+  for (const { id } of voices) {
+    if (muted[id] || !rows[id]) continue;
+    const len = Math.max(1, Math.min(DRUM_STEPS, lens[id] || DRUM_STEPS));
+    const pos = step % len;
+    const v = rows[id][pos];
+    if (v > 0 && condPasses(conds[id]?.[pos] || '', { cycle: Math.floor(step / len), fill, rng })) out.push({ id, gain: v });
+  }
+  return out;
+}
+
+/** Which row ids make a good fill for a kit: snares, toms, congas/bongos. */
+function fillLanes(voices) {
+  const ids = voices.map((v) => v.id);
+  const pick = (...res) => ids.filter((id) => res.some((re) => re.test(id)));
+  return {
+    snare: pick(/^sd/, /^u_snare$/, /^cp/)[0] || pick(/conga ?hi|congaHi|bongoHi|hc808/i)[0],
+    low: pick(/^lt808$/, /^tomLinn$/, /^u_tomlo$/, /^congaLo$/, /^lc808$/)[0],
+    high: pick(/^ht808$/, /^u_tomhi$/, /^bongoHi$/, /^mc808$/, /^congaHi$/)[0],
+  };
+}
+
+/**
+ * Add a fill on the last four 16ths, played only on fill bars: a snare build
+ * with toms. Only empty cells are used, so the pattern itself is untouched.
+ */
+export function addFill(rows, conds, voices) {
+  const { snare, low, high } = fillLanes(voices);
+  const plan = [[snare, 12, 0.65], [high, 13, 0.65], [snare, 14, 0.65], [low, 14, 1], [snare, 15, 1], [low, 15, 0.65]];
+  let added = 0;
+  for (const [id, step, v] of plan) {
+    if (!id || !rows[id] || rows[id][step] > 0) continue;
+    rows[id][step] = v;
+    conds[id] ??= new Array(DRUM_STEPS).fill('');
+    conds[id][step] = 'fill';
+    added++;
+  }
+  return added;
+}
