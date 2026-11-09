@@ -25,6 +25,17 @@ held notes ──► ARPEGGIATOR ──► note ──► SEQUENCER step n ─�
 - **Latch:** keeps notes after you let go; a new chord replaces them. The sustain pedal (CC64) also toggles latch.
 - **Tempo:** 20–300 BPM, with tap tempo
 
+### Arp voice (west-coast style)
+The arp and oscillator 2 use a voice modelled on west-coast synthesis: a complex oscillator feeding a low-pass gate.
+- **Timbre** folds the sine core (a triangle wavefolder). At 0 it's a pure sine; turning it up adds bright, glassy harmonics.
+- **Shape** crossfades between the folded sine and a second **Wave**: Saw, Square, Triangle, Spike (a narrow pulse) or Sine.
+- **Gate**, a low-pass gate with three modes:
+  - **Combo:** one control drives both the filter and the VCA, so **Cutoff** sets brightness *and* loudness together, and both close on release.
+  - **LP:** brightness only.
+  - **VCA:** loudness only.
+- **Decay** is the gate's vactrol-like release (20 ms – 3 s), for anything from plucky "bongo" hits to long rings.
+- **Resonance** for the gate's filter.
+
 ### Sync
 - **Internal:** a look-ahead scheduler on the audio clock, kept running in background tabs by a Worker timer. Pressing a key starts the transport.
 - **MIDI Clock In:** follows 0xF8 ticks and Start/Continue/Stop, and shows the tempo it detects. *Play* starts it by hand for sources that never send Start.
