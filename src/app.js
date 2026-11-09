@@ -4,11 +4,11 @@ import {
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=14';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=14';
-import { Synth, Chorus, LPG_MODES } from './synth.js?v=14';
-import { Midi } from './midi.js?v=14';
-import { DrumSynth, DRUM_PRESETS, DRUM_STEPS, VOICES, parsePattern, hitsAt } from './percussion.js?v=14';
+} from './core.js?v=15';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=15';
+import { Synth, Chorus, LPG_MODES } from './synth.js?v=15';
+import { Midi } from './midi.js?v=15';
+import { DrumSynth, DRUM_PRESETS, DRUM_STEPS, VOICES, parsePattern, hitsAt } from './percussion.js?v=15';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
