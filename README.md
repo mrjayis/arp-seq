@@ -84,6 +84,7 @@ Three kits, all synthesized live with Web Audio (no samples). Each kit remembers
   - **Fill / Not fill** follow the fill bars. **First / Not first** refer to the first loop after Play.
   - **25 / 50 / 75%** are chance.
 - **Row length** (the menu at the end of each row, 1–16): a shorter row loops sooner and drifts against the others (polymeter). Its conditions count its own loops.
+- **Evolve** (0–100%): each bar, a few ordinary hits are nudged a step, dropped, or joined by ghost notes on busy rows. Accents never change, and neither does your saved pattern; each Play starts a fresh variation.
 - **Fill every 2 / 4 / 8 bars** turns on the last bar of each cycle (the light shows it). **Add fill** writes a snare/tom build on the last beat that plays only in fill bars.
 
 The Latin kit:
@@ -125,6 +126,7 @@ A drum break cut into slices and re-sequenced tracker style, for jungle, drum & 
   - **FX:** Reverse or Cut.
 - **In order** places each slice on the 16th nearest where it falls in the break, so hit-sliced breaks still play back as recorded.
 - **Editing:** select a row and click a slice in the waveform to put it there; the selection moves to the next row, and you hear the slice. **In order**, **Chop** (a jungle-style rearrangement), **Randomize** and **Clear** fill the pattern.
+- **Evolve** (0–100%): each loop, a few rows get a different slice, an extra roll or a reverse, and the odd slice lands on an empty row. Your pattern itself isn't changed.
 - **Mixing:** it plays on the drum bus, so the drum delay/reverb sends apply. It has its own **Level** and follows the clock and swing.
 
 ### Effects
@@ -151,6 +153,7 @@ A shared delay and reverb, with a **send** from each source (Arp, Chords, Drums)
 | `src/midi.js` | Web MIDI I/O |
 | `mac.css`, `fonts/` | System 7 theme and its bitmap font |
 | `src/breaks.js` | Breakbeat slicer: tempo fit, slices, tracker rows, player (logic tested) |
+| `src/evolve.js` | Per-bar, non-destructive variation for drums and breaks (tested) |
 | `src/fx.js` | Delay and reverb (timing and impulse-response math tested) |
 | `src/samples.js` | Stores your own drum samples in the browser |
 | `src/percussion.js` | Percussion voices, rhythm presets and pattern helpers (patterns tested) |
