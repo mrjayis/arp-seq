@@ -4,13 +4,13 @@ import {
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=32';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=32';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=32';
-import { Midi } from './midi.js?v=32';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=32';
-import { DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, hitsAt, assignSamples } from './percussion.js?v=32';
-import { saveSample, deleteSample, clearSamples, loadSamples } from './samples.js?v=32';
+} from './core.js?v=33';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=33';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=33';
+import { Midi } from './midi.js?v=33';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=33';
+import { DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, hitsAt, assignSamples } from './percussion.js?v=33';
+import { saveSample, deleteSample, clearSamples, loadSamples } from './samples.js?v=33';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -393,8 +393,10 @@ function playDrums(step) {
   const hits = hitsAt(settings.drumRows, step.stepNumber, settings.drumMuted, voices);
   for (const { id, gain } of hits) {
     // Your samples: each row has its own level (the sample mixer).
-    const rowLevel = settings.drumKit === 'user' ? (settings.sampleLevels?.[id] ?? 100) / 100 : 1;
-    if (drums && settings.drumLevel > 0 && rowLevel > 0) drums.play(id, step.time, gain * rowLevel);
+    const user = settings.drumKit === 'user';
+    const rowLevel = user ? (settings.sampleLevels?.[id] ?? 100) / 100 : 1;
+    const rowTune = user ? settings.sampleTunes?.[id] ?? 0 : 0;
+    if (drums && settings.drumLevel > 0 && rowLevel > 0) drums.play(id, step.time, gain * rowLevel, rowTune);
     if (settings.drumMidiCh >= 0) {
       const { gm } = voices.find((v) => v.id === id);
       midi.noteOn(gm, Math.round(gain * 127), toPerfMs(step.time), settings.drumMidiCh);
@@ -1150,13 +1152,37 @@ function renderSampleMap() {
     });
     range.addEventListener('dblclick', () => { range.value = '100'; range.dispatchEvent(new Event('input')); });
     level.append('Level ', out, range);
+    // Tune for this row: ±12 semitones in 0.1 steps (changes speed, like the hardware).
+    const tune = document.createElement('label');
+    tune.className = 'field slider';
+    const tuneOut = document.createElement('output');
+    const tuneRange = document.createElement('input');
+    tuneRange.type = 'range';
+    tuneRange.min = '-12';
+    tuneRange.max = '12';
+    tuneRange.step = '0.1';
+    tuneRange.value = String(settings.sampleTunes[id] ?? 0);
+    tuneRange.setAttribute('aria-label', `${label} tune`);
+    const showTune = () => {
+      const v = Number(tuneRange.value);
+      tuneOut.textContent = `${v > 0 ? '+' : ''}${v.toFixed(1)} st`;
+    };
+    showTune();
+    tuneRange.addEventListener('input', () => {
+      settings.sampleTunes[id] = Number(tuneRange.value);
+      showTune();
+      save();
+    });
+    tuneRange.addEventListener('dblclick', () => { tuneRange.value = '0'; tuneRange.dispatchEvent(new Event('input')); });
+    tune.append('Tune ', tuneOut, tuneRange);
     const cell = document.createElement('div');
     cell.className = 'map-row';
-    cell.append(field, level);
+    cell.append(field, level, tune);
     wrap.append(cell);
   }
 }
 if (!settings.sampleLevels || typeof settings.sampleLevels !== 'object') settings.sampleLevels = {};
+if (!settings.sampleTunes || typeof settings.sampleTunes !== 'object') settings.sampleTunes = {};
 
 /** Put the sample now on row `from` onto row `to` (swapping), or empty `to` if `from` is ''. */
 async function moveSample(from, to) {
