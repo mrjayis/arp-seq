@@ -4,11 +4,11 @@ import {
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=7';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=7';
-import { Synth, Chorus } from './synth.js?v=7';
-import { Midi } from './midi.js?v=7';
-import { DrumSynth, DRUM_PRESETS, DRUM_STEPS, VOICES, parsePattern, hitsAt } from './percussion.js?v=7';
+} from './core.js?v=8';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=8';
+import { Synth, Chorus, LPG_MODES } from './synth.js?v=8';
+import { Midi } from './midi.js?v=8';
+import { DrumSynth, DRUM_PRESETS, DRUM_STEPS, VOICES, parsePattern, hitsAt } from './percussion.js?v=8';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -30,6 +30,11 @@ const settings = {
   synthOn: true,
   wave: 'sawtooth',
   cutoff: 2400,
+  arpShape: 35,
+  arpTimbre: 25,
+  lpgMode: 'combo',
+  lpgDecay: 300, // ms
+  arpResonance: 1.5,
   volume: 50,
   midiIn: '',
   midiInCh: -1,
@@ -140,15 +145,29 @@ const audioTime = () => (ctx ? ctx.currentTime : performance.now() / 1000);
 // Map AudioContext time to performance.now() ms for timestamped MIDI output.
 const toPerfMs = (t) => performance.now() + (t - audioTime()) * 1000;
 
+/** The arp voice settings shared by oscillator 1 and 2. */
+function westVoice() {
+  return {
+    wave: settings.wave,
+    cutoff: settings.cutoff,
+    shape: settings.arpShape / 100,
+    timbre: settings.arpTimbre / 100,
+    lpg: settings.lpgMode,
+    decay: settings.lpgDecay / 1000,
+    resonance: settings.arpResonance,
+  };
+}
+
 function playVoice(note, note2, velocity, time, gateLen) {
   const on = toPerfMs(time);
   const off = toPerfMs(time + gateLen);
-  if (settings.synthOn && synth) synth.play(note, velocity, time, gateLen);
+  if (settings.synthOn && synth) synth.playWest(note, velocity, time, gateLen, westVoice());
   midi.noteOn(note, velocity, on);
   midi.noteOff(note, off);
   if (note2 === null) return;
   if (settings.synthOn && synth && settings.osc2Level > 0) {
-    synth.play(note2, velocity, time, gateLen, {
+    synth.playWest(note2, velocity, time, gateLen, {
+      ...westVoice(),
       wave: settings.osc2Wave,
       detune: settings.osc2Detune,
       level: settings.osc2Level / 100,
@@ -407,13 +426,18 @@ function bindRange(id, key, format, onChange) {
 
 /** A cutoff slider: logarithmic position (0..1000) ↔ frequency in Hz stored in settings. */
 function bindCutoff(id, key, onChange) {
+  bindLog(id, key, undefined, undefined, formatHz, onChange);
+}
+
+/** A logarithmic slider (positions 0..1000) between min and max, storing the value. */
+function bindLog(id, key, min, max, format, onChange) {
   const el = $(id);
   const out = $(`${id}-val`);
-  el.value = freqToSlider(settings[key]);
-  const show = () => { out.textContent = formatHz(settings[key]); };
+  el.value = freqToSlider(settings[key], min, max);
+  const show = () => { out.textContent = format(settings[key]); };
   show();
   el.addEventListener('input', () => {
-    settings[key] = sliderToFreq(Number(el.value));
+    settings[key] = sliderToFreq(Number(el.value), min, max);
     show();
     onChange?.(settings[key]);
     save();
@@ -478,6 +502,11 @@ $('synth-on').addEventListener('change', () => {
 });
 bindSelect('wave', 'wave', null, (w) => { if (synth) synth.wave = w; });
 bindCutoff('cutoff', 'cutoff', (v) => { if (synth) synth.cutoff = v; });
+bindRange('arp-shape', 'arpShape', (v) => (v === 0 ? 'sine' : v === 100 ? 'wave' : `${v}%`));
+bindRange('arp-timbre', 'arpTimbre', (v) => `${v}%`);
+bindSelect('lpg-mode', 'lpgMode', Object.entries(LPG_MODES));
+bindLog('lpg-decay', 'lpgDecay', 20, 3000, (ms) => (ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(2)} s`));
+bindRange('arp-res', 'arpResonance', (v) => v.toFixed(1));
 bindRange('volume', 'volume', (v) => `${v}%`, (v) => synth?.setVolume(v / 100));
 
 for (let c = 1; c <= 16; c++) {

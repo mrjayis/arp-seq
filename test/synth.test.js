@@ -1,0 +1,46 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { fold, foldCurve, foldDrive, MAX_FOLD, gateOpening, comboLevel } from '../src/synth.js';
+
+const near = (a, b, eps = 1e-6) => Math.abs(a - b) < eps;
+
+test('wavefolder is clean inside ±1 and reflects beyond it', () => {
+  for (const u of [-1, -0.5, 0, 0.3, 1]) assert.ok(near(fold(u), u), `fold(${u})`);
+  assert.ok(near(fold(1.5), 0.5));
+  assert.ok(near(fold(2), 0));
+  assert.ok(near(fold(3), -1));
+  assert.ok(near(fold(-1.5), -0.5));
+  for (let u = -8; u <= 8; u += 0.37) assert.ok(Math.abs(fold(u)) <= 1 + 1e-9);
+});
+
+test('Timbre 0 leaves a sine untouched; more Timbre folds it into more harmonics', () => {
+  const curve = foldCurve(8193);
+  const shape = (x) => curve[Math.round(((x + 1) / 2) * (curve.length - 1))];
+  const crossings = (timbre) => {
+    let n = 0, prev = 0;
+    for (let i = 0; i < 2000; i++) {
+      const y = shape(Math.sin((2 * Math.PI * i) / 2000) * foldDrive(timbre));
+      if (i && Math.sign(y) !== Math.sign(prev) && y !== 0) n++;
+      prev = y;
+    }
+    return n;
+  };
+  for (let i = 0; i < 100; i++) {
+    const x = Math.sin((2 * Math.PI * i) / 100);
+    assert.ok(Math.abs(shape(x * foldDrive(0)) - x) < 0.01);
+  }
+  assert.ok(near(foldDrive(1), 1));
+  assert.ok(near(foldDrive(0), 1 / MAX_FOLD));
+  assert.ok(crossings(0) < crossings(0.5) && crossings(0.5) < crossings(1),
+    `${crossings(0)} ${crossings(0.5)} ${crossings(1)}`);
+});
+
+test('Combo: the cutoff opening also sets loudness, never fully silent', () => {
+  assert.ok(near(gateOpening(60), 0));
+  assert.ok(near(gateOpening(12000), 1));
+  assert.ok(near(gateOpening(5), 0));
+  assert.ok(comboLevel(0) > 0 && comboLevel(0) < 0.1);
+  assert.ok(near(comboLevel(1), 1));
+  const levels = [100, 400, 1600, 6400].map((f) => comboLevel(gateOpening(f)));
+  for (let i = 1; i < levels.length; i++) assert.ok(levels[i] > levels[i - 1]);
+});

@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Arp-Seq</title>
-  <link rel="stylesheet" href="styles.css?v=7" />
+  <link rel="stylesheet" href="styles.css?v=8" />
 </head>
 <body>
   <main class="device">
@@ -177,6 +177,7 @@
             <option value="sawtooth">Saw</option>
             <option value="square">Square</option>
             <option value="triangle">Triangle</option>
+            <option value="spike">Spike</option>
             <option value="sine">Sine</option>
           </select>
         </label>
@@ -193,21 +194,48 @@
       </div>
     </section>
 
-    <section class="panel io" aria-label="Sound and MIDI">
-      <h2>Sound &amp; MIDI</h2>
+    <section class="panel voice" aria-label="Arp voice">
+      <h2>Arp Voice</h2>
+      <p class="hint">West-coast style: a sine core folded by <b>Timbre</b>, blended by <b>Shape</b> with a
+        second wave, into a low-pass gate. In <b>Combo</b> the Cutoff opens brightness <i>and</i> loudness
+        together, and both close on the vactrol-like <b>Decay</b>. Applies to the arp and Oscillator 2.</p>
       <div class="row">
-        <label class="check"><input id="synth-on" type="checkbox" checked /> Built-in synth</label>
-        <label class="field">Osc 1 Wave
+        <label class="field">Wave
           <select id="wave">
             <option value="sawtooth">Saw</option>
             <option value="square">Square</option>
             <option value="triangle">Triangle</option>
+            <option value="spike">Spike</option>
             <option value="sine">Sine</option>
           </select>
+        </label>
+        <label class="field slider">Shape <output id="arp-shape-val"></output>
+          <input id="arp-shape" type="range" min="0" max="100" title="Sine (left) to the selected wave (right)" />
+        </label>
+        <label class="field slider">Timbre <output id="arp-timbre-val"></output>
+          <input id="arp-timbre" type="range" min="0" max="100" title="Wavefolding of the sine core" />
+        </label>
+      </div>
+      <div class="row">
+        <label class="field">Gate
+          <select id="lpg-mode" title="Combo: filter + loudness · LP: filter only · VCA: loudness only"></select>
         </label>
         <label class="field slider">Cutoff <output id="cutoff-val"></output>
           <input id="cutoff" type="range" min="0" max="1000" step="1" />
         </label>
+        <label class="field slider">Decay <output id="lpg-decay-val"></output>
+          <input id="lpg-decay" type="range" min="0" max="1000" step="1" title="Vactrol-like release of the gate" />
+        </label>
+        <label class="field slider">Resonance <output id="arp-res-val"></output>
+          <input id="arp-res" type="range" min="0.5" max="12" step="0.1" />
+        </label>
+      </div>
+    </section>
+
+    <section class="panel io" aria-label="Sound and MIDI">
+      <h2>Sound &amp; MIDI</h2>
+      <div class="row">
+        <label class="check"><input id="synth-on" type="checkbox" checked /> Built-in synth</label>
         <label class="field slider">Volume <output id="volume-val"></output>
           <input id="volume" type="range" min="0" max="100" value="50" />
         </label>
@@ -242,6 +270,6 @@
       <div id="keyboard" class="keyboard"></div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=7"></script>
+  <script type="module" src="src/app.js?v=8"></script>
 </body>
 </html>
