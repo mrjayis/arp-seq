@@ -229,7 +229,7 @@ test('cutoff sliders are logarithmic, giving the low end more travel', () => {
   assert.equal(formatHz(2400), '2.40 kHz');
 });
 
-test('a step switched off strikes nothing but re-pitches the last note by its interval', () => {
+test('a step switched off strikes nothing; the tail slides to the next arp note plus its interval', () => {
   const e = engineWith([
     { offset: 12, on: true },
     { offset: 7, on: false },
@@ -241,22 +241,21 @@ test('a step switched off strikes nothing but re-pitches the last note by its in
   const evs = Array.from({ length: 5 }, () => e.next());
   // Step 1 strikes C +12.
   assert.deepEqual([evs[0].rest, evs[0].note], [false, 72]);
-  // Step 2 is off: no strike; the C tail moves to C +7 = G. The arp still advanced past E.
-  assert.deepEqual([evs[1].rest, evs[1].velocity, evs[1].tailSource, evs[1].note, evs[1].sourceNote], [true, 0, 60, 67, 64]);
-  // Step 3 strikes the next arp note (G) — the off step consumed E.
+  // Step 2 is off: no strike; the tail slides to the next arp note (E) +7 = B.
+  assert.deepEqual([evs[1].rest, evs[1].velocity, evs[1].sourceNote, evs[1].note], [true, 0, 64, 71]);
+  // Step 3 strikes the arp note after that (G).
   assert.deepEqual([evs[2].rest, evs[2].note, evs[2].sourceNote], [false, 67, 67]);
-  // Step 4 is off: the G tail moves down 5.
-  assert.deepEqual([evs[3].note, evs[3].tailSource], [62, 67]);
+  // Step 4 is off: the tail slides to the next arp note (C, wrapping) −5 = G below.
+  assert.deepEqual([evs[3].sourceNote, evs[3].note], [60, 55]);
   // Sequencer wraps to step 1 again.
   assert.equal(evs[4].stepIndex, 0);
 });
 
-test('an off step before anything has been struck has no tail to move', () => {
+test('step on/off is stored per step', () => {
   const e = engineWith([{ offset: 3, on: false }, { offset: 0, on: true }], 2);
   e.noteOn(60);
-  const ev = e.next();
-  assert.equal(ev.rest, true);
-  assert.equal(ev.note, null);
+  assert.equal(e.next().rest, true);
   e.setStep(0, { on: true });
   assert.equal(e.steps[0].on, true);
+  assert.equal(e.next().rest, false);
 });

@@ -98,7 +98,6 @@ export class ArpSeqEngine {
     this.seqPos = 0;
     this.lastIndex = -1;
     this.lastStepIndex = null;
-    this.lastStruck = null; // source note of the last note actually struck
   }
 
   noteOn(note, vel = 100) {
@@ -184,11 +183,11 @@ export class ArpSeqEngine {
 
   /**
    * Advance the arp and the sequencer by one step.
-   * @returns {null | {note, velocity, sourceNote, stepIndex, offset, volume, rest, tailSource}}
+   * @returns {null | {note, velocity, sourceNote, stepIndex, offset, volume, rest}}
    *   null when no notes are active. velocity is 0 when the step's volume is 0.
    *   For a step switched off (`rest: true`) nothing is struck: the arp and sequencer
-   *   still advance, and `note` is the last struck note re-pitched by this step's
-   *   interval (`tailSource + offset`), for whatever tail is still ringing — or null.
+   *   still advance, and `note` is where a still-ringing tail should slide to — the
+   *   arp note this step would have played plus its interval.
    */
   next() {
     const pattern = this.pattern;
@@ -212,11 +211,9 @@ export class ArpSeqEngine {
 
     const src = pattern[idx];
     if (step.on === false) {
-      const tailSource = this.lastStruck;
       return {
         rest: true,
-        note: tailSource === null ? null : clamp(tailSource + step.offset, 0, 127),
-        tailSource,
+        note: clamp(src.note + step.offset, 0, 127),
         velocity: 0,
         sourceNote: src.note,
         stepIndex,
@@ -225,7 +222,6 @@ export class ArpSeqEngine {
       };
     }
     const velocity = step.volume === 0 ? 0 : clamp(Math.round((src.vel * step.volume) / 100), 1, 127);
-    if (velocity > 0) this.lastStruck = src.note;
     return {
       rest: false,
       note: clamp(src.note + step.offset, 0, 127),
