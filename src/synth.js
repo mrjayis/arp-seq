@@ -236,6 +236,9 @@ export class Synth {
       this.monoLines.get(mono)?.cut(t0);
       this.monoLines.set(mono, {
         start: t0,
+        end,
+        freq,
+        oscs: [sine, other],
         cut: (at) => {
           const fade = 0.003;
           const from = Math.max(t0, at - fade);
@@ -257,6 +260,23 @@ export class Synth {
         if (osc === sine) amp.disconnect();
       };
     }
+  }
+
+  /**
+   * Move whatever is still ringing on a mono line to `note` at time `at`, without
+   * re-striking it (a fast 6 ms glide, so there is no click). Returns false when
+   * the line's last note has already finished.
+   */
+  retune(mono, note, at) {
+    const line = this.monoLines.get(mono);
+    if (!line || at <= line.start || at >= line.end) return false;
+    const f = mtof(note);
+    for (const osc of line.oscs) {
+      osc.frequency.setValueAtTime(line.freq, at);
+      osc.frequency.exponentialRampToValueAtTime(f, at + 0.006);
+    }
+    line.freq = f;
+    return true;
   }
 
   /** Quickly fade and kill every sounding or scheduled voice. */

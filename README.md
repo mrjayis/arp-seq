@@ -70,6 +70,7 @@ Latin percussion in the style of a 70s preset rhythm box, synthesized live with 
 ### Sequencer
 - **Length:** 2, 3, 4 or 5 steps
 - **Each step:** a **pitch** offset of ±24 semitones (slider, ±1 / ±12 buttons, double-click resets to 0) and its own **volume** of 0–100%, which scales the note's velocity. 0% mutes the step, but the step still counts.
+- **On/Off per step.** An Off step strikes nothing: it's a rest that still takes its turn, so the arp and sequencer move on. If the note before is still ringing, as Combo/VCA strikes can, the Off step's interval re-pitches that tail with a fast glide (no new strike). It moves by the last struck note plus the Off step's offset, and oscillator 2 follows its Same/Inverted setting. MIDI out gets only the rest.
 - Each arpeggiated note moves the sequencer one step. A new chord resets both the arp and the sequencer to the start.
 
 ### Oscillator 2

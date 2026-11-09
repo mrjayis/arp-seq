@@ -227,3 +227,35 @@ test('cutoff sliders are logarithmic, giving the low end more travel', () => {
   assert.equal(formatHz(450), '450 Hz');
   assert.equal(formatHz(2400), '2.40 kHz');
 });
+
+test('a step switched off strikes nothing but re-pitches the last note by its interval', () => {
+  const e = engineWith([
+    { offset: 12, on: true },
+    { offset: 7, on: false },
+    { offset: 0, on: true },
+    { offset: -5, on: false },
+  ], 4);
+  for (let i = 0; i < 4; i++) e.setStep(i, { volume: 100 });
+  e.noteOn(60); e.noteOn(64); e.noteOn(67);
+  const evs = Array.from({ length: 5 }, () => e.next());
+  // Step 1 strikes C +12.
+  assert.deepEqual([evs[0].rest, evs[0].note], [false, 72]);
+  // Step 2 is off: no strike; the C tail moves to C +7 = G. The arp still advanced past E.
+  assert.deepEqual([evs[1].rest, evs[1].velocity, evs[1].tailSource, evs[1].note, evs[1].sourceNote], [true, 0, 60, 67, 64]);
+  // Step 3 strikes the next arp note (G) — the off step consumed E.
+  assert.deepEqual([evs[2].rest, evs[2].note, evs[2].sourceNote], [false, 67, 67]);
+  // Step 4 is off: the G tail moves down 5.
+  assert.deepEqual([evs[3].note, evs[3].tailSource], [62, 67]);
+  // Sequencer wraps to step 1 again.
+  assert.equal(evs[4].stepIndex, 0);
+});
+
+test('an off step before anything has been struck has no tail to move', () => {
+  const e = engineWith([{ offset: 3, on: false }, { offset: 0, on: true }], 2);
+  e.noteOn(60);
+  const ev = e.next();
+  assert.equal(ev.rest, true);
+  assert.equal(ev.note, null);
+  e.setStep(0, { on: true });
+  assert.equal(e.steps[0].on, true);
+});

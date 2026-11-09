@@ -374,6 +374,12 @@ input[type="range"]::-moz-range-thumb {
 .vslider.vol::-webkit-slider-thumb { background: linear-gradient(180deg, var(--cap) 0 4px, var(--led) 4px 8px, var(--cap) 8px); }
 .vslider.vol::-moz-range-thumb { background: linear-gradient(180deg, var(--cap) 0 4px, var(--led) 4px 8px, var(--cap) 8px); }
 
+.step .step-on { min-height: 24px; min-width: 46px; padding: 0 8px; font-size: 12.5px; }
+/* A step switched off: hollow numeral, hatched card; its interval still shapes any tail. */
+.step.rest .num { color: transparent; -webkit-text-stroke: 1.2px var(--ink-2); }
+.step.rest {
+  background-image: repeating-linear-gradient(135deg, transparent 0 7px, color-mix(in srgb, var(--ink) 7%, transparent) 7px 8px);
+}
 .step .nudge { display: flex; gap: 3px; }
 .step .nudge button { min-height: 25px; padding: 0 6px; font-size: 13px; }
 
