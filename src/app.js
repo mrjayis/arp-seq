@@ -4,13 +4,13 @@ import {
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=29';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=29';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=29';
-import { Midi } from './midi.js?v=29';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=29';
-import { DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, hitsAt, assignSamples } from './percussion.js?v=29';
-import { saveSample, clearSamples, loadSamples } from './samples.js?v=29';
+} from './core.js?v=30';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=30';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=30';
+import { Midi } from './midi.js?v=30';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=30';
+import { DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, hitsAt, assignSamples } from './percussion.js?v=30';
+import { saveSample, deleteSample, clearSamples, loadSamples } from './samples.js?v=30';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -1040,6 +1040,7 @@ function renderDrumGrid() {
   $('drum-on').textContent = settings.drumOn ? 'On' : 'Off';
   $('drum-panel').classList.toggle('off', !settings.drumOn);
   const user = settings.drumKit === 'user';
+  if (user) renderSampleMap();
   for (const { id, label } of kitVoices()) {
     if (user) {
       const sample = sampleStore[id];
@@ -1110,6 +1111,51 @@ async function addSampleFiles(fileList, targetSlot = null) {
   updateSampleStatus(notes.join(' '));
 }
 
+/**
+ * Sample map: which file is on each row, with a menu to put any loaded file on
+ * any row (swapping with whatever was there) or empty it.
+ */
+function renderSampleMap() {
+  const wrap = $('sample-map');
+  wrap.replaceChildren();
+  const loaded = Object.entries(sampleStore).sort((a, b) => a[1].name.localeCompare(b[1].name));
+  for (const { id, label } of kitVoices()) {
+    const field = document.createElement('label');
+    field.className = 'field';
+    field.textContent = label;
+    const select = document.createElement('select');
+    select.add(new Option('— empty —', ''));
+    for (const [slot, { name }] of loaded) select.add(new Option(name, slot));
+    select.value = sampleStore[id] ? id : '';
+    select.addEventListener('change', () => moveSample(select.value, id));
+    field.append(select);
+    wrap.append(field);
+  }
+}
+
+/** Put the sample now on row `from` onto row `to` (swapping), or empty `to` if `from` is ''. */
+async function moveSample(from, to) {
+  if (from === to) return;
+  const a = from ? sampleStore[from] : null;
+  const b = sampleStore[to] || null;
+  const bufA = from ? drums?.samples?.[from] : null;
+  const bufB = drums?.samples?.[to];
+  if (a) sampleStore[to] = a; else delete sampleStore[to];
+  drums?.setSample(to, bufA || null);
+  if (from) {
+    if (b) sampleStore[from] = b; else delete sampleStore[from];
+    drums?.setSample(from, bufB || null);
+  }
+  // A buffer that wasn't decoded yet (audio not started) is decoded on demand.
+  if (drums && a && !bufA) decodeInto(to, a.data).catch(() => {});
+  try {
+    if (a) await saveSample(to, a); else await deleteSample(to);
+    if (from) { if (b) await saveSample(from, b); else await deleteSample(from); }
+  } catch { /* storage unavailable: kept for this visit */ }
+  renderDrumGrid();
+  updateSampleStatus(a ? `${a.name} → ${kitVoices().find((v) => v.id === to).label}` : '');
+}
+
 $('sample-load').addEventListener('click', () => $('sample-file').click());
 $('sample-file').addEventListener('change', () => {
   addSampleFiles($('sample-file').files);
@@ -1140,7 +1186,7 @@ loadSamples().then(async (stored) => {
   // Once: re-sort samples loaded under the old keyword matching with the
   // first-three-letters rule (it could put e.g. a clap on the hi-hat row).
   let note = '';
-  if (!settings.samplesV2 && Object.keys(stored).length) {
+  if (!settings.samplesV3 && Object.keys(stored).length) {
     const entries = Object.entries(stored).map(([slot, entry]) => ({ name: entry.name, slot, entry }));
     const { assigned } = assignSamples(entries);
     const remapped = Object.fromEntries(assigned.map(([slot, f]) => [slot, f.entry]));
@@ -1154,7 +1200,7 @@ loadSamples().then(async (stored) => {
       note = `Re-sorted your samples by the first three letters of their names (${moved} moved).`;
     }
   }
-  settings.samplesV2 = true;
+  settings.samplesV3 = true;
   save();
   Object.assign(sampleStore, stored);
   if (drums) decodeAllSamples();
