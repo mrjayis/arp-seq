@@ -4,13 +4,17 @@ import {
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=33';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=33';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=33';
-import { Midi } from './midi.js?v=33';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=33';
-import { DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, hitsAt, assignSamples } from './percussion.js?v=33';
-import { saveSample, deleteSample, clearSamples, loadSamples } from './samples.js?v=33';
+} from './core.js?v=36';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=36';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=36';
+import { Midi } from './midi.js?v=36';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=36';
+import { DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, hitsAt, assignSamples } from './percussion.js?v=36';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=36';
+import {
+  BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, fitRate, rowTriggers, inOrder, chop, randomize,
+  resizePattern, peaks,
+} from './breaks.js?v=36';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -107,6 +111,14 @@ const settings = {
   drumLevel: 70,
   drumMuted: {},
   drumMidiCh: -1,
+  breakOn: false,
+  breakSlices: 16,
+  breakSteps: 32,
+  breakBars: 2, // how long the loaded break is
+  breakFit: true, // stretch the break to the tempo
+  breakPitch: 0,
+  breakLevel: 80,
+  breakPattern: null, // tracker rows: {slice, vol, pitch, fx}
   chordMidiCh: -1,
 };
 
@@ -188,6 +200,9 @@ function ensureAudio() {
     }
     applyFx();
     drums = new DrumSynth(ctx, buses.drums);
+    breakPlayer = new BreakPlayer(ctx, buses.drums);
+    breakPlayer.setLevel(settings.breakLevel / 100);
+    if (breakBuffer) breakPlayer.setBuffer(breakBuffer);
     decodeAllSamples();
     chorus = new Chorus(ctx, buses.chords);
     chorus.setMix(settings.chordChorusMix / 100);
@@ -381,9 +396,10 @@ function onPulse(time, pulse, pulseDuration) {
       uiEvents.push({ kind: 'chord', time: cstep.time, rhythmPos: cstep.stepNumber % settings.chordSteps, notes: [] });
     }
   }
-  if (settings.drumOn) {
+  if (settings.drumOn || settings.breakOn) {
     const dstep = pulseToStep(pulse, time, pulseDuration, RATES['1/16'], swing);
-    if (dstep) playDrums(dstep);
+    if (dstep && settings.drumOn) playDrums(dstep);
+    if (dstep && settings.breakOn) playBreakStep(dstep);
   }
 }
 
@@ -1259,6 +1275,317 @@ loadSamples().then(async (stored) => {
   updateSampleStatus(note);
 });
 
+// ---------------------------------------------------------------- UI: breakbeat slicer
+let breakPlayer = null;
+let breakBuffer = null; // AudioBuffer of the break (yours, or the synthesized demo)
+let breakName = '';
+let breakSelected = 0; // tracker row that a click on the waveform writes into
+let breakNowStep = -1;
+let breakNowSlice = null;
+const breakRowEls = [];
+
+if (!SLICE_COUNTS.includes(settings.breakSlices)) settings.breakSlices = 16;
+if (!BREAK_STEPS.includes(settings.breakSteps)) settings.breakSteps = 32;
+if (!BREAK_BARS.includes(settings.breakBars)) settings.breakBars = 2;
+settings.breakPattern = Array.isArray(settings.breakPattern) && settings.breakPattern.length
+  ? resizePattern(settings.breakPattern, settings.breakSteps)
+  : inOrder(settings.breakSteps, settings.breakSlices);
+
+function playBreakStep(step) {
+  const idx = step.stepNumber % settings.breakSteps;
+  const row = settings.breakPattern[idx];
+  if (breakPlayer && breakBuffer) {
+    const rate = fitRate(breakBuffer.duration, settings.breakBars, currentBpm(), settings.breakPitch, settings.breakFit);
+    for (const tr of rowTriggers(row, step.duration)) {
+      if (tr.cut) breakPlayer.stop(step.time);
+      else {
+        breakPlayer.trigger(step.time + tr.at, {
+          slice: Math.min(tr.slice, settings.breakSlices - 1),
+          slices: settings.breakSlices,
+          reverse: tr.reverse,
+          rate: rate * Math.pow(2, tr.pitch / 12),
+          gain: tr.gain,
+        });
+      }
+    }
+  }
+  uiEvents.push({ kind: 'break', time: step.time, step: idx, slice: row.slice ?? null, cut: row.fx === 'cut' });
+}
+
+/**
+ * A synthesized demo break so the slicer works before you load your own:
+ * two bars of a funky kick/snare/hat groove with ghost notes, at 165 BPM.
+ */
+async function renderDemoBreak() {
+  const bpm = 165;
+  const step = 60 / bpm / 4;
+  const ctxOff = new OfflineAudioContext(1, Math.ceil(44100 * step * 32) + 2205, 44100);
+  const kit = new DrumSynth(ctxOff, ctxOff.destination);
+  const parts = {
+    bdLinn: 'X.....x..X......X.x.......X.....',
+    sdLinn: '....X..x.x..X..x....X..x.x.xX...',
+    chLinn: 'x.x.x.x.x.x.x.x.x.x.x.x.x.x.x...',
+    ohLinn: '..............x...............x.',
+  };
+  for (const [id, row] of Object.entries(parts)) {
+    [...row].forEach((c, i) => {
+      if (c !== '.') kit.play(id, i * step + 0.002, c === 'X' ? 1 : id === 'sdLinn' ? 0.35 : 0.6);
+    });
+  }
+  const rendered = await ctxOff.startRendering();
+  // Trim to exactly two bars.
+  const n = Math.round(44100 * step * 32);
+  const out = new AudioBuffer({ length: n, numberOfChannels: 1, sampleRate: 44100 });
+  out.copyToChannel(rendered.getChannelData(0).subarray(0, n), 0);
+  return out;
+}
+
+function setBreak(buffer, name) {
+  breakBuffer = buffer;
+  breakName = name;
+  breakPlayer?.setBuffer(buffer);
+  drawBreak();
+  updateBreakStatus();
+}
+
+function updateBreakStatus(message = '') {
+  const secs = breakBuffer ? `${breakBuffer.duration.toFixed(2)} s` : '';
+  const orig = breakBuffer ? Math.round((settings.breakBars * 4 * 60) / breakBuffer.duration) : 0;
+  $('break-status').textContent = message
+    || (breakBuffer ? `${breakName} · ${secs} · ${settings.breakBars} bar${settings.breakBars > 1 ? 's' : ''} ≈ ${orig} BPM as recorded` : 'Loading…');
+}
+
+async function loadBreakFile(file) {
+  if (!file) return;
+  ensureAudio();
+  const data = await file.arrayBuffer();
+  let buffer;
+  try {
+    buffer = await ctx.decodeAudioData(data.slice(0));
+  } catch {
+    updateBreakStatus(`Couldn't read ${file.name} (try WAV).`);
+    return;
+  }
+  setBreak(buffer, file.name);
+  try { await saveBreak({ name: file.name, data }); } catch { /* storage unavailable: kept for this visit */ }
+}
+
+function drawBreak() {
+  const canvas = $('break-wave');
+  const dpr = window.devicePixelRatio || 1;
+  const w = Math.max(200, canvas.clientWidth);
+  const h = canvas.clientHeight || 96;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  const g = canvas.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const css = getComputedStyle(canvas);
+  const ink = css.getPropertyValue('--ink').trim() || '#000';
+  const mod = css.getPropertyValue('--mod').trim() || ink;
+  const field = css.getPropertyValue('--field').trim() || '#fff';
+  g.fillStyle = field;
+  g.fillRect(0, 0, w, h);
+  if (!breakBuffer) return;
+  const n = settings.breakSlices;
+  const sw = w / n;
+  // Highlight the slice playing now and the slice on the selected row.
+  const sel = settings.breakPattern[breakSelected]?.slice;
+  for (const [slice, alpha] of [[sel, 0.12], [breakNowSlice, 0.28]]) {
+    if (slice === null || slice === undefined) continue;
+    g.globalAlpha = alpha;
+    g.fillStyle = mod;
+    g.fillRect(slice * sw, 0, sw, h);
+    g.globalAlpha = 1;
+  }
+  g.fillStyle = ink;
+  const cols = Math.floor(w);
+  const pk = peaks(breakBuffer.getChannelData(0), cols);
+  let max = 0.001;
+  for (const [lo, hi] of pk) max = Math.max(max, -lo, hi);
+  const mid = h / 2;
+  for (let x = 0; x < cols; x++) {
+    const [lo, hi] = pk[x];
+    g.fillRect(x, mid - (hi / max) * (mid - 4), 1, Math.max(1, ((hi - lo) / max) * (mid - 4)));
+  }
+  g.strokeStyle = mod;
+  g.lineWidth = 1;
+  g.font = '10px sans-serif';
+  for (let i = 0; i < n; i++) {
+    const x = Math.round(i * sw) + 0.5;
+    g.beginPath();
+    g.moveTo(x, 0);
+    g.lineTo(x, h);
+    g.stroke();
+    if (sw > 14) { g.fillStyle = mod; g.fillText(String(i + 1), x + 3, 11); }
+  }
+}
+
+function buildBreakRows() {
+  const wrap = $('break-rows');
+  wrap.replaceChildren();
+  breakRowEls.length = 0;
+  wrap.classList.toggle('two-col', settings.breakSteps > 16);
+  const head = document.createElement('div');
+  head.className = 'trow thead';
+  head.innerHTML = '<span>Step</span><span>Slice</span><span>Vol</span><span>Pitch</span><span>FX</span>';
+  wrap.append(head);
+  settings.breakPattern.forEach((row, i) => {
+    if (i === 16) wrap.append(head.cloneNode(true)); // the second column's header
+    const el = document.createElement('div');
+    el.className = `trow${i % 4 === 0 ? ' beat' : ''}`;
+    const num = document.createElement('button');
+    num.className = 'tstep';
+    num.textContent = String(i + 1).padStart(2, '0');
+    num.title = 'Select this row: then click a slice in the waveform to put it here';
+    num.addEventListener('click', () => selectBreakRow(i));
+    const slice = document.createElement('select');
+    slice.setAttribute('aria-label', `Step ${i + 1} slice`);
+    slice.add(new Option('—', ''));
+    for (let s = 0; s < settings.breakSlices; s++) slice.add(new Option(String(s + 1), String(s)));
+    slice.value = row.slice === null ? '' : String(Math.min(row.slice, settings.breakSlices - 1));
+    slice.addEventListener('change', () => editBreakRow(i, { slice: slice.value === '' ? null : Number(slice.value) }));
+    const vol = document.createElement('input');
+    vol.type = 'number'; vol.min = '0'; vol.max = '100'; vol.step = '5';
+    vol.value = String(row.vol);
+    vol.setAttribute('aria-label', `Step ${i + 1} volume`);
+    vol.addEventListener('change', () => editBreakRow(i, { vol: Math.max(0, Math.min(100, Number(vol.value) || 0)) }));
+    const pitch = document.createElement('input');
+    pitch.type = 'number'; pitch.min = '-12'; pitch.max = '12'; pitch.step = '1';
+    pitch.value = String(row.pitch);
+    pitch.setAttribute('aria-label', `Step ${i + 1} pitch`);
+    pitch.addEventListener('change', () => editBreakRow(i, { pitch: Math.max(-12, Math.min(12, Number(pitch.value) || 0)) }));
+    const fx = document.createElement('select');
+    fx.setAttribute('aria-label', `Step ${i + 1} effect`);
+    for (const [k, label] of Object.entries(BREAK_FX)) fx.add(new Option(label, k));
+    fx.value = row.fx;
+    fx.addEventListener('change', () => editBreakRow(i, { fx: fx.value }));
+    for (const c of [slice, vol, pitch, fx]) c.addEventListener('focus', () => selectBreakRow(i));
+    el.append(num, slice, vol, pitch, fx);
+    wrap.append(el);
+    breakRowEls.push(el);
+  });
+  selectBreakRow(Math.min(breakSelected, settings.breakSteps - 1));
+}
+
+function editBreakRow(i, patch) {
+  settings.breakPattern[i] = { ...settings.breakPattern[i], ...patch };
+  const el = breakRowEls[i];
+  el.classList.toggle('filled', settings.breakPattern[i].slice !== null || settings.breakPattern[i].fx === 'cut');
+  drawBreak();
+  save();
+}
+
+function selectBreakRow(i) {
+  breakRowEls[breakSelected]?.classList.remove('selected');
+  breakSelected = i;
+  breakRowEls[i]?.classList.add('selected');
+  breakRowEls.forEach((el, k) => {
+    const r = settings.breakPattern[k];
+    el.classList.toggle('filled', r.slice !== null || r.fx === 'cut');
+  });
+  drawBreak();
+}
+
+function showBreakStep(step, slice) {
+  if (breakNowStep >= 0) breakRowEls[breakNowStep]?.classList.remove('now');
+  breakNowStep = step;
+  if (step >= 0) breakRowEls[step]?.classList.add('now');
+  if (slice !== null && slice !== undefined) breakNowSlice = slice;
+  if (step < 0) breakNowSlice = null;
+  drawBreak();
+}
+
+function renderBreakPanel() {
+  $('break-on').setAttribute('aria-pressed', String(settings.breakOn));
+  $('break-on').textContent = settings.breakOn ? 'On' : 'Off';
+  $('break-panel').classList.toggle('off', !settings.breakOn);
+}
+
+// Clicking the waveform: put that slice on the selected row and move to the next
+// row (tracker step-entry); it also plays the slice so you hear what you picked.
+$('break-wave').addEventListener('click', (e) => {
+  if (!breakBuffer) return;
+  const rect = $('break-wave').getBoundingClientRect();
+  const slice = Math.min(settings.breakSlices - 1, Math.floor(((e.clientX - rect.left) / rect.width) * settings.breakSlices));
+  ensureAudio();
+  breakPlayer?.trigger(ctx.currentTime + 0.01, {
+    slice,
+    slices: settings.breakSlices,
+    rate: fitRate(breakBuffer.duration, settings.breakBars, currentBpm(), settings.breakPitch, settings.breakFit),
+  });
+  const row = breakSelected;
+  editBreakRow(row, { slice });
+  breakRowEls[row].querySelector('select').value = String(slice);
+  selectBreakRow((row + 1) % settings.breakSteps);
+});
+
+$('break-on').addEventListener('click', () => {
+  settings.breakOn = !settings.breakOn;
+  if (settings.breakOn) {
+    ensureAudio();
+    if (!playing && settings.sync === 'internal') setPlaying(true);
+  } else {
+    breakPlayer?.stop(ctx ? ctx.currentTime : 0);
+    showBreakStep(-1, null);
+  }
+  renderBreakPanel();
+  save();
+});
+for (const n of SLICE_COUNTS) $('break-slices').add(new Option(String(n), String(n)));
+for (const n of BREAK_STEPS) $('break-steps').add(new Option(`${n} (${n / 16} bar${n > 16 ? 's' : ''})`, String(n)));
+for (const n of BREAK_BARS) $('break-bars').add(new Option(`${n} bar${n > 1 ? 's' : ''}`, String(n)));
+bindSelect('break-slices', 'breakSlices', null, () => { buildBreakRows(); drawBreak(); });
+bindSelect('break-steps', 'breakSteps', null, () => {
+  settings.breakPattern = resizePattern(settings.breakPattern, settings.breakSteps);
+  buildBreakRows();
+});
+bindSelect('break-bars', 'breakBars', null, () => updateBreakStatus());
+$('break-fit').checked = settings.breakFit;
+$('break-fit').addEventListener('change', () => { settings.breakFit = $('break-fit').checked; save(); });
+bindRange('break-pitch', 'breakPitch', (v) => `${v > 0 ? '+' : ''}${v.toFixed(1)} st`);
+bindRange('break-level', 'breakLevel', (v) => `${v}%`, (v) => breakPlayer?.setLevel(v / 100));
+document.querySelectorAll('[data-gen]').forEach((b) => b.addEventListener('click', () => {
+  const { breakSteps: steps, breakSlices: slices } = settings;
+  settings.breakPattern = {
+    order: () => inOrder(steps, slices),
+    chop: () => chop(steps, slices),
+    random: () => randomize(steps, slices),
+    clear: () => resizePattern([], steps),
+  }[b.dataset.gen]();
+  buildBreakRows();
+  save();
+}));
+$('break-load').addEventListener('click', () => $('break-file').click());
+$('break-file').addEventListener('change', () => {
+  loadBreakFile($('break-file').files[0]);
+  $('break-file').value = '';
+});
+$('break-wave').addEventListener('dragover', (e) => e.preventDefault());
+$('break-wave').addEventListener('drop', (e) => { e.preventDefault(); loadBreakFile(e.dataTransfer.files[0]); });
+$('break-demo').addEventListener('click', async () => {
+  setBreak(await renderDemoBreak(), 'Demo break (synthesized)');
+  settings.breakBars = 2;
+  $('break-bars').value = '2';
+  updateBreakStatus();
+  save();
+  try { await saveBreak({ name: 'demo', data: null }); } catch { /* ignore */ }
+});
+window.addEventListener('resize', () => drawBreak());
+
+buildBreakRows();
+renderBreakPanel();
+// Your saved break, decoded without needing an audio context yet; else the demo.
+loadBreak().then(async (stored) => {
+  if (stored?.data) {
+    try {
+      const buffer = await new OfflineAudioContext(1, 1, 44100).decodeAudioData(stored.data.slice(0));
+      setBreak(buffer, stored.name);
+      return;
+    } catch { /* fall back to the demo */ }
+  }
+  setBreak(await renderDemoBreak(), 'Demo break (synthesized)');
+});
+
 // ---------------------------------------------------------------- UI: effects
 let lastDelayBpm = 0;
 function currentBpm() {
@@ -1697,6 +2024,10 @@ function frame() {
   const now = audioTime();
   while (uiEvents.length && uiEvents[0].time <= now) {
     const ev = uiEvents.shift();
+    if (ev.kind === 'break') {
+      showBreakStep(ev.step, ev.slice);
+      continue;
+    }
     if (ev.kind === 'drum') {
       showDrumStep(ev.step, ev.hits);
       continue;

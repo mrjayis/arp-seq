@@ -4,17 +4,17 @@
 const DB_NAME = 'arp-seq-samples';
 const STORE = 'samples';
 
-function openDb() {
+function openDb(name = DB_NAME) {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 1);
+    const req = indexedDB.open(name, 1);
     req.onupgradeneeded = () => req.result.createObjectStore(STORE);
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
 }
 
-async function run(mode, fn) {
-  const db = await openDb();
+async function run(mode, fn, name = DB_NAME) {
+  const db = await openDb(name);
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE, mode);
     const result = fn(tx.objectStore(STORE));
@@ -53,5 +53,30 @@ export async function loadSamples() {
     });
   } catch {
     return {};
+  }
+}
+
+// ---- The breakbeat slicer's break, in its own database: {name, data, bars}.
+const BREAK_DB = 'arp-seq-breaks';
+
+export function saveBreak(entry) {
+  return run('readwrite', (store) => store.put(entry, 'break'), BREAK_DB);
+}
+
+export function clearBreak() {
+  return run('readwrite', (store) => store.delete('break'), BREAK_DB);
+}
+
+export async function loadBreak() {
+  try {
+    const db = await openDb(BREAK_DB);
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readonly');
+      const req = tx.objectStore(STORE).get('break');
+      tx.oncomplete = () => { db.close(); resolve(req.result || null); };
+      tx.onerror = () => { db.close(); reject(tx.error); };
+    });
+  } catch {
+    return null;
   }
 }
