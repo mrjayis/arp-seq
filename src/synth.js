@@ -59,6 +59,7 @@ export class Synth {
     this.master.connect(comp).connect(ctx.destination);
     this.out = comp; // shared bus for other sound sources (percussion)
     this.voices = new Set();
+    this.monoLines = new Map(); // mono line name -> its most recent voice
   }
 
   setVolume(v) {
@@ -133,11 +134,13 @@ export class Synth {
    * (Shape) with a second waveform, into a low-pass gate whose filter and VCA can
    * share one vactrol-like control (Combo).
    * opts: {wave, detune, level, cutoff, shape 0..1, timbre 0..1, lpg 'combo'|'lp'|'vca',
-   *        decay (s), resonance, out}
+   *        decay (s), resonance, out, mono}
+   * `mono` names a monophonic line: a new note on it cuts off that line's previous
+   * note (including its decay tail) with a short fade.
    */
   playWest(note, velocity, time, duration, {
     wave = this.wave, detune = 0, level = 1, cutoff = this.cutoff,
-    shape = 0.5, timbre = 0, lpg = 'combo', decay = 0.25, resonance = 1, out = this.master,
+    shape = 0.5, timbre = 0, lpg = 'combo', decay = 0.25, resonance = 1, out = this.master, mono = null,
   } = {}) {
     const ctx = this.ctx;
     const t0 = Math.max(time, ctx.currentTime);
@@ -201,7 +204,25 @@ export class Synth {
 
     sine.connect(drive).connect(folder).connect(sineGain).connect(filter);
     other.connect(otherGain).connect(filter);
-    filter.connect(amp).connect(out);
+    // The choke sits after the gate so a later note on the same mono line can cut
+    // this one off without touching its own envelope automation.
+    const choke = ctx.createGain();
+    filter.connect(amp).connect(choke).connect(out);
+    if (mono) {
+      this.monoLines.get(mono)?.cut(t0);
+      this.monoLines.set(mono, {
+        start: t0,
+        cut: (at) => {
+          const fade = 0.003;
+          const from = Math.max(t0, at - fade);
+          choke.gain.setValueAtTime(1, from);
+          choke.gain.linearRampToValueAtTime(0, Math.max(from + 0.001, at));
+          for (const osc of [sine, other]) {
+            try { osc.stop(at + 0.01); } catch { /* already stopped */ }
+          }
+        },
+      });
+    }
     for (const osc of [sine, other]) {
       osc.start(t0);
       osc.stop(end);
@@ -217,6 +238,7 @@ export class Synth {
   /** Quickly fade and kill every sounding or scheduled voice. */
   panic() {
     const now = this.ctx.currentTime;
+    this.monoLines.clear();
     for (const { osc, amp } of this.voices) {
       amp.gain.cancelScheduledValues(now);
       amp.gain.setTargetAtTime(0, now, 0.01);

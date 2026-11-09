@@ -4,11 +4,11 @@ import {
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=8';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=8';
-import { Synth, Chorus, LPG_MODES } from './synth.js?v=8';
-import { Midi } from './midi.js?v=8';
-import { DrumSynth, DRUM_PRESETS, DRUM_STEPS, VOICES, parsePattern, hitsAt } from './percussion.js?v=8';
+} from './core.js?v=9';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=9';
+import { Synth, Chorus, LPG_MODES } from './synth.js?v=9';
+import { Midi } from './midi.js?v=9';
+import { DrumSynth, DRUM_PRESETS, DRUM_STEPS, VOICES, parsePattern, hitsAt } from './percussion.js?v=9';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -161,13 +161,14 @@ function westVoice() {
 function playVoice(note, note2, velocity, time, gateLen) {
   const on = toPerfMs(time);
   const off = toPerfMs(time + gateLen);
-  if (settings.synthOn && synth) synth.playWest(note, velocity, time, gateLen, westVoice());
+  if (settings.synthOn && synth) synth.playWest(note, velocity, time, gateLen, { ...westVoice(), mono: 'osc1' });
   midi.noteOn(note, velocity, on);
   midi.noteOff(note, off);
   if (note2 === null) return;
   if (settings.synthOn && synth && settings.osc2Level > 0) {
     synth.playWest(note2, velocity, time, gateLen, {
       ...westVoice(),
+      mono: 'osc2',
       wave: settings.osc2Wave,
       detune: settings.osc2Detune,
       level: settings.osc2Level / 100,
