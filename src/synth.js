@@ -56,6 +56,21 @@ export function strikeDecay(opening) {
 
 export const LPG_MODES = { combo: 'Combo', lp: 'LP', vca: 'VCA' };
 
+// ---- Oscillator 2 → oscillator 1 modulation
+export const MOD_TYPES = { off: 'Off', am: 'AM', fm: 'FM' };
+export const MAX_FM_INDEX = 8;
+
+/** FM: peak frequency deviation (Hz) for a depth 0..1 and modulator frequency. */
+export function fmDeviation(depth, modFreq) {
+  return Math.min(1, Math.max(0, depth)) * MAX_FM_INDEX * modFreq;
+}
+
+/** AM: carrier gain swings around `base` by ±`swing`; depth 1 = full 0..1 modulation. */
+export function amGains(depth) {
+  const d = Math.min(1, Math.max(0, depth));
+  return { base: 1 - d / 2, swing: d / 2 };
+}
+
 export class Synth {
   constructor(ctx) {
     this.ctx = ctx;
@@ -145,7 +160,9 @@ export class Synth {
    * (Shape) with a second waveform, into a low-pass gate whose filter and VCA can
    * share one vactrol-like control (Combo).
    * opts: {wave, detune, level, cutoff, shape 0..1, timbre 0..1, lpg 'combo'|'lp'|'vca',
-   *        resonance, out, mono}
+   *        resonance, out, mono, mod}
+   * `mod` = {type 'am'|'fm', depth 0..1, note, detune, wave}: a modulator at oscillator
+   * 2's pitch that amplitude- or frequency-modulates this voice.
    * Combo / VCA: the note is a strike that decays at once; the cutoff sets how far the
    * gate opens and therefore how loud, bright (Combo) and long it is. Gate time is ignored.
    * LP: the note holds for the gate time (`duration`), then stops.
@@ -154,7 +171,7 @@ export class Synth {
    */
   playWest(note, velocity, time, duration, {
     wave = this.wave, detune = 0, level = 1, cutoff = this.cutoff,
-    shape = 0.5, timbre = 0, lpg = 'combo', resonance = 1, out = this.master, mono = null,
+    shape = 0.5, timbre = 0, lpg = 'combo', resonance = 1, out = this.master, mono = null, mod = null,
   } = {}) {
     const ctx = this.ctx;
     const t0 = Math.max(time, ctx.currentTime);
@@ -226,8 +243,38 @@ export class Synth {
       amp.gain.setTargetAtTime(0, tOff, 0.012);
     }
 
-    sine.connect(drive).connect(folder).connect(sineGain).connect(filter);
-    other.connect(otherGain).connect(filter);
+    // AM stage between the oscillator mix and the gate (unity gain when unused).
+    const amNode = ctx.createGain();
+    sine.connect(drive).connect(folder).connect(sineGain).connect(amNode);
+    other.connect(otherGain).connect(amNode);
+    amNode.connect(filter);
+
+    // Modulator (oscillator 2's pitch and wave) → FM on both oscillators, or AM.
+    let modOsc = null;
+    let modGain = null;
+    let modFreq = 0;
+    const modType = mod && mod.depth > 0 && (mod.type === 'am' || mod.type === 'fm') ? mod.type : null;
+    if (modType) {
+      modFreq = mtof(mod.note);
+      modOsc = ctx.createOscillator();
+      if (mod.wave === 'spike') modOsc.setPeriodicWave(this.spikeWave);
+      else modOsc.type = mod.wave || 'sine';
+      modOsc.frequency.setValueAtTime(modFreq, t0);
+      modOsc.detune.setValueAtTime(mod.detune || 0, t0);
+      modGain = ctx.createGain();
+      modOsc.connect(modGain);
+      if (modType === 'fm') {
+        modGain.gain.setValueAtTime(fmDeviation(mod.depth, modFreq), t0);
+        modGain.connect(sine.frequency);
+        modGain.connect(other.frequency);
+      } else {
+        const { base, swing } = amGains(mod.depth);
+        amNode.gain.value = base;
+        modGain.gain.value = swing;
+        modGain.connect(amNode.gain);
+      }
+    }
+    const allOscs = modOsc ? [sine, other, modOsc] : [sine, other];
     // The choke sits after the gate so a later note on the same mono line can cut
     // this one off without touching its own envelope automation.
     const choke = ctx.createGain();
@@ -239,18 +286,23 @@ export class Synth {
         end,
         freq,
         oscs: [sine, other],
+        modOsc,
+        modGain,
+        modType,
+        modFreq,
+        modDepth: modType ? mod.depth : 0,
         cut: (at) => {
           const fade = 0.003;
           const from = Math.max(t0, at - fade);
           choke.gain.setValueAtTime(1, from);
           choke.gain.linearRampToValueAtTime(0, Math.max(from + 0.001, at));
-          for (const osc of [sine, other]) {
+          for (const osc of allOscs) {
             try { osc.stop(at + 0.01); } catch { /* already stopped */ }
           }
         },
       });
     }
-    for (const osc of [sine, other]) {
+    for (const osc of allOscs) {
       osc.start(t0);
       osc.stop(end);
       const voice = { osc, amp };
@@ -267,15 +319,25 @@ export class Synth {
    * re-striking it (a fast 6 ms glide, so there is no click). Returns false when
    * the line's last note has already finished.
    */
-  retune(mono, note, at) {
+  retune(mono, note, at, modNote = null) {
     const line = this.monoLines.get(mono);
     if (!line || at <= line.start || at >= line.end) return false;
+    const glide = (param, from, to) => {
+      param.setValueAtTime(from, at);
+      param.exponentialRampToValueAtTime(to, at + 0.006);
+    };
     const f = mtof(note);
-    for (const osc of line.oscs) {
-      osc.frequency.setValueAtTime(line.freq, at);
-      osc.frequency.exponentialRampToValueAtTime(f, at + 0.006);
-    }
+    for (const osc of line.oscs) glide(osc.frequency, line.freq, f);
     line.freq = f;
+    // The modulator follows oscillator 2's new pitch; FM depth scales with it.
+    if (line.modOsc && modNote !== null) {
+      const mf = mtof(modNote);
+      glide(line.modOsc.frequency, line.modFreq, mf);
+      if (line.modType === 'fm') {
+        glide(line.modGain.gain, fmDeviation(line.modDepth, line.modFreq), fmDeviation(line.modDepth, mf));
+      }
+      line.modFreq = mf;
+    }
     return true;
   }
 

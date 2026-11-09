@@ -4,11 +4,11 @@ import {
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=16';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=16';
-import { Synth, Chorus, LPG_MODES } from './synth.js?v=16';
-import { Midi } from './midi.js?v=16';
-import { DrumSynth, DRUM_PRESETS, DRUM_STEPS, VOICES, parsePattern, hitsAt } from './percussion.js?v=16';
+} from './core.js?v=17';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=17';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX } from './synth.js?v=17';
+import { Midi } from './midi.js?v=17';
+import { DrumSynth, DRUM_PRESETS, DRUM_STEPS, VOICES, parsePattern, hitsAt } from './percussion.js?v=17';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -55,6 +55,8 @@ const settings = {
   osc2Cutoff: 2400,
   osc2SyncCutoff: true,
   osc2Resonance: 1.5,
+  osc2Mod: 'off', // oscillator 2 → oscillator 1: 'off' | 'am' | 'fm'
+  osc2ModDepth: 30,
   chordOn: true,
   chordRate: '1/8',
   chordSteps: 8,
@@ -182,10 +184,24 @@ function westVoice(n) {
   };
 }
 
-function playVoice(note, note2, velocity, time, gateLen) {
+/** Oscillator 2 modulating oscillator 1 at `modNote` (oscillator 2's pitch), or null. */
+function modSpec(modNote) {
+  if (settings.osc2Mod === 'off' || settings.osc2ModDepth <= 0) return null;
+  return {
+    type: settings.osc2Mod,
+    depth: settings.osc2ModDepth / 100,
+    note: modNote,
+    detune: settings.osc2Detune,
+    wave: settings.osc2Wave,
+  };
+}
+
+function playVoice(note, note2, velocity, time, gateLen, modNote) {
   const on = toPerfMs(time);
   const off = toPerfMs(time + gateLen);
-  if (settings.synthOn && synth) synth.playWest(note, velocity, time, gateLen, westVoice(1));
+  if (settings.synthOn && synth) {
+    synth.playWest(note, velocity, time, gateLen, { ...westVoice(1), mod: modSpec(modNote) });
+  }
   midi.noteOn(note, velocity, on);
   midi.noteOff(note, off);
   if (note2 === null) return;
@@ -211,16 +227,20 @@ function playArp(step) {
   if (ev.rest) {
     // Step switched off: strike nothing, but slide whatever tail is still ringing
     // to the note this step would have played (each oscillator its own way).
-    const note2 = settings.osc2On ? osc2Note(ev, settings.osc2Mode, settings.osc2Transpose) : null;
+    const modNote = osc2Note(ev, settings.osc2Mode, settings.osc2Transpose);
+    const note2 = settings.osc2On ? modNote : null;
     if (settings.synthOn && synth) {
-      synth.retune('osc1', ev.note, step.time);
+      synth.retune('osc1', ev.note, step.time, modNote);
       if (note2 !== null) synth.retune('osc2', note2, step.time);
     }
     uiEvents.push({ kind: 'arp', time: step.time, off: step.time, ...ev, note2 });
     return;
   }
-  const note2 = settings.osc2On ? osc2Note(ev, settings.osc2Mode, settings.osc2Transpose) : null;
-  if (ev.velocity > 0) playVoice(ev.note, note2, ev.velocity, step.time, gateLen);
+  // Oscillator 2's pitch for this step: heard if it's on, and used to modulate
+  // oscillator 1 even when it's off (a pure modulator).
+  const modNote = osc2Note(ev, settings.osc2Mode, settings.osc2Transpose);
+  const note2 = settings.osc2On ? modNote : null;
+  if (ev.velocity > 0) playVoice(ev.note, note2, ev.velocity, step.time, gateLen, modNote);
   uiEvents.push({ kind: 'arp', time: step.time, off: step.time + gateLen, note2, ...ev });
 }
 
@@ -928,6 +948,17 @@ bindRange('osc2-timbre', 'osc2Timbre', (v) => `${v}%`);
 bindSelect('osc2-lpg', 'osc2Lpg', Object.entries(LPG_MODES));
 bindCutoff('osc2-cutoff', 'osc2Cutoff');
 bindRange('osc2-res', 'osc2Resonance', (v) => v.toFixed(1));
+bindSelect('osc2-mod', 'osc2Mod', Object.entries(MOD_TYPES), showModDepth);
+bindRange('osc2-mod-depth', 'osc2ModDepth', () => modDepthLabel());
+function modDepthLabel() {
+  const d = settings.osc2ModDepth;
+  return settings.osc2Mod === 'fm' ? `index ${((d / 100) * MAX_FM_INDEX).toFixed(1)}` : `${d}%`;
+}
+function showModDepth() {
+  $('osc2-mod-depth').disabled = settings.osc2Mod === 'off';
+  $('osc2-mod-depth-val').textContent = modDepthLabel();
+}
+showModDepth();
 $('osc2-sync').checked = settings.osc2SyncCutoff;
 $('osc2-sync').addEventListener('change', () => {
   settings.osc2SyncCutoff = $('osc2-sync').checked;
