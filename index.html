@@ -17,8 +17,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=19" />
-  <link rel="stylesheet" href="mac.css?v=19" />
+  <link rel="stylesheet" href="styles.css?v=21" />
+  <link rel="stylesheet" href="mac.css?v=21" />
 </head>
 <body>
   <main class="device">
@@ -157,6 +157,19 @@
         <label class="field slider">Sub level <output id="chord-sub-level-val"></output>
           <input id="chord-sub-level" type="range" min="0" max="100" />
         </label>
+      </div>
+      <div class="row">
+        <span class="row-label">PWM</span>
+        <label class="field slider">Width <output id="chord-width-val"></output>
+          <input id="chord-width" type="range" min="5" max="95" title="Pulse width of the Square wave(s)" />
+        </label>
+        <label class="field slider">PWM depth <output id="chord-pwm-depth-val"></output>
+          <input id="chord-pwm-depth" type="range" min="0" max="100" />
+        </label>
+        <label class="field slider">PWM rate <output id="chord-pwm-rate-val"></output>
+          <input id="chord-pwm-rate" type="range" min="0.05" max="8" step="0.05" />
+        </label>
+        <span class="status" id="pwm-note"></span>
       </div>
       <div class="row">
         <span class="row-label">Filter</span>
@@ -343,6 +356,6 @@
       <div id="keyboard" class="keyboard"></div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=19"></script>
+  <script type="module" src="src/app.js?v=21"></script>
 </body>
 </html>
