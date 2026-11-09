@@ -86,6 +86,7 @@ const VOICES_808 = [
   { id: 'cb808', label: 'Cowbell', gm: 56 },
   { id: 'ch808', label: 'Closed HH', gm: 42 },
   { id: 'oh808', label: 'Open HH', gm: 46 },
+  { id: 'cy808', label: 'Cymbal', gm: 49 },
 ];
 
 const PRESETS_808 = {
@@ -466,26 +467,6 @@ export class DrumSynth {
     return bus;
   }
 
-  /** Six detuned square waves through band- and high-pass: the metallic 808 hat source. */
-  metal(t, gain, decay, dest) {
-    const bp = this.ctx.createBiquadFilter();
-    bp.type = 'bandpass';
-    bp.frequency.value = 10000;
-    bp.Q.value = 0.8;
-    const hp = this.ctx.createBiquadFilter();
-    hp.type = 'highpass';
-    hp.frequency.value = 7000;
-    bp.connect(hp).connect(this.env(t, gain, decay, dest));
-    for (const f of [205.3, 304.4, 369.6, 522.7, 540, 800]) {
-      const o = this.ctx.createOscillator();
-      o.type = 'square';
-      o.frequency.value = f * 1.5;
-      o.connect(bp);
-      o.start(t);
-      o.stop(t + decay + 0.02);
-    }
-  }
-
   /** Hand clap: three quick noise bursts, then a short tail. */
   clap(t, g, freq, tail) {
     for (const [dt, a] of [[0, 1], [0.011, 0.85], [0.022, 0.75]]) this.noiseHit(t + dt, g * a, 0.012, 'bandpass', freq, 1.2);
@@ -515,8 +496,89 @@ export class DrumSynth {
   lt808(t, g) { this.tone(t, g * 0.7, 82, 0.38, 1.25, 'sine', 0.08); }
   ht808(t, g) { this.tone(t, g * 0.6, 140, 0.28, 1.25, 'sine', 0.07); }
   cb808(t, g) { this.cowbell(t, g); }
-  ch808(t, g) { this.metal(t, g * 0.5, 0.05, this.hatBus(t, '808', false)); }
-  oh808(t, g) { this.metal(t, g * 0.45, 0.42, this.hatBus(t, '808', true)); }
+  // Closed hat: the same source and filters as the open hat, just short.
+  ch808(t, g) {
+    this.metalSource(t, t + 0.08)
+      .connect(this.filter('bandpass', 9000, 0.8))
+      .connect(this.filter('highpass', 5600))
+      .connect(this.filter('highpass', 5600))
+      .connect(this.env(t, g * 1.2, 0.06, this.hatBus(t, '808', false)));
+  }
+  /** The 808's metal source: six square oscillators at its original frequencies. */
+  metalSource(t, stop) {
+    const sum = this.ctx.createGain();
+    sum.gain.value = 1 / 3;
+    for (const f of [205.3, 304.4, 369.6, 522.7, 540, 800]) {
+      const o = this.ctx.createOscillator();
+      o.type = 'square';
+      o.frequency.value = f;
+      o.connect(sum);
+      o.start(t);
+      o.stop(stop);
+    }
+    return sum;
+  }
+
+  filter(type, freq, q = 0.7) {
+    const f = this.ctx.createBiquadFilter();
+    f.type = type;
+    f.frequency.value = freq;
+    f.Q.value = q;
+    return f;
+  }
+
+  // Open hat, matched to a reference 808 recording: energy centred ~7–9 kHz with
+  // little below 5 kHz; the level falls roughly linearly and is gone by ~0.7 s.
+  oh808(t, g) {
+    const len = 0.7;
+    const src = this.metalSource(t, t + len + 0.05);
+    const amp = this.ctx.createGain();
+    amp.gain.setValueAtTime(0, t);
+    // Level curve traced from the reference (dB below the hit: −4 at 0.1 s,
+    // −6 at 0.2, −10 at 0.4, −18 at 0.6, then closing by 0.7 s).
+    for (const [dt, a] of [[0.002, 1], [0.1, 0.63], [0.2, 0.5], [0.4, 0.32], [0.6, 0.126], [0.66, 0.06], [len, 0]]) {
+      amp.gain.linearRampToValueAtTime(g * 0.8 * a, t + dt);
+    }
+    src
+      .connect(this.filter('bandpass', 9000, 0.8))
+      .connect(this.filter('highpass', 5600))
+      .connect(this.filter('highpass', 5600)) // two stages: almost nothing below 5 kHz
+      .connect(amp);
+    amp.connect(this.hatBus(t, '808', true));
+  }
+
+  // Cymbal, matched to a reference 808 recording: a bright 8–20 kHz splash that
+  // drops ~15 dB in 0.1 s, over a darker 2–5 kHz ring ~22 dB down that fades only
+  // ~10 dB per second, so the tail gets darker as it goes (−60 dB at ~3.2 s).
+  cy808(t, g) {
+    const len = 3.6;
+    const src = this.metalSource(t, t + len);
+    const decay = (peak, tau) => {
+      const a = this.ctx.createGain();
+      a.gain.setValueAtTime(0, t);
+      a.gain.linearRampToValueAtTime(peak, t + 0.002);
+      a.gain.setTargetAtTime(0, t + 0.002, tau);
+      a.connect(this.out);
+      return a;
+    };
+    // Splash: the first ~30 ms are brightest around 11–15 kHz.
+    src.connect(this.filter('bandpass', 12000, 0.7)).connect(this.filter('highpass', 8000)).connect(decay(g * 1.1, 0.035));
+    // Body: 5–12 kHz shimmer that carries the first second.
+    const body = src
+      .connect(this.filter('bandpass', 7800, 0.8))
+      .connect(this.filter('highpass', 5000))
+      .connect(this.filter('highpass', 5000));
+    body.connect(decay(g * 0.2, 0.06));
+    body.connect(decay(g * 0.11, 0.46));
+    // Sizzle: a quiet 12 kHz+ layer that lasts, keeping the tail bright on top.
+    src.connect(this.filter('highpass', 11000)).connect(this.filter('highpass', 11000)).connect(decay(g * 0.12, 0.45));
+    // Dark ring: 2–5 kHz, ~10 dB per second, so the tail darkens as it fades.
+    src
+      .connect(this.filter('bandpass', 3800, 1.2))
+      .connect(this.filter('highpass', 2200))
+      .connect(this.filter('highpass', 2200)) // keep the oscillators' low notes out of the ring
+      .connect(decay(g * 0.027, 0.85));
+  }
 
   // ---------------------------------------------------------------- Linn-style
   // Tighter and punchier: short sweeps, a click on the kick, brighter noise.

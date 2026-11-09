@@ -68,7 +68,7 @@ A separate layer that repeats the **held chord** in a Euclidean rhythm while the
 ### Percussion
 Three kits, all synthesized live with Web Audio (no samples). Each kit remembers its own pattern, preset and mutes.
 - **Latin:** in the style of a 70s preset rhythm box (below).
-- **808-style:** a long pitch-swept boom kick, a two-tone snare with noise, a multi-burst clap, rim, toms and cowbell, and metallic six-square hats (the closed hat chokes the open one), plus its Latin section: low/mid/hi congas, claves and maracas. Presets: Electro, Boom Bap, House, Half-time, and all seven Latin rhythms. On the 808 the bongos move to the higher congas and the guiro to the maracas.
+- **808-style:** a long pitch-swept boom kick, a two-tone snare with noise, a multi-burst clap, rim, toms and cowbell, metallic hats and a cymbal from the 808's six square oscillators at their original pitches (the closed hat chokes the open one). The open hat and cymbal are tuned against reference 808 recordings: a ~0.7 s open hat centred around 8 kHz, and a bright splash over a darker 2–5 kHz ring that lasts about 3 s, plus its Latin section: low/mid/hi congas, claves and maracas. Presets: Electro, Boom Bap, House, Half-time, and all seven Latin rhythms. On the 808 the bongos move to the higher congas and the guiro to the maracas.
 - **Linn-style:** a tight, clicky kick, a crisp snare, clap, hats, tambourine, cabasa, tom and cowbell. Presets: Synth Pop, Funk, Ballad, New Wave. It's a synthesized take on that early-80s character; the original machine used recorded samples.
 
 - **Your samples:** twelve rows (Kick, Snare, Rimshot, Clap, Closed HH, Open HH, Tom Hi, Tom Lo, Tamb, Cabasa, Cowbell, Cymbal) that you fill with your own recordings, such as your own drum machine.
