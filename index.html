@@ -17,8 +17,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=33" />
-  <link rel="stylesheet" href="mac.css?v=33" />
+  <link rel="stylesheet" href="styles.css?v=36" />
+  <link rel="stylesheet" href="mac.css?v=36" />
 </head>
 <body>
   <main class="device">
@@ -220,6 +220,40 @@
       <div id="drum-grid" class="drum-grid"></div>
     </section>
 
+    <section class="panel brk" id="break-panel" aria-label="Breakbeat slicer">
+      <div class="seq-head">
+        <h2>Breakbeat</h2>
+        <button id="break-on" aria-pressed="false" title="Play the break pattern">Off</button>
+        <label class="field inline">Slices <select id="break-slices"></select></label>
+        <label class="field inline">Steps <select id="break-steps"></select></label>
+        <label class="field inline">Break is <select id="break-bars" title="How long the loaded break is, so it can be fitted to the tempo"></select></label>
+        <label class="check"><input id="break-fit" type="checkbox" /> Fit to tempo</label>
+        <label class="field inline slider">Pitch <output id="break-pitch-val"></output>
+          <input id="break-pitch" type="range" min="-12" max="12" step="0.1" />
+        </label>
+        <label class="field inline slider">Level <output id="break-level-val"></output>
+          <input id="break-level" type="range" min="0" max="100" />
+        </label>
+      </div>
+      <p class="hint">A drum break cut into slices and re-sequenced, tracker style. Select a row, then click a
+        slice in the waveform to put it there. An empty row lets the last slice keep playing.
+        Your own break stays in this browser.</p>
+      <div class="row break-tools">
+        <button id="break-load">Load break…</button>
+        <input id="break-file" type="file" accept="audio/*,.wav,.aif,.aiff" hidden />
+        <button id="break-demo" title="A synthesized two-bar break">Demo break</button>
+        <span class="status" id="break-status"></span>
+        <span class="break-gen">
+          <button data-gen="order" title="The slices in their original order">In order</button>
+          <button data-gen="chop" title="A jungle-style rearrangement">Chop</button>
+          <button data-gen="random">Randomize</button>
+          <button data-gen="clear">Clear</button>
+        </span>
+      </div>
+      <canvas id="break-wave" class="break-wave" title="Click a slice to put it on the selected row · drop a break here to load it"></canvas>
+      <div id="break-rows" class="tracker"></div>
+    </section>
+
     <section class="panel seq" aria-label="Sequencer">
       <div class="seq-head">
         <h2>Sequencer</h2>
@@ -413,6 +447,6 @@
       <div id="keyboard" class="keyboard"></div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=33"></script>
+  <script type="module" src="src/app.js?v=36"></script>
 </body>
 </html>

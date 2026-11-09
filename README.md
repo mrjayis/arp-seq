@@ -104,6 +104,17 @@ The Latin kit:
 - With **Latch** on, tap a pad and the chord keeps playing. Tapping another pad switches chords.
 - Pads, keys and MIDI can all be used together. A note shared by two of them keeps sounding until both let go.
 
+### Breakbeat slicer
+A drum break cut into **8, 16 or 32** equal slices and re-sequenced tracker style, for jungle, drum & bass and breakbeat.
+- **Break:** **Load break…** (or drop one on the waveform), or use the built-in synthesized **Demo break**. Your break is kept in this browser only.
+- **Tempo:** **Break is** sets its length (1, 2 or 4 bars). **Fit to tempo** speeds it up or slows it down to the current BPM (and the pitch moves with it, the classic sound). **Pitch** adds an offset.
+- **Pattern:** 16 or 32 steps of 16ths. Each row has:
+  - **Slice:** an empty row lets the previous slice keep playing, as in a tracker.
+  - **Vol**, and **Pitch** (±12).
+  - **FX:** Reverse, Ratchet ×2/×3/×4 (stutter retriggers) or Cut.
+- **Editing:** select a row and click a slice in the waveform to put it there; the selection moves to the next row, and you hear the slice. **In order**, **Chop** (a jungle-style rearrangement), **Randomize** and **Clear** fill the pattern.
+- **Mixing:** it plays on the drum bus, so the drum delay/reverb sends apply. It has its own **Level** and follows the clock and swing.
+
 ### Effects
 A shared delay and reverb, with a **send** from each source (Arp, Chords, Drums) into each one.
 - **Delay:** **Time** synced to the tempo (1/16 – 1/2, including dotted and triplet values; it follows tempo changes and MIDI clock). **Feedback** sets each echo's level relative to the last. **Tone** darkens the repeats, and **Ping-pong** bounces echoes left/right.
@@ -127,6 +138,7 @@ A shared delay and reverb, with a **send** from each source (Arp, Chords, Drums)
 | `src/synth.js` | Polyphonic Web Audio synth |
 | `src/midi.js` | Web MIDI I/O |
 | `mac.css`, `fonts/` | System 7 theme and its bitmap font |
+| `src/breaks.js` | Breakbeat slicer: tempo fit, slices, tracker rows, player (logic tested) |
 | `src/fx.js` | Delay and reverb (timing and impulse-response math tested) |
 | `src/samples.js` | Stores your own drum samples in the browser |
 | `src/percussion.js` | Percussion voices, rhythm presets and pattern helpers (patterns tested) |
