@@ -38,6 +38,7 @@
 .voice      { --mod: #19798b; }
 .osc2       { --mod: #5f8a2e; }
 .io         { --mod: #6a645b; }
+.fx         { --mod: #9a3b5c; }
 .keys-panel { --mod: var(--ink); --mod-ink: var(--plate); }
 .top        { --mod: var(--ink); --mod-ink: var(--plate); }
 
@@ -594,6 +595,7 @@ input[type="range"]::-moz-range-thumb {
 :root[data-theme="dark"] .voice  { --mod: #45b8ca; --mod-ink: #0d0c0b; }
 :root[data-theme="dark"] .osc2   { --mod: #97c55c; --mod-ink: #0d0c0b; }
 :root[data-theme="dark"] .io     { --mod: #a59d90; --mod-ink: #0d0c0b; }
+:root[data-theme="dark"] .fx     { --mod: #e07a9b; --mod-ink: #0d0c0b; }
 :root[data-theme="dark"] .panel { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04); }
 :root[data-theme="dark"] .readout { box-shadow: inset 0 0 0 2px #2a2724, inset 0 0 14px rgba(246, 196, 83, 0.1); }
 :root[data-theme="dark"] input[type="range"]::-webkit-slider-thumb { border-color: #000; }

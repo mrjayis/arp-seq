@@ -4,11 +4,12 @@ import {
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=21';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=21';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=21';
-import { Midi } from './midi.js?v=21';
-import { DrumSynth, DRUM_PRESETS, DRUM_STEPS, VOICES, parsePattern, hitsAt } from './percussion.js?v=21';
+} from './core.js?v=23';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=23';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=23';
+import { Midi } from './midi.js?v=23';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=23';
+import { DrumSynth, DRUM_PRESETS, DRUM_STEPS, VOICES, parsePattern, hitsAt } from './percussion.js?v=23';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -71,6 +72,19 @@ const settings = {
   chordPulseWidth: 50, // % — applies to whichever chord wave is Square
   chordPwmDepth: 40,
   chordPwmRate: 0.8, // Hz
+  delayTime: '1/8D',
+  delayFeedback: 35,
+  delayTone: 4500,
+  delayPingPong: true,
+  delaySendArp: 30,
+  delaySendChords: 0,
+  delaySendDrums: 0,
+  reverbSize: 2200, // ms of tail
+  reverbPre: 20, // ms
+  reverbTone: 7000,
+  reverbSendArp: 25,
+  reverbSendChords: 35,
+  reverbSendDrums: 15,
   chordOctave: 0,
   chordGate: 80,
   chordLevel: 45,
@@ -141,6 +155,11 @@ let ctx = null;
 let synth = null;
 let drums = null;
 let chorus = null; // chord layer effect
+// Each source plays into its own bus; the buses feed the mix and the effect sends.
+const buses = {};
+const sends = { delay: {}, reverb: {} };
+let delayFx = null;
+let reverbFx = null;
 let playing = false;
 const uiEvents = []; // {time, ...} drained by the animation loop
 
@@ -151,8 +170,23 @@ function ensureAudio() {
     synth.wave = settings.wave;
     synth.cutoff = settings.cutoff;
     synth.setVolume(settings.volume / 100);
-    drums = new DrumSynth(ctx, synth.out);
-    chorus = new Chorus(ctx, synth.master);
+    buses.arp = ctx.createGain();
+    buses.chords = ctx.createGain();
+    buses.drums = ctx.createGain();
+    buses.arp.connect(synth.master);
+    buses.chords.connect(synth.master);
+    buses.drums.connect(synth.out);
+    delayFx = new Delay(ctx, synth.master);
+    reverbFx = new Reverb(ctx, synth.master);
+    for (const [fx, node] of [['delay', delayFx], ['reverb', reverbFx]]) {
+      for (const src of ['arp', 'chords', 'drums']) {
+        sends[fx][src] = ctx.createGain();
+        buses[src].connect(sends[fx][src]).connect(node.input);
+      }
+    }
+    applyFx();
+    drums = new DrumSynth(ctx, buses.drums);
+    chorus = new Chorus(ctx, buses.chords);
     chorus.setMix(settings.chordChorusMix / 100);
     chorus.setRate(settings.chordChorusRate);
     chorus.setDepth(settings.chordChorusDepth / 100);
@@ -209,13 +243,13 @@ function playVoice(note, note2, velocity, time, gateLen, modNote) {
   const on = toPerfMs(time);
   const off = toPerfMs(time + gateLen);
   if (settings.synthOn && synth) {
-    synth.playWest(note, velocity, time, gateLen, { ...westVoice(1), mod: modSpec(modNote) });
+    synth.playWest(note, velocity, time, gateLen, { ...westVoice(1), mod: modSpec(modNote), out: buses.arp });
   }
   midi.noteOn(note, velocity, on);
   midi.noteOff(note, off);
   if (note2 === null) return;
   if (settings.synthOn && synth && settings.osc2Level > 0) {
-    synth.playWest(note2, velocity, time, gateLen, westVoice(2));
+    synth.playWest(note2, velocity, time, gateLen, { ...westVoice(2), out: buses.arp });
   }
   if (settings.osc2MidiCh >= 0) {
     midi.noteOn(note2, velocity, on, settings.osc2MidiCh);
@@ -296,6 +330,7 @@ function playChord(step) {
       synth.play(sub.note - 12, sub.velocity, step.time, gateLen, {
         ...filterOpts,
         wave: settings.chordSub,
+        out: buses.chords,
         level: (settings.chordLevel / 100) * (settings.chordSubLevel / 100) * 1.4,
       });
     }
@@ -564,6 +599,7 @@ function setBpm(bpm) {
   internalClock.setBpm(bpm);
   settings.bpm = internalClock.bpm;
   $('bpm').value = Math.round(settings.bpm * 10) / 10;
+  updateDelayTime();
   save();
 }
 
@@ -949,6 +985,49 @@ function showDrumStep(step, hits) {
 
 buildDrums();
 renderDrumGrid();
+
+// ---------------------------------------------------------------- UI: effects
+let lastDelayBpm = 0;
+function currentBpm() {
+  return settings.sync === 'external' && externalClock.intervals.length ? externalClock.bpm : internalClock.bpm;
+}
+function updateDelayTime() {
+  lastDelayBpm = currentBpm();
+  delayFx?.setTime(delaySeconds(settings.delayTime, lastDelayBpm));
+}
+let reverbTimer;
+function applyFx() {
+  if (!delayFx) return;
+  updateDelayTime();
+  delayFx.setFeedback(settings.delayFeedback / 100);
+  delayFx.setTone(settings.delayTone);
+  delayFx.setPingPong(settings.delayPingPong);
+  reverbFx.setPreDelay(settings.reverbPre / 1000);
+  reverbFx.setTone(settings.reverbTone);
+  // Rebuilding the impulse is heavy, so wait for the slider to settle.
+  clearTimeout(reverbTimer);
+  reverbTimer = setTimeout(() => reverbFx.setSize(settings.reverbSize / 1000), 120);
+  const now = ctx.currentTime;
+  for (const fx of ['delay', 'reverb']) {
+    for (const src of ['arp', 'chords', 'drums']) {
+      const key = `${fx}Send${src[0].toUpperCase()}${src.slice(1)}`;
+      sends[fx][src].gain.setTargetAtTime(settings[key] / 100, now, 0.02);
+    }
+  }
+}
+bindSelect('delay-time', 'delayTime', DELAY_TIMES.map((d) => [d, d]), applyFx);
+bindRange('delay-feedback', 'delayFeedback', (v) => `${v}%`, applyFx);
+bindLog('delay-tone', 'delayTone', 300, 12000, formatHz, applyFx);
+$('delay-pingpong').checked = settings.delayPingPong;
+$('delay-pingpong').addEventListener('change', () => { settings.delayPingPong = $('delay-pingpong').checked; applyFx(); save(); });
+bindLog('reverb-size', 'reverbSize', 300, 8000, (ms) => `${(ms / 1000).toFixed(1)} s`, applyFx);
+bindRange('reverb-pre', 'reverbPre', (v) => `${v} ms`, applyFx);
+bindLog('reverb-tone', 'reverbTone', 300, 12000, formatHz, applyFx);
+for (const fx of ['delay', 'reverb']) {
+  for (const src of ['Arp', 'Chords', 'Drums']) {
+    bindRange(`${fx}-send-${src.toLowerCase()}`, `${fx}Send${src}`, (v) => `${v}%`, applyFx);
+  }
+}
 
 // ---------------------------------------------------------------- UI: oscillator 2
 function renderOsc2() {
@@ -1391,6 +1470,8 @@ function frame() {
   }
   if (settings.sync === 'external' && externalClock.intervals.length && document.activeElement !== $('bpm')) {
     $('bpm').value = externalClock.bpm.toFixed(1);
+    // Keep the delay locked to the incoming clock's tempo.
+    if (Math.abs(externalClock.bpm - lastDelayBpm) > 0.5) updateDelayTime();
   }
   requestAnimationFrame(frame);
 }
