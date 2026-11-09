@@ -74,7 +74,7 @@ Three kits, all synthesized live with Web Audio (no samples). Each kit remembers
 - **Your samples:** twelve rows (Kick, Snare, Rimshot, Clap, Closed HH, Open HH, Tom Hi, Tom Lo, Tamb, Cabasa, Cowbell, Cymbal) that you fill with your own recordings, such as your own drum machine.
   - Loading: **Load samples…** (or drop a folder's worth of files on the grid) matches each file to a row by the **first three letters** of its name: KIC/BAS → Kick, SNA → Snare, RIM/SID/SST → Rimshot, CLA → Clap, CHH/CLO/HHC/HIH → Closed HH, OHH/OPE/HHO → Open HH, TOM+H/L → toms, TAM, CAB, COW, CRA/RID/CYM. Short codes like BD, SD or CH1 work too, and a prefix shared by the whole batch (e.g. "LinnDrum " or "LD_") or a track number is skipped first. Unrecognised files fill empty rows; drop a single file on a row to replace it.
   - Hi-hats: names with the word open or closed after it ("Hat Open", "HH Closed") go by that word.
-  - **Sample map** (under the buttons): shows which file is on each row and lets you put any loaded file on any row, swapping with what was there, or empty a row.
+  - **Sample map & levels** (under the buttons): shows which file is on each row and lets you put any loaded file on any row, swapping with what was there, or empty a row. Each row also has a **Level** (0–150%, double-click for 100%) to balance your recordings.
   - Storage: samples are kept in this browser only (IndexedDB) and never uploaded or committed.
   - Playback: the closed hat chokes the open hat, and accents play louder. The Linn-style patterns come mapped onto these rows.
 
