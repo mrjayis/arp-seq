@@ -4,19 +4,20 @@ import {
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=40';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=40';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=40';
-import { Midi } from './midi.js?v=40';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=40';
+} from './core.js?v=41';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=41';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=41';
+import { Midi } from './midi.js?v=41';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=41';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=40';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=40';
+} from './percussion.js?v=41';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=41';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
-} from './breaks.js?v=40';
+} from './breaks.js?v=41';
+import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=41';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -118,6 +119,8 @@ const settings = {
   drumFillEvery: 0, // a fill bar every N bars (0 = off)
   drumTapMode: 'hits', // what tapping a cell does: 'hits' | 'cond'
   drumCondPick: '1:2',
+  drumEvolve: 0, // 0–100: per-bar variation of the drums
+  breakEvolve: 0, // 0–100: per-bar variation of the break pattern
   breakOn: false,
   breakSlices: 16,
   breakSteps: 32,
@@ -413,9 +416,23 @@ function onPulse(time, pulse, pulseDuration) {
 }
 
 // Percussion: one-bar 16th-note pattern, locked to the clock and swing.
+// Evolve: a new seed each time Play starts; each bar's variation is derived from it.
+let runSeed = (Math.random() * 2 ** 32) >>> 0;
+let evolveCache = { bar: -1, rows: null, src: null, amount: -1 };
+function evolvedDrumRows(stepNumber) {
+  const amount = settings.drumEvolve / 100;
+  if (amount <= 0) return settings.drumRows;
+  const bar = Math.floor(stepNumber / DRUM_STEPS);
+  const c = evolveCache;
+  if (c.bar !== bar || c.src !== settings.drumRows || c.amount !== amount) {
+    evolveCache = { bar, src: settings.drumRows, amount, rows: evolveDrums(settings.drumRows, amount, barRng(runSeed, bar)) };
+  }
+  return evolveCache.rows;
+}
+
 function playDrums(step) {
   const voices = kitVoices();
-  const hits = drumHits(settings.drumRows, step.stepNumber, {
+  const hits = drumHits(evolvedDrumRows(step.stepNumber), step.stepNumber, {
     conds: settings.drumConds, lens: settings.drumLens, muted: settings.drumMuted, voices,
     fill: isFillBar(step.stepNumber, settings.drumFillEvery),
   });
@@ -457,6 +474,7 @@ function setPlaying(on, { fromClock = false } = {}) {
       ensureAudio();
       engine.reset();
       resetProgression();
+      runSeed = (Math.random() * 2 ** 32) >>> 0; // each run evolves differently
       if (settings.clockOut) midi.send([0xfa]);
       internalClock.start();
       timerWorker.postMessage(25);
@@ -1160,6 +1178,7 @@ bindSelect('drum-tap', 'drumTapMode', [['hits', 'Hits'], ['cond', 'Conditions']]
 });
 bindSelect('drum-cond', 'drumCondPick', Object.entries(CONDITIONS).filter(([k]) => k));
 $('drum-cond').disabled = settings.drumTapMode !== 'cond';
+bindRange('drum-evolve', 'drumEvolve', (v) => (v ? `${v}%` : 'off'));
 $('drum-add-fill').addEventListener('click', () => {
   const n = addFill(settings.drumRows, settings.drumConds, kitVoices());
   if (!settings.drumFillEvery) { settings.drumFillEvery = 4; $('drum-fill-every').value = '4'; }
@@ -1406,7 +1425,8 @@ function orderedPattern() {
 
 function playBreakStep(step) {
   const idx = step.stepNumber % settings.breakSteps;
-  const row = settings.breakPattern[idx];
+  const row = evolveBreakRow(settings.breakPattern[idx], settings.breakEvolve / 100,
+    barRng(runSeed, Math.floor(step.stepNumber / settings.breakSteps), idx + 101), sliceCount());
   const triggers = rowTriggers(row, step.duration);
   let shown = null;
   if (breakPlayer && breakBuffer) {
@@ -1690,6 +1710,7 @@ $('break-fit').checked = settings.breakFit;
 $('break-fit').addEventListener('change', () => { settings.breakFit = $('break-fit').checked; save(); });
 bindRange('break-pitch', 'breakPitch', (v) => `${v > 0 ? '+' : ''}${v.toFixed(1)} st`);
 bindRange('break-level', 'breakLevel', (v) => `${v}%`, (v) => breakPlayer?.setLevel(v / 100));
+bindRange('break-evolve', 'breakEvolve', (v) => (v ? `${v}%` : 'off'));
 document.querySelectorAll('[data-gen]').forEach((b) => b.addEventListener('click', () => {
   const steps = settings.breakSteps;
   settings.breakPattern = {

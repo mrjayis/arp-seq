@@ -17,8 +17,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=40" />
-  <link rel="stylesheet" href="mac.css?v=40" />
+  <link rel="stylesheet" href="styles.css?v=41" />
+  <link rel="stylesheet" href="mac.css?v=41" />
 </head>
 <body>
   <main class="device">
@@ -214,6 +214,9 @@
         <label class="field inline">Fill <select id="drum-fill-every" title="Fill bars switch on hits marked Fill (and off those marked Not fill)"></select></label>
         <span class="fill-led" id="drum-fill-led" title="Lit during a fill bar"></span>
         <button id="drum-add-fill" title="Add a snare/tom fill on the last beat that plays only on fill bars">Add fill</button>
+        <label class="field inline slider" title="Each bar, nudge, drop and ghost a few ordinary hits (accents stay). Your pattern itself isn't changed.">Evolve <output id="drum-evolve-val"></output>
+          <input id="drum-evolve" type="range" min="0" max="100" />
+        </label>
         <button id="drum-clear-conds" title="Remove all conditions and reset row lengths to 16">Clear conditions</button>
       </div>
       <div class="row sample-tools" id="sample-tools" hidden>
@@ -246,6 +249,9 @@
         </label>
         <label class="field inline slider">Level <output id="break-level-val"></output>
           <input id="break-level" type="range" min="0" max="100" />
+        </label>
+        <label class="field inline slider" title="Each bar, swap a few slices and add the odd roll or reverse. Your pattern itself isn't changed.">Evolve <output id="break-evolve-val"></output>
+          <input id="break-evolve" type="range" min="0" max="100" />
         </label>
       </div>
       <p class="hint">A drum break cut into slices and re-sequenced, tracker style. Select a row, then click a
@@ -462,6 +468,6 @@
       <div id="keyboard" class="keyboard"></div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=40"></script>
+  <script type="module" src="src/app.js?v=41"></script>
 </body>
 </html>
