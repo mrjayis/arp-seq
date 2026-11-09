@@ -35,6 +35,7 @@ The arp and oscillator 2 use a voice modelled on west-coast synthesis: a complex
   - **VCA:** loudness only.
 - **Decay** is the gate's vactrol-like release (20 ms – 3 s), for anything from plucky "bongo" hits to long rings.
 - **Resonance** for the gate's filter.
+- **Monophonic:** each new arp note cuts off the previous one's decay (with a 3 ms fade, so no click). Oscillator 1 and 2 are separate mono lines; chords stay polyphonic.
 
 ### Sync
 - **Internal:** a look-ahead scheduler on the audio clock, kept running in background tabs by a Worker timer. Pressing a key starts the transport.
