@@ -25,17 +25,17 @@ held notes ──► ARPEGGIATOR ──► note ──► SEQUENCER step n ─�
 - **Latch:** keeps notes after you let go; a new chord replaces them. The sustain pedal (CC64) also toggles latch.
 - **Tempo:** 20–300 BPM, with tap tempo
 
-### Arp voice (west-coast style)
-The arp and oscillator 2 use a voice modelled on west-coast synthesis: a complex oscillator feeding a low-pass gate.
+### Arp voices (west-coast style)
+The arp has two monophonic voices: **Oscillator 1**, and **Oscillator 2**, which plays the sequence as-is or inverted. Each voice is a complex oscillator feeding a low-pass gate:
 - **Timbre** folds the sine core (a triangle wavefolder). At 0 it's a pure sine; turning it up adds bright, glassy harmonics.
 - **Shape** crossfades between the folded sine and a second **Wave**: Saw, Square, Triangle, Spike (a narrow pulse) or Sine.
-- **Gate**, a low-pass gate with three modes:
-  - **Combo:** one control drives both the filter and the VCA, so **Cutoff** sets brightness *and* loudness together, and both close on release.
-  - **LP:** brightness only.
-  - **VCA:** loudness only.
-- **Decay** is the gate's vactrol-like release (20 ms – 3 s), for anything from plucky "bongo" hits to long rings.
+- **Gate**, with three modes:
+  - **Combo** strikes a vactrol-style low-pass gate. **Cutoff** sets brightness, loudness *and* how long the note rings (from ~40 ms closed to ~2.5 s fully open), so there's no separate decay control. The arp's Gate time doesn't affect it.
+  - **VCA** works the same way without the filter.
+  - **LP** is filter only: the note holds for exactly the arp's Gate time.
 - **Resonance** for the gate's filter.
-- **Monophonic:** each new arp note cuts off the previous one's decay (with a 3 ms fade, so no click). Oscillator 1 and 2 are separate mono lines; chords stay polyphonic.
+- **Sync cutoff** (Oscillator 2, on by default): Oscillator 1's Cutoff drives both voices.
+- **Monophonic:** each new note on a voice cuts off that voice's previous note, with a 3 ms fade so there's no click. Chords stay polyphonic.
 
 ### Sync
 - **Internal:** a look-ahead scheduler on the audio clock, kept running in background tabs by a Worker timer. Pressing a key starts the transport.

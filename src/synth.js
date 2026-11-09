@@ -43,6 +43,17 @@ export function comboLevel(opening) {
   return 0.04 + 0.96 * Math.pow(Math.min(1, Math.max(0, opening)), 0.8);
 }
 
+/**
+ * How long a struck gate rings (seconds) for an opening 0..1: like a vactrol,
+ * the further it is opened the longer it takes to close (~40 ms → 2.5 s).
+ */
+export const STRIKE_MIN = 0.04;
+export const STRIKE_MAX = 2.5;
+export function strikeDecay(opening) {
+  const o = Math.min(1, Math.max(0, opening));
+  return STRIKE_MIN * Math.pow(STRIKE_MAX / STRIKE_MIN, o);
+}
+
 export const LPG_MODES = { combo: 'Combo', lp: 'LP', vca: 'VCA' };
 
 export class Synth {
@@ -134,13 +145,16 @@ export class Synth {
    * (Shape) with a second waveform, into a low-pass gate whose filter and VCA can
    * share one vactrol-like control (Combo).
    * opts: {wave, detune, level, cutoff, shape 0..1, timbre 0..1, lpg 'combo'|'lp'|'vca',
-   *        decay (s), resonance, out, mono}
+   *        resonance, out, mono}
+   * Combo / VCA: the note is a strike that decays at once; the cutoff sets how far the
+   * gate opens and therefore how loud, bright (Combo) and long it is. Gate time is ignored.
+   * LP: the note holds for the gate time (`duration`), then stops.
    * `mono` names a monophonic line: a new note on it cuts off that line's previous
    * note (including its decay tail) with a short fade.
    */
   playWest(note, velocity, time, duration, {
     wave = this.wave, detune = 0, level = 1, cutoff = this.cutoff,
-    shape = 0.5, timbre = 0, lpg = 'combo', decay = 0.25, resonance = 1, out = this.master, mono = null,
+    shape = 0.5, timbre = 0, lpg = 'combo', resonance = 1, out = this.master, mono = null,
   } = {}) {
     const ctx = this.ctx;
     const t0 = Math.max(time, ctx.currentTime);
@@ -148,7 +162,9 @@ export class Synth {
     const freq = mtof(note);
     const vel = velocity / 127;
     const opening = gateOpening(cutoff);
-    const tau = Math.max(0.005, decay) / 4; // vactrol-like exponential release
+    const struck = lpg !== 'lp';
+    const ring = strikeDecay(opening);
+    const tau = ring / 5; // exponential fall, ~-43 dB after `ring` seconds
 
     // Sine core → wavefolder.
     const sine = ctx.createOscillator();
@@ -183,24 +199,32 @@ export class Synth {
     const floor = 40; // fully closed filter
     const open = lpg === 'vca' ? 18000 : floor * Math.pow(cutoff / floor, 0.55 + 0.45 * vel);
     const peak = Math.pow(vel, 1.5) * 0.35 * level * (lpg === 'lp' ? 1 : comboLevel(opening));
-    const end = tOff + Math.max(0.03, decay) * 1.6;
+    const attack = t0 + 0.004;
+    const end = struck ? attack + ring * 1.3 : tOff + 0.1;
 
-    // Strike: both halves of the gate open fast, hold through the gate time…
-    if (lpg === 'vca') filter.frequency.setValueAtTime(open, t0);
-    else {
+    if (struck) {
+      // Strike: open fast, then filter (Combo) and loudness fall together at once.
+      if (lpg === 'vca') filter.frequency.setValueAtTime(open, t0);
+      else {
+        filter.frequency.setValueAtTime(floor, t0);
+        filter.frequency.linearRampToValueAtTime(open, attack);
+        filter.frequency.setTargetAtTime(floor, attack, tau);
+      }
+      amp.gain.setValueAtTime(0, t0);
+      amp.gain.linearRampToValueAtTime(peak, attack);
+      amp.gain.setTargetAtTime(0, attack, tau);
+    } else {
+      // LP: hold for exactly the gate time, then close quickly.
       filter.frequency.setValueAtTime(floor, t0);
-      filter.frequency.linearRampToValueAtTime(open, t0 + 0.004);
-      filter.frequency.setTargetAtTime(floor + (open - floor) * 0.8, t0 + 0.004, 0.12);
+      filter.frequency.linearRampToValueAtTime(open, attack);
+      filter.frequency.setTargetAtTime(floor + (open - floor) * 0.8, attack, 0.12);
       filter.frequency.setValueAtTime(floor + (open - floor) * 0.8, tOff);
-      // …then close together on the vactrol curve.
-      filter.frequency.setTargetAtTime(floor, tOff, tau);
+      filter.frequency.setTargetAtTime(floor, tOff, 0.015);
+      amp.gain.setValueAtTime(0, t0);
+      amp.gain.linearRampToValueAtTime(peak, attack);
+      amp.gain.setValueAtTime(peak, tOff);
+      amp.gain.setTargetAtTime(0, tOff, 0.012);
     }
-    amp.gain.setValueAtTime(0, t0);
-    amp.gain.linearRampToValueAtTime(peak, t0 + 0.004);
-    amp.gain.setTargetAtTime(peak * 0.8, t0 + 0.004, 0.12);
-    amp.gain.setValueAtTime(peak * 0.8, tOff);
-    // In LP mode the VCA just gates quickly; otherwise it shares the vactrol release.
-    amp.gain.setTargetAtTime(0, tOff, lpg === 'lp' ? 0.015 : tau);
 
     sine.connect(drive).connect(folder).connect(sineGain).connect(filter);
     other.connect(otherGain).connect(filter);
