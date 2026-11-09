@@ -72,7 +72,7 @@ Three kits, all synthesized live with Web Audio (no samples). Each kit remembers
 - **Linn-style:** a tight, clicky kick, a crisp snare, clap, hats, tambourine, cabasa, tom and cowbell. Presets: Synth Pop, Funk, Ballad, New Wave. It's a synthesized take on that early-80s character; the original machine used recorded samples.
 
 - **Your samples:** twelve rows (Kick, Snare, Rimshot, Clap, Closed HH, Open HH, Tom Hi, Tom Lo, Tamb, Cabasa, Cowbell, Cymbal) that you fill with your own recordings, such as your own drum machine.
-  - Loading: **Load samples…** (or drop a folder's worth of files on the grid) matches files to rows by name, e.g. `Kick`, `SD`, `Sidestick`, `HHOPEN`, `Tom Hi`, `Cabasa`. Unrecognised files fill empty rows; drop a single file on a row to replace it.
+  - Loading: **Load samples…** (or drop a folder's worth of files on the grid) matches each file to a row by the **first three letters** of its name: KIC/BAS → Kick, SNA → Snare, RIM/SID/SST → Rimshot, CLA → Clap, CHH/CLO/HHC/HIH → Closed HH, OHH/OPE/HHO → Open HH, TOM+H/L → toms, TAM, CAB, COW, CRA/RID/CYM. Short codes like BD, SD or CH1 work too, and a prefix shared by the whole batch (e.g. "LinnDrum " or "LD_") or a track number is skipped first. Unrecognised files fill empty rows; drop a single file on a row to replace it.
   - Storage: samples are kept in this browser only (IndexedDB) and never uploaded or committed.
   - Playback: the closed hat chokes the open hat, and accents play louder. The Linn-style patterns come mapped onto these rows.
 
