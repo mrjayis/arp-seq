@@ -4,13 +4,13 @@ import {
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=28';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=28';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=28';
-import { Midi } from './midi.js?v=28';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=28';
-import { DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, hitsAt, assignSamples } from './percussion.js?v=28';
-import { saveSample, clearSamples, loadSamples } from './samples.js?v=28';
+} from './core.js?v=29';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=29';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=29';
+import { Midi } from './midi.js?v=29';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=29';
+import { DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, hitsAt, assignSamples } from './percussion.js?v=29';
+import { saveSample, clearSamples, loadSamples } from './samples.js?v=29';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -1136,11 +1136,30 @@ $('sample-clear').addEventListener('click', async () => {
 buildDrums();
 $('sample-tools').hidden = settings.drumKit !== 'user';
 renderDrumGrid();
-loadSamples().then((stored) => {
+loadSamples().then(async (stored) => {
+  // Once: re-sort samples loaded under the old keyword matching with the
+  // first-three-letters rule (it could put e.g. a clap on the hi-hat row).
+  let note = '';
+  if (!settings.samplesV2 && Object.keys(stored).length) {
+    const entries = Object.entries(stored).map(([slot, entry]) => ({ name: entry.name, slot, entry }));
+    const { assigned } = assignSamples(entries);
+    const remapped = Object.fromEntries(assigned.map(([slot, f]) => [slot, f.entry]));
+    const moved = assigned.filter(([slot, f]) => slot !== f.slot).length;
+    if (moved) {
+      try {
+        await clearSamples();
+        for (const [slot, entry] of Object.entries(remapped)) await saveSample(slot, entry);
+      } catch { /* storage unavailable: use the new layout for this visit */ }
+      stored = remapped;
+      note = `Re-sorted your samples by the first three letters of their names (${moved} moved).`;
+    }
+  }
+  settings.samplesV2 = true;
+  save();
   Object.assign(sampleStore, stored);
   if (drums) decodeAllSamples();
   renderDrumGrid();
-  updateSampleStatus();
+  updateSampleStatus(note);
 });
 
 // ---------------------------------------------------------------- UI: effects

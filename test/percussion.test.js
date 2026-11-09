@@ -83,6 +83,13 @@ test('sample files are matched to rows by name', () => {
     'Tambourine.wav': 'u_tamb', 'CABASA.WAV': 'u_cabasa', 'Cowbell.wav': 'u_cowbell',
     'Crash.wav': 'u_cymbal', 'Ride.wav': 'u_cymbal',
     'Conga Hi.wav': null, 'tom2.wav': null,
+    // First three letters decide: a clap is never a hi-hat, whatever follows.
+    'CLAP.WAV': 'u_clap', 'Clap ch1.wav': 'u_clap', 'CLAP HH.wav': 'u_clap', 'Claps hat.wav': 'u_clap',
+    'CHH.WAV': 'u_chh', 'CH1.wav': 'u_chh', 'HHC.wav': 'u_chh', 'Closed.wav': 'u_chh',
+    'OHH.WAV': 'u_ohh', 'HHO.wav': 'u_ohh', 'Open.wav': 'u_ohh',
+    '01 Kick.wav': 'u_kick', 'LM1 SNARE.WAV': 'u_snare', 'SSTICK.WAV': 'u_rim',
+    'TOMH.WAV': 'u_tomhi', 'TOML.WAV': 'u_tomlo', 'TOMM.WAV': null,
+    'Chimes.wav': null, 'CONGAL.WAV': null,
   };
   for (const [file, slot] of Object.entries(cases)) assert.equal(matchSlot(file), slot, file);
 });
@@ -100,6 +107,10 @@ test('assignSamples fills named rows, then empty rows, and reports what did not 
   assert.equal(map.u_clap, 'Conga Hi.wav');
   assert.equal(map.u_chh, 'Kick 2.wav');
   assert.equal(leftover.length, 0);
+  // A prefix shared by the whole batch is skipped before the first three letters.
+  const linn = assignSamples([f('LD_CLAP.wav'), f('LD_HHCL.wav'), f('LD_KICK.wav')]);
+  assert.deepEqual(Object.fromEntries(linn.assigned.map(([s, x]) => [x.name, s])),
+    { 'LD_CLAP.wav': 'u_clap', 'LD_HHCL.wav': 'u_chh', 'LD_KICK.wav': 'u_kick' });
   const many = assignSamples(Array.from({ length: 14 }, (_, i) => f(`x${i}.wav`)));
   assert.equal(many.assigned.length, VOICES_USER.length);
   assert.equal(many.leftover.length, 2);

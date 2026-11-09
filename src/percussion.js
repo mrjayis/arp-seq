@@ -187,33 +187,65 @@ const PRESETS_USER = Object.fromEntries(Object.entries(PRESETS_LINN).map(([name,
   name, Object.fromEntries(Object.entries(rows).map(([id, row]) => [LINN_TO_USER[id], row])),
 ]));
 
-// Filename → row. Checked in order, so "open" wins over a generic "hat".
-const SLOT_PATTERNS = [
-  ['u_ohh', /\b(open|ohh|oh|hho|hhopen|openhat|openhh)\b|open ?h/],
-  ['u_tomhi', /tom ?(hi|high|h|1)\b|\b(hi|high) ?tom|tom ?1/],
-  ['u_tomlo', /tom ?(lo|low|l|3|floor)\b|\b(lo|low|floor) ?tom|tom ?3/],
-  ['u_chh', /\b(closed|chh|ch|hhc|hhclosed|closedhat|hh)\b|hi ?-?hat|\bhat\b/],
-  ['u_kick', /\b(kick|kik|bd|bass ?drum|bassdrum|bass)\b/],
-  ['u_snare', /\b(snare|sd|snr)\b/],
-  ['u_rim', /\b(rim|rimshot|rs|stick)\b|side ?stick|sidestick/],
-  ['u_clap', /\b(clap|claps|cp|handclap)\b/],
-  ['u_tamb', /tamb/],
-  ['u_cabasa', /caba|shaker/],
-  ['u_cowbell', /cow ?bell|\bcow\b/],
-  ['u_cymbal', /crash|ride|cym/],
-];
+// Filename → row, by the first three letters of the name (after any brand
+// prefix and track number), so e.g. CLAP can never land on the hi-hat row.
+const BY_PREFIX = {
+  kic: 'u_kick', kik: 'u_kick', bas: 'u_kick', bdr: 'u_kick',
+  sna: 'u_snare', snr: 'u_snare',
+  rim: 'u_rim', sid: 'u_rim', sst: 'u_rim', sti: 'u_rim',
+  cla: 'u_clap', han: 'u_clap',
+  chh: 'u_chh', clo: 'u_chh', hhc: 'u_chh', hih: 'u_chh', hat: 'u_chh',
+  ohh: 'u_ohh', ope: 'u_ohh', hho: 'u_ohh',
+  tam: 'u_tamb',
+  cab: 'u_cabasa', sha: 'u_cabasa',
+  cow: 'u_cowbell',
+  cra: 'u_cymbal', rid: 'u_cymbal', cym: 'u_cymbal',
+};
+// Two-letter codes, used only when followed by a number or nothing (BD, SD2, CH1…).
+const BY_CODE = {
+  bd: 'u_kick', sd: 'u_snare', rs: 'u_rim', cp: 'u_clap', ch: 'u_chh', hh: 'u_chh',
+  oh: 'u_ohh', cb: 'u_cowbell', cy: 'u_cymbal',
+};
+const BRAND_WORDS = new Set(['linn', 'linndrum', 'ld', 'lm', 'lm1', 'lm2', 'drum', 'drums']);
 
-/** Which row a sample file belongs to, from its name, or null. */
-export function matchSlot(filename) {
-  const name = filename
-    .toLowerCase()
-    .replace(/\.[a-z0-9]+$/, '') // extension
-    .replace(/([a-z])(\d)/g, '$1 $2') // "tom1" → "tom 1"
-    .replace(/[_\-.()[\]]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  for (const [slot, re] of SLOT_PATTERNS) if (re.test(name)) return slot;
+/** Lower-case words of a filename, without extension, track number or brand words. */
+export function sampleWords(filename, sharedPrefix = '') {
+  let name = filename.toLowerCase().replace(/\.[a-z0-9]+$/, '');
+  if (sharedPrefix && name.startsWith(sharedPrefix)) name = name.slice(sharedPrefix.length);
+  const words = name.replace(/[^a-z0-9]+/g, ' ').trim().split(' ').filter(Boolean);
+  while (words.length > 1 && (/^\d+$/.test(words[0]) || BRAND_WORDS.has(words[0]))) words.shift();
+  return words;
+}
+
+/** Which row a sample file belongs to, from the first three letters of its name, or null. */
+export function matchSlot(filename, sharedPrefix = '') {
+  const words = sampleWords(filename, sharedPrefix);
+  const compact = words.join('');
+  const p3 = compact.slice(0, 3);
+  if (p3 === 'tom') {
+    const rest = compact.slice(3);
+    if (/^(hi|high|h|1)/.test(rest)) return 'u_tomhi';
+    if (/^(lo|low|l|3|floor|f)/.test(rest)) return 'u_tomlo';
+    return null; // a mid tom has no row of its own
+  }
+  if (BY_PREFIX[p3]) return BY_PREFIX[p3];
+  const code = compact.slice(0, 2);
+  if (BY_CODE[code] && (compact.length === 2 || /\d/.test(compact[2]))) return BY_CODE[code];
+  // "High Tom" / "Floor Tom" style names.
+  const joined = words.join(' ');
+  if (/\b(hi|high) tom/.test(joined)) return 'u_tomhi';
+  if (/\b(lo|low|floor) tom/.test(joined)) return 'u_tomlo';
   return null;
+}
+
+/** Text all the names start with, cut back to the last separator ("LinnDrum ", "LD_"). */
+export function sharedPrefix(names) {
+  if (names.length < 2) return '';
+  const lower = names.map((n) => n.toLowerCase());
+  let prefix = lower[0];
+  for (const n of lower) while (!n.startsWith(prefix)) prefix = prefix.slice(0, -1);
+  const cut = Math.max(prefix.lastIndexOf(' '), prefix.lastIndexOf('_'), prefix.lastIndexOf('-'));
+  return cut >= 0 ? prefix.slice(0, cut + 1) : '';
 }
 
 /**
@@ -224,8 +256,9 @@ export function assignSamples(files, filled = new Set(), voices = VOICES_USER) {
   const taken = new Set();
   const assigned = [];
   const unmatched = [];
+  const prefix = sharedPrefix(files.map((f) => f.name));
   for (const file of files) {
-    const slot = matchSlot(file.name);
+    const slot = matchSlot(file.name, prefix);
     if (slot && !taken.has(slot)) { taken.add(slot); assigned.push([slot, file]); } else unmatched.push(file);
   }
   const leftover = [];
