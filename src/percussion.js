@@ -155,13 +155,90 @@ const PRESETS_LINN = {
   },
 };
 
+// ---- "Your samples": a kit the user fills with their own recordings (kept in
+// their browser). Rows cover a LinnDrum-style set of sounds.
+
+export const VOICES_USER = [
+  { id: 'u_kick', label: 'Kick', gm: 36 },
+  { id: 'u_snare', label: 'Snare', gm: 38 },
+  { id: 'u_rim', label: 'Rimshot', gm: 37 },
+  { id: 'u_clap', label: 'Clap', gm: 39 },
+  { id: 'u_chh', label: 'Closed HH', gm: 42 },
+  { id: 'u_ohh', label: 'Open HH', gm: 46 },
+  { id: 'u_tomhi', label: 'Tom Hi', gm: 50 },
+  { id: 'u_tomlo', label: 'Tom Lo', gm: 45 },
+  { id: 'u_tamb', label: 'Tamb', gm: 54 },
+  { id: 'u_cabasa', label: 'Cabasa', gm: 69 },
+  { id: 'u_cowbell', label: 'Cowbell', gm: 56 },
+  { id: 'u_cymbal', label: 'Cymbal', gm: 49 },
+];
+
+// The Linn-style patterns, moved onto the sample rows.
+const LINN_TO_USER = {
+  bdLinn: 'u_kick', sdLinn: 'u_snare', cpLinn: 'u_clap', chLinn: 'u_chh', ohLinn: 'u_ohh',
+  tamb: 'u_tamb', cabasa: 'u_cabasa', tomLinn: 'u_tomlo', cbLinn: 'u_cowbell',
+};
+const PRESETS_USER = Object.fromEntries(Object.entries(PRESETS_LINN).map(([name, rows]) => [
+  name, Object.fromEntries(Object.entries(rows).map(([id, row]) => [LINN_TO_USER[id], row])),
+]));
+
+// Filename → row. Checked in order, so "open" wins over a generic "hat".
+const SLOT_PATTERNS = [
+  ['u_ohh', /\b(open|ohh|oh|hho|hhopen|openhat|openhh)\b|open ?h/],
+  ['u_tomhi', /tom ?(hi|high|h|1)\b|\b(hi|high) ?tom|tom ?1/],
+  ['u_tomlo', /tom ?(lo|low|l|3|floor)\b|\b(lo|low|floor) ?tom|tom ?3/],
+  ['u_chh', /\b(closed|chh|ch|hhc|hhclosed|closedhat|hh)\b|hi ?-?hat|\bhat\b/],
+  ['u_kick', /\b(kick|kik|bd|bass ?drum|bassdrum|bass)\b/],
+  ['u_snare', /\b(snare|sd|snr)\b/],
+  ['u_rim', /\b(rim|rimshot|rs|stick)\b|side ?stick|sidestick/],
+  ['u_clap', /\b(clap|claps|cp|handclap)\b/],
+  ['u_tamb', /tamb/],
+  ['u_cabasa', /caba|shaker/],
+  ['u_cowbell', /cow ?bell|\bcow\b/],
+  ['u_cymbal', /crash|ride|cym/],
+];
+
+/** Which row a sample file belongs to, from its name, or null. */
+export function matchSlot(filename) {
+  const name = filename
+    .toLowerCase()
+    .replace(/\.[a-z0-9]+$/, '') // extension
+    .replace(/([a-z])(\d)/g, '$1 $2') // "tom1" → "tom 1"
+    .replace(/[_\-.()[\]]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  for (const [slot, re] of SLOT_PATTERNS) if (re.test(name)) return slot;
+  return null;
+}
+
+/**
+ * Assign files to rows: by name first, then any unrecognised files fill empty
+ * rows in order. Returns {assigned: [[slot, file]], leftover: [file]}.
+ */
+export function assignSamples(files, filled = new Set(), voices = VOICES_USER) {
+  const taken = new Set();
+  const assigned = [];
+  const unmatched = [];
+  for (const file of files) {
+    const slot = matchSlot(file.name);
+    if (slot && !taken.has(slot)) { taken.add(slot); assigned.push([slot, file]); } else unmatched.push(file);
+  }
+  const leftover = [];
+  for (const file of unmatched) {
+    const free = voices.find(({ id }) => !taken.has(id) && !filled.has(id));
+    if (free) { taken.add(free.id); assigned.push([free.id, file]); } else leftover.push(file);
+  }
+  return { assigned, leftover };
+}
+
 /** Menu order (a numeric key like '808' would otherwise sort first). */
-export const KIT_ORDER = ['latin', '808', 'linn'];
+export const KIT_ORDER = ['latin', '808', 'linn', 'user'];
 
 export const KITS = {
   latin: { label: 'Latin', voices: VOICES, presets: DRUM_PRESETS },
   808: { label: '808-style', voices: VOICES_808, presets: PRESETS_808 },
   linn: { label: 'Linn-style', voices: VOICES_LINN, presets: PRESETS_LINN },
+  user: { label: 'Your samples', voices: VOICES_USER, presets: PRESETS_USER },
 };
 
 /** Parse a preset into {voiceId: Array<0 | 0.65 | 1>} with every voice of the kit present. */
@@ -200,8 +277,29 @@ export class DrumSynth {
 
   play(id, time, gain = 1) {
     const t = Math.max(time, this.ctx.currentTime);
+    if (id.startsWith('u_')) return this.playSample(id, t, gain);
     const fn = this[id];
     if (typeof fn === 'function') fn.call(this, t, gain);
+  }
+
+  /** Load (or clear, with null) the AudioBuffer for a "Your samples" row. */
+  setSample(id, buffer) {
+    this.samples ??= {};
+    if (buffer) this.samples[id] = buffer;
+    else delete this.samples[id];
+  }
+
+  playSample(id, t, gain) {
+    const buffer = this.samples?.[id];
+    if (!buffer) return;
+    const src = this.ctx.createBufferSource();
+    src.buffer = buffer;
+    const g = this.ctx.createGain();
+    g.gain.value = gain; // accents 1, normal hits 0.65
+    // Hats share a choke group, as on the hardware: a closed hat cuts an open one.
+    const hat = id === 'u_chh' || id === 'u_ohh';
+    src.connect(g).connect(hat ? this.hatBus(t, 'user', id === 'u_ohh') : this.out);
+    src.start(t);
   }
 
   // Envelope helper: instant attack, exponential decay to silence.

@@ -17,8 +17,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=25" />
-  <link rel="stylesheet" href="mac.css?v=25" />
+  <link rel="stylesheet" href="styles.css?v=27" />
+  <link rel="stylesheet" href="mac.css?v=27" />
 </head>
 <body>
   <main class="device">
@@ -205,8 +205,14 @@
           <select id="drum-midi-ch" title="Send the percussion as General MIDI drum notes (usually channel 10)"><option value="-1">Off</option></select>
         </label>
       </div>
-      <p class="hint">Three synthesized kits: vintage Latin rhythm box, 808-style and Linn-style, in time with the clock and swing. Tap a
+      <p class="hint">Synthesized Latin, 808-style and Linn-style kits, or <b>Your samples</b>: load your own recordings (they stay in this browser). In time with the clock and swing. Tap a
         cell to cycle off → hit → accent; tap a name to mute it.</p>
+      <div class="row sample-tools" id="sample-tools" hidden>
+        <button id="sample-load" title="Pick audio files: they're matched to rows by name (Kick, Snare, HHOPEN…)">Load samples…</button>
+        <input id="sample-file" type="file" multiple accept="audio/*,.wav,.aif,.aiff" hidden />
+        <button id="sample-clear">Clear samples</button>
+        <span class="status" id="sample-status"></span>
+      </div>
       <div id="drum-grid" class="drum-grid"></div>
     </section>
 
@@ -403,6 +409,6 @@
       <div id="keyboard" class="keyboard"></div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=25"></script>
+  <script type="module" src="src/app.js?v=27"></script>
 </body>
 </html>

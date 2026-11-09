@@ -71,6 +71,11 @@ Three kits, all synthesized live with Web Audio (no samples). Each kit remembers
 - **808-style:** a long pitch-swept boom kick, a two-tone snare with noise, a multi-burst clap, rim, toms and cowbell, and metallic six-square hats (the closed hat chokes the open one). Presets: Electro, Boom Bap, House, Half-time.
 - **Linn-style:** a tight, clicky kick, a crisp snare, clap, hats, tambourine, cabasa, tom and cowbell. Presets: Synth Pop, Funk, Ballad, New Wave. It's a synthesized take on that early-80s character; the original machine used recorded samples.
 
+- **Your samples:** twelve rows (Kick, Snare, Rimshot, Clap, Closed HH, Open HH, Tom Hi, Tom Lo, Tamb, Cabasa, Cowbell, Cymbal) that you fill with your own recordings, such as your own drum machine.
+  - Loading: **Load samples…** (or drop a folder's worth of files on the grid) matches files to rows by name, e.g. `Kick`, `SD`, `Sidestick`, `HHOPEN`, `Tom Hi`, `Cabasa`. Unrecognised files fill empty rows; drop a single file on a row to replace it.
+  - Storage: samples are kept in this browser only (IndexedDB) and never uploaded or committed.
+  - Playback: the closed hat chokes the open hat, and accents play louder. The Linn-style patterns come mapped onto these rows.
+
 The Latin kit:
 - **Voices:** bass drum, conga low and high, bongo low and high, claves, cowbell, maracas and guiro
 - **Rhythms:** Bossa Nova, Samba, Cha-Cha, Mambo, Rhumba, Beguine and Tango. Each is a one-bar, 16th-note pattern written from the standard groove of its style.
@@ -121,5 +126,6 @@ A shared delay and reverb, with a **send** from each source (Arp, Chords, Drums)
 | `src/midi.js` | Web MIDI I/O |
 | `mac.css`, `fonts/` | System 7 theme and its bitmap font |
 | `src/fx.js` | Delay and reverb (timing and impulse-response math tested) |
+| `src/samples.js` | Stores your own drum samples in the browser |
 | `src/percussion.js` | Percussion voices, rhythm presets and pattern helpers (patterns tested) |
 | `src/app.js` | UI wiring |
