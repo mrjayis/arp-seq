@@ -39,6 +39,7 @@
 .osc2       { --mod: #5f8a2e; }
 .io         { --mod: #6a645b; }
 .fx         { --mod: #9a3b5c; }
+.song       { --mod: #4b5d23; }
 .brk        { --mod: #b25a22; }
 .keys-panel { --mod: var(--ink); --mod-ink: var(--plate); }
 .top        { --mod: var(--ink); --mod-ink: var(--plate); }
@@ -553,6 +554,28 @@ input[type="range"]::-moz-range-thumb {
 }
 .fill-led.lit { background: var(--mod); }
 
+/* ---------- song mode & slots ---------- */
+.slots button { min-width: 32px; padding: 2px 8px; }
+.slots button.used:not([aria-pressed="true"]) { text-decoration: underline; }
+.slots button.playing { box-shadow: inset 0 -4px 0 var(--mod); }
+.slots button.playing[aria-pressed="true"] { box-shadow: inset 0 -4px 0 var(--mod-ink); }
+.song.off .song-chain { opacity: 0.55; }
+.song-chain { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; min-height: 34px; align-items: center; }
+.song-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 3px 2px 6px;
+  border: 1.5px solid var(--line);
+  border-radius: 4px;
+  background: var(--field);
+}
+.song-bar small { font-size: 10px; color: var(--ink-3); min-width: 1.5ch; }
+.song-bar button { min-height: 26px; min-width: 30px; padding: 0 6px; font-weight: 700; }
+.song-bar .song-x { min-width: 22px; padding: 0 4px; font-weight: 400; border-color: transparent; background: transparent; }
+.song-bar.now { background: var(--mod); border-color: var(--mod); }
+.song-bar.now small { color: var(--mod-ink); }
+
 /* ---------- oscillator 2 ---------- */
 .osc2.off .row:not(.mod-row) > :not(#osc2-on) { opacity: 0.45; }
 
@@ -673,6 +696,7 @@ input[type="range"]::-moz-range-thumb {
 :root[data-theme="dark"] .osc2   { --mod: #97c55c; --mod-ink: #0d0c0b; }
 :root[data-theme="dark"] .io     { --mod: #a59d90; --mod-ink: #0d0c0b; }
 :root[data-theme="dark"] .fx     { --mod: #e07a9b; --mod-ink: #0d0c0b; }
+:root[data-theme="dark"] .song   { --mod: #b0cf6e; --mod-ink: #0d0c0b; }
 :root[data-theme="dark"] .brk    { --mod: #ee8d4c; --mod-ink: #0d0c0b; }
 :root[data-theme="dark"] .panel { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04); }
 :root[data-theme="dark"] .readout { box-shadow: inset 0 0 0 2px #2a2724, inset 0 0 14px rgba(246, 196, 83, 0.1); }

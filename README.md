@@ -18,6 +18,11 @@ held notes ──► ARPEGGIATOR ──► note ──► SEQUENCER step n ─�
              clock (internal or MIDI clock in)
 ```
 
+### Song mode
+Make the drums and break move through sections instead of looping one bar.
+- **Pattern slots A–D** (in the Percussion and Breakbeat windows): you edit the selected slot. A new slot starts as a copy of the one you were on, ready to vary, and **Copy to…** duplicates the current slot. Each drum kit keeps its own slots.
+- **Song** window: a chain of bars, one slot per bar (e.g. A A B A C C B D), built with **+A … +D**. Click a bar to change its slot, × to remove it. With Song on, each bar plays its slot in both windows and the chain loops, with the playing bar lit. With Song off you hear the slot you're editing.
+
 ### Arpeggiator
 - **Modes:** Up, Down, Up/Down, Down/Up, Random (never the same note twice in a row), As Played
 - **Rate:** 1/4, 1/8D (dotted 8th), 1/8, 1/8T, 1/16, 1/16T, 1/32, placed on a 24 PPQN grid so rate changes stay in time
