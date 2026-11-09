@@ -4,13 +4,13 @@ import {
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=31';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=31';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=31';
-import { Midi } from './midi.js?v=31';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=31';
-import { DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, hitsAt, assignSamples } from './percussion.js?v=31';
-import { saveSample, deleteSample, clearSamples, loadSamples } from './samples.js?v=31';
+} from './core.js?v=32';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=32';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=32';
+import { Midi } from './midi.js?v=32';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=32';
+import { DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, hitsAt, assignSamples } from './percussion.js?v=32';
+import { saveSample, deleteSample, clearSamples, loadSamples } from './samples.js?v=32';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
