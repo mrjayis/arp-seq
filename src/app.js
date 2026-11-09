@@ -4,12 +4,13 @@ import {
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=25';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=25';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=25';
-import { Midi } from './midi.js?v=25';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=25';
-import { DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, hitsAt } from './percussion.js?v=25';
+} from './core.js?v=27';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=27';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=27';
+import { Midi } from './midi.js?v=27';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=27';
+import { DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, hitsAt, assignSamples } from './percussion.js?v=27';
+import { saveSample, clearSamples, loadSamples } from './samples.js?v=27';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -100,7 +101,7 @@ const settings = {
   progOctave: 3,
   progression: defaultProgression(),
   drumOn: false,
-  drumKit: 'latin', // 'latin' | '808' | 'linn'
+  drumKit: 'latin', // 'latin' | '808' | 'linn' | 'user'
   drumPreset: 'Bossa Nova',
   drumRows: null, // the pattern being played (a preset, possibly edited)
   drumLevel: 70,
@@ -187,6 +188,7 @@ function ensureAudio() {
     }
     applyFx();
     drums = new DrumSynth(ctx, buses.drums);
+    decodeAllSamples();
     chorus = new Chorus(ctx, buses.chords);
     chorus.setMix(settings.chordChorusMix / 100);
     chorus.setRate(settings.chordChorusRate);
@@ -928,6 +930,8 @@ function switchKit(next) {
   settings.drumMuted = stored.muted || {};
   loadKitState();
   showDrumStep(-1, []);
+  $('sample-tools').hidden = settings.drumKit !== 'user';
+  if (settings.drumKit === 'user') updateSampleStatus();
   buildDrumGrid();
   fillDrumPresets();
   renderDrumGrid();
@@ -958,6 +962,17 @@ function buildDrumGrid() {
       renderDrumGrid();
       save();
     });
+    if (settings.drumKit === 'user') {
+      // Drop an audio file onto a row to load it there.
+      name.addEventListener('dragover', (e) => { e.preventDefault(); name.classList.add('drop'); });
+      name.addEventListener('dragleave', () => name.classList.remove('drop'));
+      name.addEventListener('drop', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        name.classList.remove('drop');
+        addSampleFiles(e.dataTransfer.files, id);
+      });
+    }
     grid.append(name);
     drumLabels[id] = name;
     drumCells[id] = [];
@@ -1014,7 +1029,15 @@ function renderDrumGrid() {
   $('drum-on').setAttribute('aria-pressed', String(settings.drumOn));
   $('drum-on').textContent = settings.drumOn ? 'On' : 'Off';
   $('drum-panel').classList.toggle('off', !settings.drumOn);
-  for (const { id } of kitVoices()) {
+  const user = settings.drumKit === 'user';
+  for (const { id, label } of kitVoices()) {
+    if (user) {
+      const sample = sampleStore[id];
+      drumLabels[id].classList.toggle('empty', !sample);
+      drumLabels[id].title = sample
+        ? `${label}: ${sample.name} · click to mute · drop a file to replace`
+        : `${label}: empty · drop an audio file here`;
+    }
     drumLabels[id].classList.toggle('muted', !!settings.drumMuted[id]);
     drumLabels[id].setAttribute('aria-pressed', String(!settings.drumMuted[id]));
     drumCells[id].forEach((c, s) => {
@@ -1033,8 +1056,82 @@ function showDrumStep(step, hits) {
   for (const id of ids) drumLabels[id].classList.toggle('hit', hits.includes(id));
 }
 
+// ---- "Your samples": recordings the user loads, kept in this browser only.
+const sampleStore = {}; // slot -> {name, data: ArrayBuffer}
+
+async function decodeInto(slot, data) {
+  const buffer = await ctx.decodeAudioData(data.slice(0)); // decoding detaches its input
+  drums.setSample(slot, buffer);
+}
+
+function decodeAllSamples() {
+  for (const [slot, { data }] of Object.entries(sampleStore)) decodeInto(slot, data).catch(() => {});
+}
+
+function updateSampleStatus(message = '') {
+  const n = Object.keys(sampleStore).length;
+  $('sample-status').textContent = message || `${n} of ${kitVoices().length} rows loaded. Samples stay in this browser only.`;
+}
+
+async function addSampleFiles(fileList, targetSlot = null) {
+  ensureAudio();
+  const files = [...fileList].filter((f) => f.type.startsWith('audio') || /\.(wav|aiff?|mp3|ogg|flac|m4a)$/i.test(f.name));
+  if (!files.length) { updateSampleStatus('No audio files found in that drop.'); return; }
+  const plan = targetSlot
+    ? { assigned: [[targetSlot, files[0]]], leftover: files.slice(1) }
+    : assignSamples(files, new Set(Object.keys(sampleStore)));
+  const failed = [];
+  for (const [slot, file] of plan.assigned) {
+    const data = await file.arrayBuffer();
+    try {
+      await decodeInto(slot, data);
+    } catch {
+      failed.push(file.name);
+      continue;
+    }
+    sampleStore[slot] = { name: file.name, data };
+    try { await saveSample(slot, { name: file.name, data }); } catch { /* storage unavailable: kept for this visit */ }
+  }
+  renderDrumGrid();
+  const done = plan.assigned.length - failed.length;
+  const notes = [`Loaded ${done} sample${done === 1 ? '' : 's'}.`];
+  if (failed.length) notes.push(`Couldn't read ${failed.join(', ')} (try WAV).`);
+  if (plan.leftover.length) notes.push(`No free row for ${plan.leftover.map((f) => f.name).join(', ')}.`);
+  updateSampleStatus(notes.join(' '));
+}
+
+$('sample-load').addEventListener('click', () => $('sample-file').click());
+$('sample-file').addEventListener('change', () => {
+  addSampleFiles($('sample-file').files);
+  $('sample-file').value = '';
+});
+$('drum-grid').addEventListener('dragover', (e) => { if (settings.drumKit === 'user') e.preventDefault(); });
+$('drum-grid').addEventListener('drop', (e) => {
+  if (settings.drumKit !== 'user') return;
+  e.preventDefault();
+  addSampleFiles(e.dataTransfer.files);
+});
+$('sample-clear').addEventListener('click', async () => {
+  if (!Object.keys(sampleStore).length) return;
+  if (!window.confirm('Remove all your samples from this browser?')) return;
+  for (const slot of Object.keys(sampleStore)) {
+    delete sampleStore[slot];
+    drums?.setSample(slot, null);
+  }
+  try { await clearSamples(); } catch { /* nothing stored */ }
+  renderDrumGrid();
+  updateSampleStatus();
+});
+
 buildDrums();
+$('sample-tools').hidden = settings.drumKit !== 'user';
 renderDrumGrid();
+loadSamples().then((stored) => {
+  Object.assign(sampleStore, stored);
+  if (drums) decodeAllSamples();
+  renderDrumGrid();
+  updateSampleStatus();
+});
 
 // ---------------------------------------------------------------- UI: effects
 let lastDelayBpm = 0;

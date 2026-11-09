@@ -462,6 +462,9 @@ input[type="range"]::-moz-range-thumb {
   transition: background 60ms;
 }
 .drum-name[aria-pressed="true"] { background: var(--field); border-color: var(--line); color: var(--ink); }
+.sample-tools { margin-bottom: 10px; }
+.drum-name.empty { font-style: italic; opacity: 0.6; }
+.drum-name.drop { outline: 2px dashed var(--mod); outline-offset: 1px; }
 .drum-name.muted { color: var(--ink-3); text-decoration: line-through; }
 .drum-name.hit { background: var(--mod) !important; }
 .drum-grid .cell {

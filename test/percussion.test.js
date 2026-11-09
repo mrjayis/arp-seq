@@ -42,7 +42,9 @@ test('every kit has unique voices with sounds and valid 16-step presets', () => 
     for (const { id, gm } of voices) {
       assert.ok(!seen.has(id), `${id} used by two kits`);
       seen.add(id);
-      assert.equal(typeof DrumSynth.prototype[id], 'function', `${key}: no sound for ${id}`);
+      // "Your samples" rows play loaded recordings; every other row needs a synth voice.
+      if (key === 'user') assert.equal(typeof DrumSynth.prototype.playSample, 'function');
+      else assert.equal(typeof DrumSynth.prototype[id], 'function', `${key}: no sound for ${id}`);
       assert.ok(gm >= 35 && gm <= 81, `${id} GM note ${gm}`);
     }
     assert.ok(Object.keys(presets).length >= 3, `${key} presets`);
@@ -64,4 +66,41 @@ test('hitsAt reads the given kit', () => {
   assert.deepEqual(hitsAt(rows, 0, {}, voices).map((h) => h.id), ['bd808', 'ch808']);
   assert.deepEqual(hitsAt(rows, 2, {}, voices).map((h) => h.id), ['oh808']);
   assert.deepEqual(hitsAt(rows, 4, { cp808: true }, voices).map((h) => h.id), ['bd808', 'ch808']);
+});
+
+import { matchSlot, assignSamples, VOICES_USER } from '../src/percussion.js';
+
+test('sample files are matched to rows by name', () => {
+  const cases = {
+    'LinnDrum Kick.wav': 'u_kick', 'BD.WAV': 'u_kick', 'linn_bass_drum.aif': 'u_kick',
+    'LD_Snare_1.wav': 'u_snare', 'SD2.wav': 'u_snare',
+    'Linn Sidestick.wav': 'u_rim', 'RIMSHOT.WAV': 'u_rim',
+    'Clap.wav': 'u_clap',
+    'HHCLOSED.WAV': 'u_chh', 'Hi-Hat closed.wav': 'u_chh', 'chh.wav': 'u_chh', 'hihat.wav': 'u_chh',
+    'HHOPEN.WAV': 'u_ohh', 'Open Hat.wav': 'u_ohh', 'ohh.wav': 'u_ohh',
+    'Tom Hi.wav': 'u_tomhi', 'TOM1.WAV': 'u_tomhi', 'High Tom.wav': 'u_tomhi',
+    'Tom Lo.wav': 'u_tomlo', 'tom3.wav': 'u_tomlo', 'Floor Tom.wav': 'u_tomlo',
+    'Tambourine.wav': 'u_tamb', 'CABASA.WAV': 'u_cabasa', 'Cowbell.wav': 'u_cowbell',
+    'Crash.wav': 'u_cymbal', 'Ride.wav': 'u_cymbal',
+    'Conga Hi.wav': null, 'tom2.wav': null,
+  };
+  for (const [file, slot] of Object.entries(cases)) assert.equal(matchSlot(file), slot, file);
+});
+
+test('assignSamples fills named rows, then empty rows, and reports what did not fit', () => {
+  const f = (name) => ({ name });
+  const { assigned, leftover } = assignSamples(
+    [f('Kick.wav'), f('Conga Hi.wav'), f('Snare.wav'), f('Kick 2.wav')],
+    new Set(['u_rim']),
+  );
+  const map = Object.fromEntries(assigned.map(([slot, file]) => [slot, file.name]));
+  assert.equal(map.u_kick, 'Kick.wav');
+  assert.equal(map.u_snare, 'Snare.wav');
+  // Unrecognised files go to the first empty rows (Rimshot is already filled).
+  assert.equal(map.u_clap, 'Conga Hi.wav');
+  assert.equal(map.u_chh, 'Kick 2.wav');
+  assert.equal(leftover.length, 0);
+  const many = assignSamples(Array.from({ length: 14 }, (_, i) => f(`x${i}.wav`)));
+  assert.equal(many.assigned.length, VOICES_USER.length);
+  assert.equal(many.leftover.length, 2);
 });
