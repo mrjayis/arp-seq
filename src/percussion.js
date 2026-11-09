@@ -228,9 +228,16 @@ export function matchSlot(filename, sharedPrefix = '') {
     if (/^(lo|low|l|3|floor|f)/.test(rest)) return 'u_tomlo';
     return null; // a mid tom has no row of its own
   }
-  if (BY_PREFIX[p3]) return BY_PREFIX[p3];
   const code = compact.slice(0, 2);
-  if (BY_CODE[code] && (compact.length === 2 || /\d/.test(compact[2]))) return BY_CODE[code];
+  const slot = BY_PREFIX[p3] || (BY_CODE[code] && (compact.length === 2 || /\d/.test(compact[2])) ? BY_CODE[code] : null);
+  // Hi-hats often say open/closed after the word ("Hat Open", "HH Closed"): the
+  // qualifier decides, unless the name already starts with CHH or OHH.
+  if ((slot === 'u_chh' || slot === 'u_ohh') && p3 !== 'chh' && p3 !== 'ohh') {
+    const rest = words.join(' ').replace(/^(hi ?hat|hihat|hat|hh|ch|oh)\s*/, '');
+    if (/\b(open|opn|op|o)\b|^o\d*$|open/.test(rest) || /hhop|hho/.test(compact)) return 'u_ohh';
+    if (/\b(closed|clsd|cl|c)\b|^c\d*$|closed/.test(rest)) return 'u_chh';
+  }
+  if (slot) return slot;
   // "High Tom" / "Floor Tom" style names.
   const joined = words.join(' ');
   if (/\b(hi|high) tom/.test(joined)) return 'u_tomhi';

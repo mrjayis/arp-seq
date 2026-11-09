@@ -90,6 +90,9 @@ test('sample files are matched to rows by name', () => {
     '01 Kick.wav': 'u_kick', 'LM1 SNARE.WAV': 'u_snare', 'SSTICK.WAV': 'u_rim',
     'TOMH.WAV': 'u_tomhi', 'TOML.WAV': 'u_tomlo', 'TOMM.WAV': null,
     'Chimes.wav': null, 'CONGAL.WAV': null,
+    // Open/closed written after the word.
+    'Hat Open.wav': 'u_ohh', 'HiHat Open.wav': 'u_ohh', 'HH Open.wav': 'u_ohh', 'Hihat O.wav': 'u_ohh',
+    'Hat Closed.wav': 'u_chh', 'HH Closed.wav': 'u_chh', 'HiHat.wav': 'u_chh', 'HHOP.WAV': 'u_ohh', 'HHCL.WAV': 'u_chh',
   };
   for (const [file, slot] of Object.entries(cases)) assert.equal(matchSlot(file), slot, file);
 });

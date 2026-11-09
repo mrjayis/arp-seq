@@ -463,6 +463,15 @@ input[type="range"]::-moz-range-thumb {
 }
 .drum-name[aria-pressed="true"] { background: var(--field); border-color: var(--line); color: var(--ink); }
 .sample-tools { margin-bottom: 10px; }
+.sample-map-wrap { flex-basis: 100%; }
+.sample-map-wrap summary { cursor: pointer; font-weight: 600; }
+.sample-map {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 8px 14px;
+  margin-top: 8px;
+}
+.sample-map select { width: 100%; }
 .drum-name.empty { font-style: italic; opacity: 0.6; }
 .drum-name.drop { outline: 2px dashed var(--mod); outline-offset: 1px; }
 .drum-name.muted { color: var(--ink-3); text-decoration: line-through; }
