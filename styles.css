@@ -507,18 +507,23 @@ input[type="range"]::-moz-range-thumb {
 .tracker.two-col { grid-template-columns: 1fr 1fr; grid-template-rows: repeat(17, auto); grid-auto-flow: column; }
 .trow {
   display: grid;
-  grid-template-columns: 40px 64px 58px 58px minmax(0, 1fr);
+  grid-template-columns: 34px 52px 46px 44px 46px 40px 52px minmax(0, 1fr);
   gap: 4px;
   align-items: center;
   font-variant-numeric: tabular-nums;
 }
 .trow.thead { font-size: 12px; font-style: italic; color: var(--ink-2); }
-.trow select, .trow input { min-height: 24px; padding: 1px 4px; font-size: 13px; width: 100%; }
+.trow select, .trow input { min-height: 24px; padding: 1px 4px; font-size: 13px; width: 100%; min-width: 0; }
+.trow > * { min-width: 0; }
 .trow .tstep { min-height: 24px; padding: 0 4px; font-size: 12.5px; }
 .trow.beat .tstep { font-weight: 700; }
 .trow:not(.filled) select:first-of-type { color: var(--ink-3); }
 .trow.selected .tstep { outline: 2px solid var(--mod); outline-offset: 1px; }
 .trow.now { background: color-mix(in srgb, var(--mod) 22%, transparent); }
+.trow.maybe .tstep { border-style: dashed; }
+.trow.rolled .tstep { text-decoration: underline; }
+.trow input[type="number"] { -moz-appearance: textfield; }
+.trow input::-webkit-inner-spin-button { opacity: 0.4; }
 
 /* ---------- oscillator 2 ---------- */
 .osc2.off .row:not(.mod-row) > :not(#osc2-on) { opacity: 0.45; }
@@ -658,6 +663,8 @@ input[type="range"]::-moz-range-thumb {
   .chord-pads { flex-basis: 100%; grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .prog-slots { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .tracker.two-col { grid-template-columns: 1fr; grid-template-rows: none; grid-auto-flow: row; }
+  .trow { grid-template-columns: 28px 42px 38px 36px 38px 32px 42px minmax(0, 1fr); gap: 2px; }
+  .trow select, .trow input { font-size: 12px; padding: 1px 2px; }
   .break-gen { margin-left: 0; }
   .slot:nth-child(4n + 1) { border-left: 0; }
   .slot:nth-child(n + 5) { border-top: 1.5px solid var(--line); }

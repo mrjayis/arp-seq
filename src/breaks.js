@@ -1,12 +1,35 @@
-// Breakbeat slicer: a drum break cut into equal slices, re-sequenced tracker
-// style. Pure pattern/timing helpers (unit-tested) plus a small player.
+// Breakbeat slicer: a drum break cut into slices (equal, or on detected hits)
+// and re-sequenced tracker style. Pure pattern/timing helpers (unit-tested)
+// plus a small player.
 
 export const SLICE_COUNTS = [8, 16, 32];
 export const BREAK_STEPS = [16, 32];
 export const BREAK_BARS = [1, 2, 4];
-export const BREAK_FX = { '': '—', rev: 'Reverse', r2: 'Ratchet ×2', r3: 'Ratchet ×3', r4: 'Ratchet ×4', cut: 'Cut' };
+export const BREAK_FX = { '': '—', rev: 'Reverse', cut: 'Cut' };
+export const ROLL_TYPES = {
+  R: 'R · regular',
+  Rv: 'Rv · volume down',
+  RV: 'RV · volume up',
+  Rn: 'Rn · note down',
+  RN: 'RN · note up',
+  RR: 'RR · random note',
+};
+export const MAX_ROLL = 16;
+export const MAX_TRANSIENT_SLICES = 32;
 
-export const emptyRow = () => ({ slice: null, vol: 100, pitch: 0, fx: '' });
+export const emptyRow = () => ({ slice: null, vol: 100, pitch: 0, chance: 100, roll: 0, rollType: 'R', fx: '' });
+
+/** A stored row made current: old Ratchet ×2/×3/×4 effects become R rolls. */
+export function migrateRow(row) {
+  const out = { ...emptyRow(), ...row };
+  const ratchet = { r2: 2, r3: 3, r4: 4 }[out.fx];
+  if (ratchet) { out.roll = ratchet; out.rollType = 'R'; out.fx = ''; }
+  if (!BREAK_FX[out.fx]) out.fx = '';
+  if (!ROLL_TYPES[out.rollType]) out.rollType = 'R';
+  out.chance = Math.max(0, Math.min(100, Number(out.chance ?? 100)));
+  out.roll = Math.max(0, Math.min(MAX_ROLL, Math.round(Number(out.roll) || 0)));
+  return out;
+}
 
 /** Playback rate that stretches a `bars`-long break to the tempo, times a pitch offset. */
 export function fitRate(bufferSeconds, bars, bpm, pitch = 0, fit = true) {
@@ -16,78 +39,175 @@ export function fitRate(bufferSeconds, bars, bpm, pitch = 0, fit = true) {
   return (bufferSeconds / target) * tune;
 }
 
-/** Start time (s, in the buffer) of a slice, forwards or in the reversed buffer. */
-export function sliceStart(slice, slices, duration, reverse = false) {
-  const len = duration / slices;
-  return reverse ? duration - (slice + 1) * len : slice * len;
+/** Slice start times for `slices` equal slices of a `duration`-second break. */
+export function equalPoints(slices, duration) {
+  return Array.from({ length: slices }, (_, i) => (i * duration) / slices);
+}
+
+/** Where slice `k` starts (s), forwards or in the reversed buffer. */
+export function sliceOffset(k, points, duration, reverse = false) {
+  const i = Math.max(0, Math.min(points.length - 1, k));
+  if (!reverse) return points[i];
+  const end = i + 1 < points.length ? points[i + 1] : duration;
+  return Math.max(0, duration - end);
+}
+
+/** Which slice a time (s) in the break falls in. */
+export function sliceAt(time, points) {
+  let k = 0;
+  while (k + 1 < points.length && points[k + 1] <= time) k++;
+  return k;
+}
+
+/**
+ * Find the hits in a break: frames of 5 ms, pre-emphasised so attacks count most,
+ * an onset curve of how sharply the level jumps (in log energy over 10 ms), and
+ * peaks above a local threshold that Sensitivity (0–1) lowers. Each onset is moved
+ * back to the quiet point just before its rise so slices never clip an attack.
+ * Returns slice start times in seconds, always starting with 0.
+ */
+export function detectTransients(data, rate, { sensitivity = 0.5, minGap = 0.06, max = MAX_TRANSIENT_SLICES } = {}) {
+  const hop = Math.max(1, Math.round(rate * 0.005));
+  const frames = Math.floor(data.length / hop);
+  if (frames < 4) return [0];
+  const env = new Float64Array(frames);
+  let prev = 0;
+  for (let f = 0; f < frames; f++) {
+    let e = 0;
+    for (let i = f * hop; i < (f + 1) * hop; i++) {
+      const d = data[i] - 0.95 * prev;
+      prev = data[i];
+      e += d * d;
+    }
+    env[f] = Math.log10(e / hop + 1e-10);
+  }
+  const top = Math.max(...env);
+  const floor = top - 5; // ignore anything 50 dB below the loudest moment
+  const nov = new Float64Array(frames);
+  for (let f = 2; f < frames; f++) {
+    if (env[f] < floor) continue;
+    nov[f] = Math.max(0, env[f] - Math.max(env[f - 1], env[f - 2]));
+  }
+  const delta = 0.15 + (1 - Math.max(0, Math.min(1, sensitivity))) * 1.1; // 1.5–12.5 dB rise
+  const W = 25;
+  const peaksFound = [];
+  for (let f = 2; f < frames - 1; f++) {
+    if (nov[f] <= 0) continue;
+    let sum = 0, n = 0, isMax = true;
+    for (let g = Math.max(0, f - W); g < Math.min(frames, f + W); g++) {
+      sum += nov[g]; n++;
+      if (Math.abs(g - f) <= 2 && nov[g] > nov[f]) isMax = false;
+    }
+    if (isMax && nov[f] > sum / n + delta) peaksFound.push({ f, strength: nov[f] });
+  }
+  // Enforce the minimum gap, keeping the stronger of two close hits.
+  const gapFrames = Math.round(minGap / (hop / rate));
+  const kept = [];
+  for (const p of peaksFound) {
+    const last = kept[kept.length - 1];
+    if (last && p.f - last.f < gapFrames) {
+      if (p.strength > last.strength) kept[kept.length - 1] = p;
+    } else kept.push(p);
+  }
+  // Too many: keep the strongest.
+  let chosen = kept;
+  if (chosen.length > max) chosen = [...kept].sort((a, b) => b.strength - a.strength).slice(0, max).sort((a, b) => a.f - b.f);
+  // Back each onset up to the quietest frame just before its rise.
+  const times = chosen.map(({ f }) => {
+    let g = f;
+    if (f > 0 && env[f - 1] < env[f]) g = f - 1; // one 5 ms frame of lead-in protects the attack
+    return (g * hop) / rate;
+  });
+  // Slice 1 always starts at 0; a first hit right at the start becomes that slice.
+  if (!times.length || times[0] > 0.01) times.unshift(0);
+  else times[0] = 0;
+  return times.slice(0, max);
 }
 
 /**
  * The triggers a tracker row produces within one step of `stepDur` seconds:
- * [{at (s after the step), slice, reverse, pitch, gain}] — several for a ratchet,
- * [{cut: true}] for Cut, [] for an empty row (the previous slice keeps playing).
+ * [{at (s after the step), slice, reverse, pitch, gain}]. A roll of n splits the
+ * step into n triggers, shaped by its type; Chance may skip the row (then the
+ * previous slice keeps playing). [{cut: true}] for Cut; [] for an empty row.
  */
-export function rowTriggers(row, stepDur) {
+export function rowTriggers(row, stepDur, rng = Math.random) {
   if (!row) return [];
-  if (row.fx === 'cut') return [{ at: 0, cut: true }];
-  if (row.slice === null || row.slice === undefined) return [];
-  const n = { r2: 2, r3: 3, r4: 4 }[row.fx] || 1;
-  const gain = Math.max(0, Math.min(100, row.vol ?? 100)) / 100;
-  return Array.from({ length: n }, (_, i) => ({
-    at: (i * stepDur) / n,
-    slice: row.slice,
-    reverse: row.fx === 'rev',
-    pitch: row.pitch || 0,
-    gain,
-  }));
-}
-
-/** Slices in order, spread evenly over the pattern (the break as recorded). */
-export function inOrder(steps, slices) {
-  const every = steps / Math.min(steps, slices);
-  return Array.from({ length: steps }, (_, i) => ({
-    ...emptyRow(),
-    slice: i % every === 0 ? Math.floor(i / every) % slices : null,
-  }));
+  const r = migrateRow(row);
+  if (r.chance < 100 && rng() * 100 >= r.chance) return [];
+  if (r.fx === 'cut') return [{ at: 0, cut: true }];
+  if (r.slice === null || r.slice === undefined) return [];
+  const n = r.roll > 0 ? r.roll : 1;
+  const gain = Math.max(0, Math.min(100, r.vol)) / 100;
+  return Array.from({ length: n }, (_, i) => {
+    let g = gain;
+    let pitch = r.pitch;
+    if (n > 1) {
+      if (r.rollType === 'Rv') g = gain * ((n - i) / n);
+      if (r.rollType === 'RV') g = gain * ((i + 1) / n);
+      if (r.rollType === 'Rn') pitch -= i;
+      if (r.rollType === 'RN') pitch += i;
+      if (r.rollType === 'RR' && i > 0) pitch += Math.round(rng() * 24) - 12;
+    }
+    return { at: (i * stepDur) / n, slice: r.slice, reverse: r.fx === 'rev', pitch, gain: g };
+  });
 }
 
 /**
- * A jungle-style rearrangement: the first half of the break, then repeats,
- * a stutter, a reversed hit and a snare-roll ratchet at the end.
+ * The break as recorded: each slice on the 16th step nearest where it starts in
+ * the break (`breakSteps` = the break's length in 16ths), repeating to fill.
  */
-export function chop(steps, slices) {
-  const rows = inOrder(steps, slices);
-  const every = steps / Math.min(steps, slices);
-  const at = (i, patch) => { if (i < steps) rows[i] = { ...rows[i], ...patch }; };
-  const s = (k) => Math.min(slices - 1, Math.round((k / 16) * slices));
-  const half = Math.floor(steps / 2);
-  // Second half: replay the first quarter, then a rearranged run.
-  for (let i = half; i < steps; i += every) at(i, { slice: rows[i - half].slice });
-  at(half + every * 2, { slice: s(4) }); // snare early
-  at(half + every * 3, { slice: s(4), fx: 'r2' });
-  at(steps - every * 3, { slice: s(6), fx: 'rev' });
-  at(steps - every * 2, { slice: s(12), fx: 'r3', vol: 85 });
-  at(steps - every, { slice: s(12), fx: 'r4', vol: 75 });
+export function inOrder(steps, points, duration, breakSteps) {
+  const rows = Array.from({ length: steps }, emptyRow);
+  for (let rep = 0; rep * breakSteps < steps; rep++) {
+    points.forEach((t, k) => {
+      const i = rep * breakSteps + Math.round((t / duration) * breakSteps);
+      if (i < steps && i < (rep + 1) * breakSteps && rows[i].slice === null) rows[i] = { ...rows[i], slice: k };
+    });
+  }
   return rows;
 }
 
-/** Random slices on the beat grid (with a seedable rng), occasional ratchets and reverses. */
+/**
+ * A jungle-style rearrangement of an in-order pattern: the second half replays
+ * the first, with an early snare, a roll, a reversed hit and rising rolls to finish.
+ */
+export function chop(base) {
+  const rows = base.map((r) => ({ ...r }));
+  const steps = rows.length;
+  const half = Math.floor(steps / 2);
+  const firstHits = rows.slice(0, half).map((r, i) => [i, r.slice]).filter(([, s]) => s !== null);
+  if (!firstHits.length) return rows;
+  const pick = (frac) => firstHits[Math.min(firstHits.length - 1, Math.floor(frac * firstHits.length))][1];
+  for (let i = half; i < steps; i++) rows[i] = { ...rows[i], slice: rows[i - half].slice };
+  const at = (i, patch) => { if (i >= 0 && i < steps) rows[i] = { ...rows[i], ...patch }; };
+  const q = Math.max(1, Math.round(steps / 16));
+  at(half + 4 * q, { slice: pick(0.25) });
+  at(half + 6 * q, { slice: pick(0.25), roll: 2 });
+  at(steps - 6 * q, { slice: pick(0.4), fx: 'rev' });
+  at(steps - 2 * q, { slice: pick(0.75), roll: 3, rollType: 'RV', vol: 85 });
+  at(steps - q, { slice: pick(0.75), roll: 6, rollType: 'RN', vol: 80 });
+  return rows;
+}
+
+/** Random slices on the beat grid (with a seedable rng), with occasional rolls and reverses. */
 export function randomize(steps, slices, rng = Math.random) {
-  const every = Math.max(1, steps / Math.min(steps, slices));
   return Array.from({ length: steps }, (_, i) => {
-    if (i % every !== 0 && rng() > 0.2) return emptyRow();
+    if (i % 2 !== 0 && rng() > 0.2) return emptyRow();
     const r = rng();
     return {
       ...emptyRow(),
       slice: i === 0 ? 0 : Math.floor(rng() * slices),
-      fx: r < 0.08 ? 'rev' : r < 0.16 ? 'r2' : r < 0.2 ? 'r3' : '',
+      fx: r < 0.08 ? 'rev' : '',
+      roll: r > 0.08 && r < 0.18 ? 2 + Math.floor(rng() * 3) : 0,
+      rollType: ['R', 'Rv', 'RV', 'Rn', 'RN', 'RR'][Math.floor(rng() * 6)],
+      chance: rng() < 0.15 ? 50 : 100,
     };
   });
 }
 
 /** Resize a pattern to `steps` rows (truncate or pad with empty rows). */
 export function resizePattern(rows, steps) {
-  const out = (Array.isArray(rows) ? rows : []).slice(0, steps).map((r) => ({ ...emptyRow(), ...r }));
+  const out = (Array.isArray(rows) ? rows : []).slice(0, steps).map(migrateRow);
   while (out.length < steps) out.push(emptyRow());
   return out;
 }
@@ -145,7 +265,8 @@ export class BreakPlayer {
     this.voice = null;
   }
 
-  trigger(time, { slice, slices, reverse = false, rate = 1, gain = 1 }) {
+  /** Start the break at `offset` seconds into it (into the reversed copy if `reverse`). */
+  trigger(time, { offset = 0, reverse = false, rate = 1, gain = 1 }) {
     if (!this.buffer) return;
     const t = Math.max(time, this.ctx.currentTime);
     this.stop(t);
@@ -158,7 +279,7 @@ export class BreakPlayer {
     g.gain.setValueAtTime(0, t);
     g.gain.linearRampToValueAtTime(gain, t + 0.002);
     src.connect(g).connect(this.out);
-    src.start(t, sliceStart(slice, slices, buf.duration, reverse));
+    src.start(t, Math.max(0, Math.min(buf.duration - 0.001, offset)));
     this.voice = { src, gain: g, level: gain, start: t };
   }
 }

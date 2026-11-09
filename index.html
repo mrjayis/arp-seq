@@ -17,8 +17,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=36" />
-  <link rel="stylesheet" href="mac.css?v=36" />
+  <link rel="stylesheet" href="styles.css?v=38" />
+  <link rel="stylesheet" href="mac.css?v=38" />
 </head>
 <body>
   <main class="device">
@@ -224,7 +224,11 @@
       <div class="seq-head">
         <h2>Breakbeat</h2>
         <button id="break-on" aria-pressed="false" title="Play the break pattern">Off</button>
+        <label class="field inline">Slicing <select id="break-mode" title="Equal slices, or slices that start on the detected hits"></select></label>
         <label class="field inline">Slices <select id="break-slices"></select></label>
+        <label class="field inline slider">Sensitivity <output id="break-sensitivity-val"></output>
+          <input id="break-sensitivity" type="range" min="0" max="100" title="How many hits count: low = only the big ones, high = ghost notes too" />
+        </label>
         <label class="field inline">Steps <select id="break-steps"></select></label>
         <label class="field inline">Break is <select id="break-bars" title="How long the loaded break is, so it can be fitted to the tempo"></select></label>
         <label class="check"><input id="break-fit" type="checkbox" /> Fit to tempo</label>
@@ -237,6 +241,8 @@
       </div>
       <p class="hint">A drum break cut into slices and re-sequenced, tracker style. Select a row, then click a
         slice in the waveform to put it there. An empty row lets the last slice keep playing.
+        <b>C</b> is the chance the row plays; <b>R</b> splits the step into a roll (R regular, Rv/RV volume down/up,
+        Rn/RN note down/up, RR random notes).
         Your own break stays in this browser.</p>
       <div class="row break-tools">
         <button id="break-load">Load break…</button>
@@ -447,6 +453,6 @@
       <div id="keyboard" class="keyboard"></div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=36"></script>
+  <script type="module" src="src/app.js?v=38"></script>
 </body>
 </html>
