@@ -105,13 +105,17 @@ The Latin kit:
 - Pads, keys and MIDI can all be used together. A note shared by two of them keeps sounding until both let go.
 
 ### Breakbeat slicer
-A drum break cut into **8, 16 or 32** equal slices and re-sequenced tracker style, for jungle, drum & bass and breakbeat.
+A drum break cut into slices and re-sequenced tracker style, for jungle, drum & bass and breakbeat.
+- **Slicing:** **Equal** (8, 16 or 32 slices), or **On the hits**. Transient detection finds each kick, snare and hat (up to 32) and starts each slice just before the hit's attack. **Sensitivity** sets how many hits count: low gives only the big ones, high includes ghost notes.
 - **Break:** **Load break…** (or drop one on the waveform), or use the built-in synthesized **Demo break**. Your break is kept in this browser only.
 - **Tempo:** **Break is** sets its length (1, 2 or 4 bars). **Fit to tempo** speeds it up or slows it down to the current BPM (and the pitch moves with it, the classic sound). **Pitch** adds an offset.
 - **Pattern:** 16 or 32 steps of 16ths. Each row has:
   - **Slice:** an empty row lets the previous slice keep playing, as in a tracker.
   - **Vol**, and **Pitch** (±12).
-  - **FX:** Reverse, Ratchet ×2/×3/×4 (stutter retriggers) or Cut.
+  - **C (Chance):** 0–100% that the row plays. When it doesn't, the previous slice plays on.
+  - **R (Roll):** divides the step into 0–16 retriggers. Types: **R** regular, **Rv**/**RV** volume down/up, **Rn**/**RN** a semitone down/up per hit, **RR** random notes.
+  - **FX:** Reverse or Cut.
+- **In order** places each slice on the 16th nearest where it falls in the break, so hit-sliced breaks still play back as recorded.
 - **Editing:** select a row and click a slice in the waveform to put it there; the selection moves to the next row, and you hear the slice. **In order**, **Chop** (a jungle-style rearrangement), **Randomize** and **Clear** fill the pattern.
 - **Mixing:** it plays on the drum bus, so the drum delay/reverb sends apply. It has its own **Level** and follows the clock and swing.
 

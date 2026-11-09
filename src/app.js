@@ -4,17 +4,17 @@ import {
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=36';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=36';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=36';
-import { Midi } from './midi.js?v=36';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=36';
-import { DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, hitsAt, assignSamples } from './percussion.js?v=36';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=36';
+} from './core.js?v=38';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=38';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=38';
+import { Midi } from './midi.js?v=38';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=38';
+import { DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, hitsAt, assignSamples } from './percussion.js?v=38';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=38';
 import {
-  BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, fitRate, rowTriggers, inOrder, chop, randomize,
-  resizePattern, peaks,
-} from './breaks.js?v=36';
+  BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
+  inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
+} from './breaks.js?v=38';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -118,7 +118,9 @@ const settings = {
   breakFit: true, // stretch the break to the tempo
   breakPitch: 0,
   breakLevel: 80,
-  breakPattern: null, // tracker rows: {slice, vol, pitch, fx}
+  breakPattern: null, // tracker rows: {slice, vol, pitch, chance, roll, rollType, fx}
+  breakSliceMode: 'equal', // 'equal' | 'transient' (slices start on detected hits)
+  breakSensitivity: 50,
   chordMidiCh: -1,
 };
 
@@ -1279,6 +1281,7 @@ loadSamples().then(async (stored) => {
 let breakPlayer = null;
 let breakBuffer = null; // AudioBuffer of the break (yours, or the synthesized demo)
 let breakName = '';
+let breakPoints = [0]; // slice start times (s): equal slices, or detected hits
 let breakSelected = 0; // tracker row that a click on the waveform writes into
 let breakNowStep = -1;
 let breakNowSlice = null;
@@ -1287,29 +1290,51 @@ const breakRowEls = [];
 if (!SLICE_COUNTS.includes(settings.breakSlices)) settings.breakSlices = 16;
 if (!BREAK_STEPS.includes(settings.breakSteps)) settings.breakSteps = 32;
 if (!BREAK_BARS.includes(settings.breakBars)) settings.breakBars = 2;
+if (!['equal', 'transient'].includes(settings.breakSliceMode)) settings.breakSliceMode = 'equal';
+if (typeof settings.breakPatternAuto !== 'boolean') settings.breakPatternAuto = !Array.isArray(settings.breakPattern);
 settings.breakPattern = Array.isArray(settings.breakPattern) && settings.breakPattern.length
   ? resizePattern(settings.breakPattern, settings.breakSteps)
-  : inOrder(settings.breakSteps, settings.breakSlices);
+  : inOrder(settings.breakSteps, equalPoints(settings.breakSlices, 1), 1, settings.breakBars * 16);
+
+const sliceCount = () => breakPoints.length;
+
+/** Recompute slice starts for the current break and slicing mode; refresh the pattern if it's auto. */
+function computeBreakPoints() {
+  if (!breakBuffer) return;
+  breakPoints = settings.breakSliceMode === 'transient'
+    ? detectTransients(breakBuffer.getChannelData(0), breakBuffer.sampleRate, { sensitivity: settings.breakSensitivity / 100 })
+    : equalPoints(settings.breakSlices, breakBuffer.duration);
+  if (settings.breakPatternAuto) settings.breakPattern = orderedPattern();
+  $('break-slices').disabled = settings.breakSliceMode === 'transient';
+  $('break-sensitivity').disabled = settings.breakSliceMode !== 'transient';
+  buildBreakRows();
+  updateBreakStatus();
+}
+
+function orderedPattern() {
+  return inOrder(settings.breakSteps, breakPoints, breakBuffer ? breakBuffer.duration : 1, settings.breakBars * 16);
+}
 
 function playBreakStep(step) {
   const idx = step.stepNumber % settings.breakSteps;
   const row = settings.breakPattern[idx];
+  const triggers = rowTriggers(row, step.duration);
+  let shown = null;
   if (breakPlayer && breakBuffer) {
     const rate = fitRate(breakBuffer.duration, settings.breakBars, currentBpm(), settings.breakPitch, settings.breakFit);
-    for (const tr of rowTriggers(row, step.duration)) {
-      if (tr.cut) breakPlayer.stop(step.time);
-      else {
-        breakPlayer.trigger(step.time + tr.at, {
-          slice: Math.min(tr.slice, settings.breakSlices - 1),
-          slices: settings.breakSlices,
-          reverse: tr.reverse,
-          rate: rate * Math.pow(2, tr.pitch / 12),
-          gain: tr.gain,
-        });
-      }
+    for (const tr of triggers) {
+      if (tr.cut) { breakPlayer.stop(step.time); continue; }
+      const slice = Math.min(tr.slice, sliceCount() - 1);
+      shown = slice;
+      breakPlayer.trigger(step.time + tr.at, {
+        offset: sliceOffset(slice, breakPoints, breakBuffer.duration, tr.reverse),
+        reverse: tr.reverse,
+        rate: rate * Math.pow(2, tr.pitch / 12),
+        gain: tr.gain,
+      });
     }
   }
-  uiEvents.push({ kind: 'break', time: step.time, step: idx, slice: row.slice ?? null, cut: row.fx === 'cut' });
+  uiEvents.push({ kind: 'break', time: step.time, step: idx, slice: shown });
 }
 
 /**
@@ -1333,8 +1358,7 @@ async function renderDemoBreak() {
     });
   }
   const rendered = await ctxOff.startRendering();
-  // Trim to exactly two bars.
-  const n = Math.round(44100 * step * 32);
+  const n = Math.round(44100 * step * 32); // exactly two bars
   const out = new AudioBuffer({ length: n, numberOfChannels: 1, sampleRate: 44100 });
   out.copyToChannel(rendered.getChannelData(0).subarray(0, n), 0);
   return out;
@@ -1344,15 +1368,15 @@ function setBreak(buffer, name) {
   breakBuffer = buffer;
   breakName = name;
   breakPlayer?.setBuffer(buffer);
-  drawBreak();
-  updateBreakStatus();
+  computeBreakPoints();
 }
 
 function updateBreakStatus(message = '') {
-  const secs = breakBuffer ? `${breakBuffer.duration.toFixed(2)} s` : '';
-  const orig = breakBuffer ? Math.round((settings.breakBars * 4 * 60) / breakBuffer.duration) : 0;
-  $('break-status').textContent = message
-    || (breakBuffer ? `${breakName} · ${secs} · ${settings.breakBars} bar${settings.breakBars > 1 ? 's' : ''} ≈ ${orig} BPM as recorded` : 'Loading…');
+  if (message) { $('break-status').textContent = message; return; }
+  if (!breakBuffer) { $('break-status').textContent = 'Loading…'; return; }
+  const orig = Math.round((settings.breakBars * 4 * 60) / breakBuffer.duration);
+  const hits = settings.breakSliceMode === 'transient' ? ` · ${sliceCount()} hits found` : '';
+  $('break-status').textContent = `${breakName} · ${breakBuffer.duration.toFixed(2)} s · ${settings.breakBars} bar${settings.breakBars > 1 ? 's' : ''} ≈ ${orig} BPM as recorded${hits}`;
 }
 
 async function loadBreakFile(file) {
@@ -1366,7 +1390,9 @@ async function loadBreakFile(file) {
     updateBreakStatus(`Couldn't read ${file.name} (try WAV).`);
     return;
   }
+  settings.breakPatternAuto = true; // a new break starts in order
   setBreak(buffer, file.name);
+  save();
   try { await saveBreak({ name: file.name, data }); } catch { /* storage unavailable: kept for this visit */ }
 }
 
@@ -1386,15 +1412,17 @@ function drawBreak() {
   g.fillStyle = field;
   g.fillRect(0, 0, w, h);
   if (!breakBuffer) return;
-  const n = settings.breakSlices;
-  const sw = w / n;
-  // Highlight the slice playing now and the slice on the selected row.
+  const dur = breakBuffer.duration;
+  const xOf = (t) => (t / dur) * w;
+  const span = (k) => [xOf(breakPoints[k]), xOf(k + 1 < breakPoints.length ? breakPoints[k + 1] : dur)];
+  // Highlight the slice on the selected row and the slice playing now.
   const sel = settings.breakPattern[breakSelected]?.slice;
   for (const [slice, alpha] of [[sel, 0.12], [breakNowSlice, 0.28]]) {
-    if (slice === null || slice === undefined) continue;
+    if (slice === null || slice === undefined || slice >= breakPoints.length) continue;
+    const [x0, x1] = span(slice);
     g.globalAlpha = alpha;
     g.fillStyle = mod;
-    g.fillRect(slice * sw, 0, sw, h);
+    g.fillRect(x0, 0, x1 - x0, h);
     g.globalAlpha = 1;
   }
   g.fillStyle = ink;
@@ -1410,14 +1438,15 @@ function drawBreak() {
   g.strokeStyle = mod;
   g.lineWidth = 1;
   g.font = '10px sans-serif';
-  for (let i = 0; i < n; i++) {
-    const x = Math.round(i * sw) + 0.5;
+  breakPoints.forEach((t, k) => {
+    const x = Math.round(xOf(t)) + 0.5;
     g.beginPath();
     g.moveTo(x, 0);
     g.lineTo(x, h);
     g.stroke();
-    if (sw > 14) { g.fillStyle = mod; g.fillText(String(i + 1), x + 3, 11); }
-  }
+    const [x0, x1] = span(k);
+    if (x1 - x0 > 12) { g.fillStyle = mod; g.fillText(String(k + 1), x + 3, 11); }
+  });
 }
 
 function buildBreakRows() {
@@ -1427,8 +1456,19 @@ function buildBreakRows() {
   wrap.classList.toggle('two-col', settings.breakSteps > 16);
   const head = document.createElement('div');
   head.className = 'trow thead';
-  head.innerHTML = '<span>Step</span><span>Slice</span><span>Vol</span><span>Pitch</span><span>FX</span>';
+  head.innerHTML = '<span>Step</span><span>Slice</span><span>Vol</span><span>Pitch</span>'
+    + '<span title="Chance: 0–100% that the step plays">C %</span>'
+    + '<span title="Roll: divide the step into 0–16 retriggers">R</span><span>Roll type</span><span>FX</span>';
   wrap.append(head);
+  const count = sliceCount();
+  const number = (value, min, max, step, label, onChange) => {
+    const el = document.createElement('input');
+    el.type = 'number'; el.min = String(min); el.max = String(max); el.step = String(step);
+    el.value = String(value);
+    el.setAttribute('aria-label', label);
+    el.addEventListener('change', () => onChange(Math.max(min, Math.min(max, Number(el.value) || 0))));
+    return el;
+  };
   settings.breakPattern.forEach((row, i) => {
     if (i === 16) wrap.append(head.cloneNode(true)); // the second column's header
     const el = document.createElement('div');
@@ -1441,26 +1481,29 @@ function buildBreakRows() {
     const slice = document.createElement('select');
     slice.setAttribute('aria-label', `Step ${i + 1} slice`);
     slice.add(new Option('—', ''));
-    for (let s = 0; s < settings.breakSlices; s++) slice.add(new Option(String(s + 1), String(s)));
-    slice.value = row.slice === null ? '' : String(Math.min(row.slice, settings.breakSlices - 1));
+    for (let s = 0; s < count; s++) slice.add(new Option(String(s + 1), String(s)));
+    slice.value = row.slice === null ? '' : String(Math.min(row.slice, count - 1));
     slice.addEventListener('change', () => editBreakRow(i, { slice: slice.value === '' ? null : Number(slice.value) }));
-    const vol = document.createElement('input');
-    vol.type = 'number'; vol.min = '0'; vol.max = '100'; vol.step = '5';
-    vol.value = String(row.vol);
-    vol.setAttribute('aria-label', `Step ${i + 1} volume`);
-    vol.addEventListener('change', () => editBreakRow(i, { vol: Math.max(0, Math.min(100, Number(vol.value) || 0)) }));
-    const pitch = document.createElement('input');
-    pitch.type = 'number'; pitch.min = '-12'; pitch.max = '12'; pitch.step = '1';
-    pitch.value = String(row.pitch);
-    pitch.setAttribute('aria-label', `Step ${i + 1} pitch`);
-    pitch.addEventListener('change', () => editBreakRow(i, { pitch: Math.max(-12, Math.min(12, Number(pitch.value) || 0)) }));
+    const vol = number(row.vol, 0, 100, 5, `Step ${i + 1} volume`, (v) => editBreakRow(i, { vol: v }));
+    const pitch = number(row.pitch, -12, 12, 1, `Step ${i + 1} pitch`, (v) => editBreakRow(i, { pitch: v }));
+    const chance = number(row.chance, 0, 100, 5, `Step ${i + 1} chance`, (v) => editBreakRow(i, { chance: v }));
+    const roll = number(row.roll, 0, MAX_ROLL, 1, `Step ${i + 1} roll`, (v) => editBreakRow(i, { roll: v }));
+    const rollType = document.createElement('select');
+    rollType.setAttribute('aria-label', `Step ${i + 1} roll type`);
+    for (const [k, label] of Object.entries(ROLL_TYPES)) {
+      const o = new Option(k, k);
+      o.title = label;
+      rollType.add(o);
+    }
+    rollType.value = row.rollType;
+    rollType.addEventListener('change', () => editBreakRow(i, { rollType: rollType.value }));
     const fx = document.createElement('select');
     fx.setAttribute('aria-label', `Step ${i + 1} effect`);
     for (const [k, label] of Object.entries(BREAK_FX)) fx.add(new Option(label, k));
     fx.value = row.fx;
     fx.addEventListener('change', () => editBreakRow(i, { fx: fx.value }));
-    for (const c of [slice, vol, pitch, fx]) c.addEventListener('focus', () => selectBreakRow(i));
-    el.append(num, slice, vol, pitch, fx);
+    for (const c of [slice, vol, pitch, chance, roll, rollType, fx]) c.addEventListener('focus', () => selectBreakRow(i));
+    el.append(num, slice, vol, pitch, chance, roll, rollType, fx);
     wrap.append(el);
     breakRowEls.push(el);
   });
@@ -1469,8 +1512,12 @@ function buildBreakRows() {
 
 function editBreakRow(i, patch) {
   settings.breakPattern[i] = { ...settings.breakPattern[i], ...patch };
+  settings.breakPatternAuto = false; // your edits stay put when the slicing changes
+  const r = settings.breakPattern[i];
   const el = breakRowEls[i];
-  el.classList.toggle('filled', settings.breakPattern[i].slice !== null || settings.breakPattern[i].fx === 'cut');
+  el.classList.toggle('filled', r.slice !== null || r.fx === 'cut');
+  el.classList.toggle('maybe', r.chance < 100);
+  el.classList.toggle('rolled', r.roll > 1);
   drawBreak();
   save();
 }
@@ -1482,6 +1529,8 @@ function selectBreakRow(i) {
   breakRowEls.forEach((el, k) => {
     const r = settings.breakPattern[k];
     el.classList.toggle('filled', r.slice !== null || r.fx === 'cut');
+    el.classList.toggle('maybe', r.chance < 100);
+    el.classList.toggle('rolled', r.roll > 1);
   });
   drawBreak();
 }
@@ -1506,11 +1555,10 @@ function renderBreakPanel() {
 $('break-wave').addEventListener('click', (e) => {
   if (!breakBuffer) return;
   const rect = $('break-wave').getBoundingClientRect();
-  const slice = Math.min(settings.breakSlices - 1, Math.floor(((e.clientX - rect.left) / rect.width) * settings.breakSlices));
+  const slice = sliceAt(((e.clientX - rect.left) / rect.width) * breakBuffer.duration, breakPoints);
   ensureAudio();
   breakPlayer?.trigger(ctx.currentTime + 0.01, {
-    slice,
-    slices: settings.breakSlices,
+    offset: breakPoints[slice],
     rate: fitRate(breakBuffer.duration, settings.breakBars, currentBpm(), settings.breakPitch, settings.breakFit),
   });
   const row = breakSelected;
@@ -1534,24 +1582,34 @@ $('break-on').addEventListener('click', () => {
 for (const n of SLICE_COUNTS) $('break-slices').add(new Option(String(n), String(n)));
 for (const n of BREAK_STEPS) $('break-steps').add(new Option(`${n} (${n / 16} bar${n > 16 ? 's' : ''})`, String(n)));
 for (const n of BREAK_BARS) $('break-bars').add(new Option(`${n} bar${n > 1 ? 's' : ''}`, String(n)));
-bindSelect('break-slices', 'breakSlices', null, () => { buildBreakRows(); drawBreak(); });
+bindSelect('break-mode', 'breakSliceMode', [['equal', 'Equal'], ['transient', 'On the hits']], () => computeBreakPoints());
+bindSelect('break-slices', 'breakSlices', null, () => computeBreakPoints());
+let sensitivityTimer;
+bindRange('break-sensitivity', 'breakSensitivity', (v) => `${v}%`, () => {
+  clearTimeout(sensitivityTimer);
+  sensitivityTimer = setTimeout(computeBreakPoints, 120); // re-detect once the slider settles
+});
 bindSelect('break-steps', 'breakSteps', null, () => {
-  settings.breakPattern = resizePattern(settings.breakPattern, settings.breakSteps);
+  settings.breakPattern = settings.breakPatternAuto ? orderedPattern() : resizePattern(settings.breakPattern, settings.breakSteps);
   buildBreakRows();
 });
-bindSelect('break-bars', 'breakBars', null, () => updateBreakStatus());
+bindSelect('break-bars', 'breakBars', null, () => {
+  if (settings.breakPatternAuto) { settings.breakPattern = orderedPattern(); buildBreakRows(); }
+  updateBreakStatus();
+});
 $('break-fit').checked = settings.breakFit;
 $('break-fit').addEventListener('change', () => { settings.breakFit = $('break-fit').checked; save(); });
 bindRange('break-pitch', 'breakPitch', (v) => `${v > 0 ? '+' : ''}${v.toFixed(1)} st`);
 bindRange('break-level', 'breakLevel', (v) => `${v}%`, (v) => breakPlayer?.setLevel(v / 100));
 document.querySelectorAll('[data-gen]').forEach((b) => b.addEventListener('click', () => {
-  const { breakSteps: steps, breakSlices: slices } = settings;
+  const steps = settings.breakSteps;
   settings.breakPattern = {
-    order: () => inOrder(steps, slices),
-    chop: () => chop(steps, slices),
-    random: () => randomize(steps, slices),
+    order: () => orderedPattern(),
+    chop: () => chop(orderedPattern()),
+    random: () => randomize(steps, sliceCount()),
     clear: () => resizePattern([], steps),
   }[b.dataset.gen]();
+  settings.breakPatternAuto = b.dataset.gen === 'order';
   buildBreakRows();
   save();
 }));
@@ -1563,15 +1621,17 @@ $('break-file').addEventListener('change', () => {
 $('break-wave').addEventListener('dragover', (e) => e.preventDefault());
 $('break-wave').addEventListener('drop', (e) => { e.preventDefault(); loadBreakFile(e.dataTransfer.files[0]); });
 $('break-demo').addEventListener('click', async () => {
-  setBreak(await renderDemoBreak(), 'Demo break (synthesized)');
   settings.breakBars = 2;
   $('break-bars').value = '2';
-  updateBreakStatus();
+  settings.breakPatternAuto = true;
+  setBreak(await renderDemoBreak(), 'Demo break (synthesized)');
   save();
   try { await saveBreak({ name: 'demo', data: null }); } catch { /* ignore */ }
 });
 window.addEventListener('resize', () => drawBreak());
 
+$('break-sensitivity').disabled = settings.breakSliceMode !== 'transient';
+$('break-slices').disabled = settings.breakSliceMode === 'transient';
 buildBreakRows();
 renderBreakPanel();
 // Your saved break, decoded without needing an audio context yet; else the demo.
