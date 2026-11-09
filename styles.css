@@ -220,7 +220,25 @@ select:focus-visible, input:focus-visible, button:focus-visible {
   outline-offset: 2px;
 }
 
-.play { min-width: 96px; font-weight: 600; }
+.play {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 108px;
+  min-height: 40px;
+  padding: 4px 16px 4px 12px;
+  font-size: 16px;
+  font-weight: 600;
+  border-width: 2px;
+}
+.play svg { width: 15px; height: 15px; fill: var(--brick); flex: none; }
+.play[aria-pressed="true"],
+.play[aria-pressed="true"]:hover {
+  background: var(--brick);
+  border-color: var(--brick);
+  color: #fff;
+}
+.play[aria-pressed="true"] svg { fill: #fff; }
 .bpm-wrap { display: flex; align-items: center; gap: 6px; }
 .bpm-wrap input { width: 82px; font-weight: 600; }
 .bpm-wrap .unit { color: var(--ink-2); font-style: italic; }

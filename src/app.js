@@ -4,11 +4,11 @@ import {
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=12';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=12';
-import { Synth, Chorus, LPG_MODES } from './synth.js?v=12';
-import { Midi } from './midi.js?v=12';
-import { DrumSynth, DRUM_PRESETS, DRUM_STEPS, VOICES, parsePattern, hitsAt } from './percussion.js?v=12';
+} from './core.js?v=13';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=13';
+import { Synth, Chorus, LPG_MODES } from './synth.js?v=13';
+import { Midi } from './midi.js?v=13';
+import { DrumSynth, DRUM_PRESETS, DRUM_STEPS, VOICES, parsePattern, hitsAt } from './percussion.js?v=13';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -352,7 +352,10 @@ function setPlaying(on, { fromClock = false } = {}) {
     renderKeyState();
   }
   $('play').setAttribute('aria-pressed', String(on));
-  $('play').textContent = on ? '■ Stop' : '▶ Play';
+  // Drawn icons, not ▶/■ characters: some systems swap those for grey emoji tiles.
+  $('play').innerHTML = on
+    ? '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="1"/></svg><span>Stop</span>'
+    : '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 1.5v13l11-6.5z"/></svg><span>Play</span>';
 }
 
 // ---------------------------------------------------------------- note input
