@@ -329,6 +329,11 @@ export function hitsAt(rows, step, muted = {}, voices = VOICES) {
   return voices.filter(({ id }) => !muted[id] && rows[id]?.[s] > 0).map(({ id }) => ({ id, gain: rows[id][s] }));
 }
 
+/** Playback-rate multiplier for a tuning in semitones (clamped to ±24). */
+export function tuneRate(semitones) {
+  return Math.pow(2, Math.min(24, Math.max(-24, semitones || 0)) / 12);
+}
+
 // ------------------------------------------------------------------ sound
 
 export class DrumSynth {
@@ -347,9 +352,9 @@ export class DrumSynth {
     this.out.gain.setTargetAtTime(v, this.ctx.currentTime, 0.02);
   }
 
-  play(id, time, gain = 1) {
+  play(id, time, gain = 1, tune = 0) {
     const t = Math.max(time, this.ctx.currentTime);
-    if (id.startsWith('u_')) return this.playSample(id, t, gain);
+    if (id.startsWith('u_')) return this.playSample(id, t, gain, tune);
     const fn = this[id];
     if (typeof fn === 'function') fn.call(this, t, gain);
   }
@@ -361,11 +366,14 @@ export class DrumSynth {
     else delete this.samples[id];
   }
 
-  playSample(id, t, gain) {
+  /** `tune` in semitones: like the hardware's tuning knobs it changes playback
+   *  speed, so tuning down also lengthens and darkens the sound. */
+  playSample(id, t, gain, tune = 0) {
     const buffer = this.samples?.[id];
     if (!buffer) return;
     const src = this.ctx.createBufferSource();
     src.buffer = buffer;
+    src.playbackRate.value = tuneRate(tune);
     const g = this.ctx.createGain();
     g.gain.value = gain; // accents 1, normal hits 0.65
     // Hats share a choke group, as on the hardware: a closed hat cuts an open one.

@@ -138,3 +138,14 @@ test('the Latin rhythms play on the 808 with its congas, claves and maracas', ()
   assert.deepEqual(mapPreset({ a: 'x.X.', b: 'X.x.' }, { a: 't', b: 't' }), { t: 'X.X.' });
   assert.deepEqual(mapPreset({ a: 'x...', z: 'X...' }, { a: 't' }), { t: 'x...' });
 });
+
+import { tuneRate } from '../src/percussion.js';
+
+test('sample tuning maps semitones to playback rate', () => {
+  assert.equal(tuneRate(0), 1);
+  assert.ok(Math.abs(tuneRate(12) - 2) < 1e-12);
+  assert.ok(Math.abs(tuneRate(-12) - 0.5) < 1e-12);
+  assert.ok(Math.abs(tuneRate(7) - 1.4983) < 1e-4);
+  assert.equal(tuneRate(undefined), 1);
+  assert.equal(tuneRate(99), 4); // clamped to ±24
+});
