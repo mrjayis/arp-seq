@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Arp-Seq</title>
+  <link rel="stylesheet" href="styles.css?v=7" />
+</head>
+<body>
+  <main class="device">
+    <header class="top">
+      <h1>ARP<span>·</span>SEQ</h1>
+      <div class="readout" aria-live="polite">
+        <span class="label">In</span> <span id="out-src">—</span>
+        <span class="arrow">→</span>
+        <span class="label">Out</span> <span id="out-note">—</span>
+        <span id="out-vel" class="vel"></span>
+        <span id="out-osc2-wrap" hidden><span class="sep">|</span>
+          <span class="label">Osc 2</span> <span id="out-osc2">—</span></span>
+      </div>
+    </header>
+
+    <section class="panel transport" aria-label="Transport">
+      <h2>Clock</h2>
+      <div class="row">
+        <button id="play" class="play" aria-pressed="false" title="Play / Stop (Space)">▶ Play</button>
+        <label class="field">Tempo
+          <span class="bpm-wrap">
+            <input id="bpm" type="number" min="20" max="300" step="0.1" value="120" />
+            <span class="unit">BPM</span>
+          </span>
+        </label>
+        <button id="tap" title="Tap tempo">Tap</button>
+        <label class="field">Sync
+          <select id="sync">
+            <option value="internal">Internal</option>
+            <option value="external">MIDI Clock In</option>
+          </select>
+        </label>
+        <label class="check"><input id="clock-out" type="checkbox" /> Send MIDI clock</label>
+      </div>
+    </section>
+
+    <section class="panel arp" aria-label="Arpeggiator">
+      <h2>Arpeggiator</h2>
+      <div class="row">
+        <label class="field">Mode <select id="mode"></select></label>
+        <label class="field">Rate <select id="rate"></select></label>
+        <label class="field">Octaves
+          <select id="octaves">
+            <option>1</option><option>2</option><option>3</option><option>4</option>
+          </select>
+        </label>
+        <label class="field slider">Gate <output id="gate-val">50%</output>
+          <input id="gate" type="range" min="5" max="100" value="50" />
+        </label>
+        <label class="field slider">Swing <output id="swing-val">0%</output>
+          <input id="swing" type="range" min="0" max="75" value="0" />
+        </label>
+        <button id="latch" aria-pressed="false" title="Hold notes after release">Latch</button>
+      </div>
+    </section>
+
+    <section class="panel prog" id="prog-panel" aria-label="Chord progression">
+      <div class="seq-head">
+        <h2>Progression</h2>
+        <button id="prog-on" aria-pressed="false" title="Play the chord progression">Off</button>
+        <div class="len" id="prog-length" aria-label="Number of chords"></div>
+        <label class="field inline">Octave <select id="prog-octave"></select></label>
+        <label class="field inline">Preset
+          <select id="prog-preset"><option value="">Load…</option></select>
+        </label>
+      </div>
+      <p class="hint">Program up to 8 chords; each plays for its number of beats, then the next, looping.
+        The arpeggiator and chord rhythm play whatever chord is up; keys you hold are added to it.</p>
+      <div id="prog-slots" class="prog-slots"></div>
+    </section>
+
+    <section class="panel rhythm" id="chord-panel" aria-label="Chord rhythm">
+      <h2>Chord Rhythm</h2>
+      <p class="hint">Repeats the held chord in a Euclidean rhythm while the arpeggiator keeps playing.
+        <b>Hits</b> are spread as evenly as possible over the <b>Steps</b> (3 in 8 = x..x..x.).</p>
+      <div class="row">
+        <button id="chord-on" aria-pressed="true" title="Turn the chord rhythm on or off">On</button>
+        <label class="check gate-arp" title="Arp only plays while this pattern is on a hit (works even with the chords off)">
+          <input id="chord-gate-arp" type="checkbox" /> Gate arp</label>
+        <label class="field">Rate <select id="chord-rate"></select></label>
+        <label class="field">Steps <select id="chord-steps"></select></label>
+        <label class="field">Hits <select id="chord-hits"></select></label>
+        <label class="field">Rotate <select id="chord-rotate"></select></label>
+        <div class="field pattern-field">Pattern
+          <div id="chord-pattern" class="euclid" role="img"></div>
+        </div>
+      </div>
+      <div class="row">
+        <label class="field">Wave
+          <select id="chord-wave">
+            <option value="sawtooth">Saw</option>
+            <option value="square">Square</option>
+            <option value="triangle">Triangle</option>
+            <option value="sine">Sine</option>
+          </select>
+        </label>
+        <label class="field">Octave <select id="chord-octave"></select></label>
+        <label class="field slider">Gate <output id="chord-gate-val"></output>
+          <input id="chord-gate" type="range" min="5" max="100" value="80" />
+        </label>
+        <label class="field slider">Level <output id="chord-level-val"></output>
+          <input id="chord-level" type="range" min="0" max="100" value="45" />
+        </label>
+        <label class="check" title="Shift and scale the chord by the sequencer step the arp is on">
+          <input id="chord-follow" type="checkbox" /> Follow sequencer</label>
+        <label class="field">MIDI Out Ch
+          <select id="chord-midi-ch" title="Send the chords to their own MIDI channel"><option value="-1">Off</option></select>
+        </label>
+      </div>
+      <div class="row">
+        <span class="row-label">Filter</span>
+        <label class="field slider">Cutoff <output id="chord-cutoff-val"></output>
+          <input id="chord-cutoff" type="range" min="0" max="1000" step="1" />
+        </label>
+        <label class="field slider">Resonance <output id="chord-res-val"></output>
+          <input id="chord-res" type="range" min="0.5" max="15" step="0.1" />
+        </label>
+        <span class="row-label">Chorus</span>
+        <label class="field slider">Mix <output id="chorus-mix-val"></output>
+          <input id="chorus-mix" type="range" min="0" max="100" />
+        </label>
+        <label class="field slider">Rate <output id="chorus-rate-val"></output>
+          <input id="chorus-rate" type="range" min="0.05" max="5" step="0.05" />
+        </label>
+        <label class="field slider">Depth <output id="chorus-depth-val"></output>
+          <input id="chorus-depth" type="range" min="0" max="100" />
+        </label>
+      </div>
+    </section>
+
+    <section class="panel drums" id="drum-panel" aria-label="Percussion">
+      <div class="seq-head">
+        <h2>Percussion</h2>
+        <button id="drum-on" aria-pressed="false" title="Play the percussion">Off</button>
+        <label class="field inline">Rhythm <select id="drum-preset"></select></label>
+        <label class="field inline slider">Level <output id="drum-level-val"></output>
+          <input id="drum-level" type="range" min="0" max="100" value="70" />
+        </label>
+        <label class="field inline">MIDI Out Ch
+          <select id="drum-midi-ch" title="Send the percussion as General MIDI drum notes (usually channel 10)"><option value="-1">Off</option></select>
+        </label>
+      </div>
+      <p class="hint">Vintage rhythm-box style Latin percussion, in time with the clock and swing. Tap a
+        cell to cycle off → hit → accent; tap a name to mute it.</p>
+      <div id="drum-grid" class="drum-grid"></div>
+    </section>
+
+    <section class="panel seq" aria-label="Sequencer">
+      <div class="seq-head">
+        <h2>Sequencer</h2>
+        <div class="len" role="radiogroup" aria-label="Sequencer length" id="length"></div>
+        <button id="seq-reset" title="Reset all steps">Reset steps</button>
+      </div>
+      <p class="hint">Each arpeggiated note takes the next step: its pitch is shifted by the step's
+        semitones and its volume scaled by the step's level.</p>
+      <div id="steps" class="steps"></div>
+    </section>
+
+    <section class="panel osc2" id="osc2-panel" aria-label="Oscillator 2">
+      <h2>Oscillator 2</h2>
+      <p class="hint">A second voice on every arpeggiated note. It plays each sequencer step's offset
+        as-is (<b>Same</b>) or flipped (<b>Inverted</b>: +7 becomes −7, −12 becomes +12).</p>
+      <div class="row">
+        <button id="osc2-on" aria-pressed="true" title="Turn oscillator 2 on or off">On</button>
+        <div class="field">Sequence
+          <div class="seg" id="osc2-mode" role="radiogroup" aria-label="Oscillator 2 sequence"></div>
+        </div>
+        <label class="field">Wave
+          <select id="osc2-wave">
+            <option value="sawtooth">Saw</option>
+            <option value="square">Square</option>
+            <option value="triangle">Triangle</option>
+            <option value="sine">Sine</option>
+          </select>
+        </label>
+        <label class="field">Transpose <select id="osc2-transpose"></select></label>
+        <label class="field slider">Detune <output id="osc2-detune-val"></output>
+          <input id="osc2-detune" type="range" min="-50" max="50" value="0" />
+        </label>
+        <label class="field slider">Level <output id="osc2-level-val"></output>
+          <input id="osc2-level" type="range" min="0" max="100" value="70" />
+        </label>
+        <label class="field">MIDI Out Ch
+          <select id="osc2-midi-ch" title="Send oscillator 2 to its own MIDI channel"><option value="-1">Off</option></select>
+        </label>
+      </div>
+    </section>
+
+    <section class="panel io" aria-label="Sound and MIDI">
+      <h2>Sound &amp; MIDI</h2>
+      <div class="row">
+        <label class="check"><input id="synth-on" type="checkbox" checked /> Built-in synth</label>
+        <label class="field">Osc 1 Wave
+          <select id="wave">
+            <option value="sawtooth">Saw</option>
+            <option value="square">Square</option>
+            <option value="triangle">Triangle</option>
+            <option value="sine">Sine</option>
+          </select>
+        </label>
+        <label class="field slider">Cutoff <output id="cutoff-val"></output>
+          <input id="cutoff" type="range" min="0" max="1000" step="1" />
+        </label>
+        <label class="field slider">Volume <output id="volume-val"></output>
+          <input id="volume" type="range" min="0" max="100" value="50" />
+        </label>
+      </div>
+      <div class="row">
+        <label class="field">MIDI In <select id="midi-in"><option value="">None</option></select></label>
+        <label class="field">In Ch
+          <select id="midi-in-ch"><option value="-1">Omni</option></select>
+        </label>
+        <label class="field">MIDI Out <select id="midi-out"><option value="">None</option></select></label>
+        <label class="field">Out Ch <select id="midi-out-ch"></select></label>
+        <span id="midi-status" class="status"></span>
+      </div>
+    </section>
+
+    <section class="panel keys-panel" aria-label="Keyboard">
+      <div class="seq-head">
+        <h2>Keyboard</h2>
+        <span class="hint">Play with A–; (W E T Y U O P for sharps) · 1–4 chords · Z / X octave · Space play/stop</span>
+        <span class="oct">
+          <button id="oct-down" aria-label="Octave down">−</button>
+          <span id="oct-label">C3</span>
+          <button id="oct-up" aria-label="Octave up">+</button>
+        </span>
+        <button id="panic" title="Release all notes">Clear notes</button>
+      </div>
+      <div class="chords">
+        <span class="chords-label">Chords</span>
+        <label class="field">Root <select id="chord-root" aria-label="Chord root"></select></label>
+        <div id="chord-pads" class="chord-pads" aria-label="Chord pads — hold to play into the arpeggiator"></div>
+      </div>
+      <div id="keyboard" class="keyboard"></div>
+    </section>
+  </main>
+  <script type="module" src="src/app.js?v=7"></script>
+</body>
+</html>
