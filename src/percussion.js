@@ -76,8 +76,13 @@ const VOICES_808 = [
   { id: 'sd808', label: 'Snare', gm: 38 },
   { id: 'cp808', label: 'Clap', gm: 39 },
   { id: 'rs808', label: 'Rim', gm: 37 },
+  { id: 'cl808', label: 'Claves', gm: 75 },
+  { id: 'ma808', label: 'Maracas', gm: 70 },
   { id: 'lt808', label: 'Low Tom', gm: 45 },
   { id: 'ht808', label: 'Hi Tom', gm: 50 },
+  { id: 'lc808', label: 'Low Conga', gm: 64 },
+  { id: 'mc808', label: 'Mid Conga', gm: 63 },
+  { id: 'hc808', label: 'Hi Conga', gm: 62 },
   { id: 'cb808', label: 'Cowbell', gm: 56 },
   { id: 'ch808', label: 'Closed HH', gm: 42 },
   { id: 'oh808', label: 'Open HH', gm: 46 },
@@ -231,12 +236,38 @@ export function assignSamples(files, filled = new Set(), voices = VOICES_USER) {
   return { assigned, leftover };
 }
 
+/**
+ * Move a preset onto another kit's rows. Several source rows may land on one
+ * target row; they are merged step by step, keeping the stronger hit.
+ */
+export function mapPreset(preset, idMap) {
+  const out = {};
+  const rank = { '.': 0, x: 1, X: 2 };
+  for (const [id, row] of Object.entries(preset)) {
+    const to = idMap[id];
+    if (!to) continue;
+    const prev = out[to] || '.'.repeat(row.length);
+    out[to] = [...row].map((c, i) => (rank[c] >= rank[prev[i]] ? c : prev[i])).join('');
+  }
+  return out;
+}
+
+// The Latin rhythms on the 808, the way the original did Latin: its own congas,
+// claves and maracas. Bongos go to the higher congas; the guiro to the maracas.
+const LATIN_TO_808 = {
+  kick: 'bd808', congaLo: 'lc808', congaHi: 'mc808', bongoLo: 'mc808', bongoHi: 'hc808',
+  claves: 'cl808', cowbell: 'cb808', maracas: 'ma808', guiro: 'ma808',
+};
+const LATIN_ON_808 = Object.fromEntries(
+  Object.entries(DRUM_PRESETS).map(([name, preset]) => [name, mapPreset(preset, LATIN_TO_808)]),
+);
+
 /** Menu order (a numeric key like '808' would otherwise sort first). */
 export const KIT_ORDER = ['latin', '808', 'linn', 'user'];
 
 export const KITS = {
   latin: { label: 'Latin', voices: VOICES, presets: DRUM_PRESETS },
-  808: { label: '808-style', voices: VOICES_808, presets: PRESETS_808 },
+  808: { label: '808-style', voices: VOICES_808, presets: { ...PRESETS_808, ...LATIN_ON_808 } },
   linn: { label: 'Linn-style', voices: VOICES_LINN, presets: PRESETS_LINN },
   user: { label: 'Your samples', voices: VOICES_USER, presets: PRESETS_USER },
 };
@@ -435,6 +466,12 @@ export class DrumSynth {
     this.tone(t, g * 0.35, 1720, 0.025, 1, 'triangle');
     this.tone(t, g * 0.3, 475, 0.03, 1, 'sine');
   }
+  cl808(t, g) { this.tone(t, g * 0.45, 2500, 0.03, 1, 'sine'); }
+  ma808(t, g) { this.noiseHit(t, g * 0.35, 0.035, 'highpass', 7500); }
+  // 808 congas: tuned sines with a slight drop, shorter than the toms.
+  lc808(t, g) { this.tone(t, g * 0.55, 165, 0.2, 1.15, 'sine', 0.03); }
+  mc808(t, g) { this.tone(t, g * 0.5, 250, 0.17, 1.15, 'sine', 0.03); }
+  hc808(t, g) { this.tone(t, g * 0.45, 370, 0.14, 1.15, 'sine', 0.03); }
   lt808(t, g) { this.tone(t, g * 0.7, 82, 0.38, 1.25, 'sine', 0.08); }
   ht808(t, g) { this.tone(t, g * 0.6, 140, 0.28, 1.25, 'sine', 0.07); }
   cb808(t, g) { this.cowbell(t, g); }

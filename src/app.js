@@ -4,13 +4,13 @@ import {
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=27';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=27';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=27';
-import { Midi } from './midi.js?v=27';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=27';
-import { DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, hitsAt, assignSamples } from './percussion.js?v=27';
-import { saveSample, clearSamples, loadSamples } from './samples.js?v=27';
+} from './core.js?v=28';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=28';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=28';
+import { Midi } from './midi.js?v=28';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=28';
+import { DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, hitsAt, assignSamples } from './percussion.js?v=28';
+import { saveSample, clearSamples, loadSamples } from './samples.js?v=28';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -903,8 +903,17 @@ let drumCol = -1;
 const kit = () => KITS[settings.drumKit] || KITS.latin;
 const kitVoices = () => kit().voices;
 
-function validDrumRows(rows, voices) {
-  return rows && voices.every(({ id }) => Array.isArray(rows[id]) && rows[id].length === DRUM_STEPS);
+/**
+ * A stored pattern made valid for the kit: rows the kit has gained since it was
+ * saved are added empty, so earlier edits survive. Null if nothing usable.
+ */
+function normalizeRows(rows, voices) {
+  if (!rows || typeof rows !== 'object') return null;
+  const ok = (r) => Array.isArray(r) && r.length === DRUM_STEPS;
+  if (!voices.some(({ id }) => ok(rows[id]))) return null;
+  const out = {};
+  for (const { id } of voices) out[id] = ok(rows[id]) ? rows[id] : new Array(DRUM_STEPS).fill(0);
+  return out;
 }
 
 /** Make the current kit's state valid (also used after loading an older save). */
@@ -912,7 +921,8 @@ function loadKitState() {
   if (!KITS[settings.drumKit]) settings.drumKit = 'latin';
   const { presets, voices } = kit();
   if (!presets[settings.drumPreset] && settings.drumPreset !== 'custom') settings.drumPreset = Object.keys(presets)[0];
-  if (!validDrumRows(settings.drumRows, voices)) settings.drumRows = parsePattern(presets[settings.drumPreset] || {}, voices);
+  settings.drumRows = normalizeRows(settings.drumRows, voices)
+    || parsePattern(presets[settings.drumPreset] || {}, voices);
   if (!settings.drumMuted || typeof settings.drumMuted !== 'object') settings.drumMuted = {};
 }
 if (!settings.drumKitStore || typeof settings.drumKitStore !== 'object') settings.drumKitStore = {};
