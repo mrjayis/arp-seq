@@ -4,13 +4,13 @@ import {
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=30';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=30';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=30';
-import { Midi } from './midi.js?v=30';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=30';
-import { DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, hitsAt, assignSamples } from './percussion.js?v=30';
-import { saveSample, deleteSample, clearSamples, loadSamples } from './samples.js?v=30';
+} from './core.js?v=31';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=31';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=31';
+import { Midi } from './midi.js?v=31';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=31';
+import { DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, hitsAt, assignSamples } from './percussion.js?v=31';
+import { saveSample, deleteSample, clearSamples, loadSamples } from './samples.js?v=31';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -392,7 +392,9 @@ function playDrums(step) {
   const voices = kitVoices();
   const hits = hitsAt(settings.drumRows, step.stepNumber, settings.drumMuted, voices);
   for (const { id, gain } of hits) {
-    if (drums && settings.drumLevel > 0) drums.play(id, step.time, gain);
+    // Your samples: each row has its own level (the sample mixer).
+    const rowLevel = settings.drumKit === 'user' ? (settings.sampleLevels?.[id] ?? 100) / 100 : 1;
+    if (drums && settings.drumLevel > 0 && rowLevel > 0) drums.play(id, step.time, gain * rowLevel);
     if (settings.drumMidiCh >= 0) {
       const { gm } = voices.find((v) => v.id === id);
       midi.noteOn(gm, Math.round(gain * 127), toPerfMs(step.time), settings.drumMidiCh);
@@ -1129,9 +1131,32 @@ function renderSampleMap() {
     select.value = sampleStore[id] ? id : '';
     select.addEventListener('change', () => moveSample(select.value, id));
     field.append(select);
-    wrap.append(field);
+    // Level for this row: 0–150%, so a quiet recording can be lifted a little.
+    const level = document.createElement('label');
+    level.className = 'field slider';
+    const out = document.createElement('output');
+    const range = document.createElement('input');
+    range.type = 'range';
+    range.min = '0';
+    range.max = '150';
+    range.value = String(settings.sampleLevels[id] ?? 100);
+    range.setAttribute('aria-label', `${label} level`);
+    const show = () => { out.textContent = `${range.value}%`; };
+    show();
+    range.addEventListener('input', () => {
+      settings.sampleLevels[id] = Number(range.value);
+      show();
+      save();
+    });
+    range.addEventListener('dblclick', () => { range.value = '100'; range.dispatchEvent(new Event('input')); });
+    level.append('Level ', out, range);
+    const cell = document.createElement('div');
+    cell.className = 'map-row';
+    cell.append(field, level);
+    wrap.append(cell);
   }
 }
+if (!settings.sampleLevels || typeof settings.sampleLevels !== 'object') settings.sampleLevels = {};
 
 /** Put the sample now on row `from` onto row `to` (swapping), or empty `to` if `from` is ''. */
 async function moveSample(from, to) {

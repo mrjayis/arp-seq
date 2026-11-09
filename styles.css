@@ -472,6 +472,8 @@ input[type="range"]::-moz-range-thumb {
   margin-top: 8px;
 }
 .sample-map select { width: 100%; }
+.map-row { display: grid; gap: 4px; }
+.map-row .field.slider { min-width: 0; }
 .drum-name.empty { font-style: italic; opacity: 0.6; }
 .drum-name.drop { outline: 2px dashed var(--mod); outline-offset: 1px; }
 .drum-name.muted { color: var(--ink-3); text-decoration: line-through; }
