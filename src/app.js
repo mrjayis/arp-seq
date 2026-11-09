@@ -4,20 +4,20 @@ import {
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=41';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=41';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=41';
-import { Midi } from './midi.js?v=41';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=41';
+} from './core.js?v=42';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=42';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=42';
+import { Midi } from './midi.js?v=42';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=42';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=41';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=41';
+} from './percussion.js?v=42';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=42';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
-} from './breaks.js?v=41';
-import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=41';
+} from './breaks.js?v=42';
+import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=42';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -120,6 +120,12 @@ const settings = {
   drumTapMode: 'hits', // what tapping a cell does: 'hits' | 'cond'
   drumCondPick: '1:2',
   drumEvolve: 0, // 0–100: per-bar variation of the drums
+  drumSlot: 'A', // pattern slot being edited (A–D)
+  drumSlots: {}, // the other slots of the current kit: {B: {preset, rows, conds, lens}, …}
+  breakSlot: 'A',
+  breakSlots: {},
+  songOn: false,
+  songChain: ['A', 'A', 'B', 'A'], // one slot per bar
   breakEvolve: 0, // 0–100: per-bar variation of the break pattern
   breakOn: false,
   breakSlices: 16,
@@ -408,6 +414,9 @@ function onPulse(time, pulse, pulseDuration) {
       uiEvents.push({ kind: 'chord', time: cstep.time, rhythmPos: cstep.stepNumber % settings.chordSteps, notes: [] });
     }
   }
+  if (settings.songOn && !settings.drumOn && settings.breakOn && pulse % (RATES['1/16'] * DRUM_STEPS) === 0) {
+    uiEvents.push({ kind: 'song', time, bar: Math.floor(pulse / (RATES['1/16'] * DRUM_STEPS)) });
+  }
   if (settings.drumOn || settings.breakOn) {
     const dstep = pulseToStep(pulse, time, pulseDuration, RATES['1/16'], swing);
     if (dstep && settings.drumOn) playDrums(dstep);
@@ -419,21 +428,31 @@ function onPulse(time, pulse, pulseDuration) {
 // Evolve: a new seed each time Play starts; each bar's variation is derived from it.
 let runSeed = (Math.random() * 2 ** 32) >>> 0;
 let evolveCache = { bar: -1, rows: null, src: null, amount: -1 };
-function evolvedDrumRows(stepNumber) {
+function evolvedDrumRows(stepNumber, rows) {
   const amount = settings.drumEvolve / 100;
-  if (amount <= 0) return settings.drumRows;
+  if (amount <= 0) return rows;
   const bar = Math.floor(stepNumber / DRUM_STEPS);
   const c = evolveCache;
-  if (c.bar !== bar || c.src !== settings.drumRows || c.amount !== amount) {
-    evolveCache = { bar, src: settings.drumRows, amount, rows: evolveDrums(settings.drumRows, amount, barRng(runSeed, bar)) };
+  if (c.bar !== bar || c.src !== rows || c.amount !== amount) {
+    evolveCache = { bar, src: rows, amount, rows: evolveDrums(rows, amount, barRng(runSeed, bar)) };
   }
   return evolveCache.rows;
 }
 
+/** Song mode: the slot for the bar containing `stepNumber`, or null when Song is off. */
+function songSlot(stepNumber) {
+  if (!settings.songOn || !settings.songChain.length) return null;
+  return settings.songChain[Math.floor(stepNumber / DRUM_STEPS) % settings.songChain.length];
+}
+
 function playDrums(step) {
+  if (step.stepNumber % DRUM_STEPS === 0 && settings.songOn) {
+    uiEvents.push({ kind: 'song', time: step.time, bar: Math.floor(step.stepNumber / DRUM_STEPS) });
+  }
   const voices = kitVoices();
-  const hits = drumHits(evolvedDrumRows(step.stepNumber), step.stepNumber, {
-    conds: settings.drumConds, lens: settings.drumLens, muted: settings.drumMuted, voices,
+  const data = drumSlotData(songSlot(step.stepNumber) || settings.drumSlot);
+  const hits = drumHits(evolvedDrumRows(step.stepNumber, data.rows), step.stepNumber, {
+    conds: data.conds, lens: data.lens, muted: settings.drumMuted, voices,
     fill: isFillBar(step.stepNumber, settings.drumFillEvery),
   });
   for (const { id, gain } of hits) {
@@ -496,6 +515,7 @@ function setPlaying(on, { fromClock = false } = {}) {
     resetProgression();
     showProgSlot(-1);
     showDrumStep(-1, []);
+    showSongBar(-1);
     renderKeyState();
   }
   $('play').setAttribute('aria-pressed', String(on));
@@ -967,24 +987,71 @@ function normalizeRows(rows, voices) {
 }
 
 /** Make the current kit's state valid (also used after loading an older save). */
-function loadKitState() {
-  if (!KITS[settings.drumKit]) settings.drumKit = 'latin';
+/** A drum pattern ({preset, rows, conds, lens}) made valid for the current kit. */
+function normalizeDrumState(state = {}) {
   const { presets, voices } = kit();
-  if (!presets[settings.drumPreset] && settings.drumPreset !== 'custom') settings.drumPreset = Object.keys(presets)[0];
-  settings.drumRows = normalizeRows(settings.drumRows, voices)
-    || parsePattern(presets[settings.drumPreset] || {}, voices);
-  if (!settings.drumMuted || typeof settings.drumMuted !== 'object') settings.drumMuted = {};
-  // Conditions and row lengths, made valid for the kit's rows.
-  const conds = settings.drumConds && typeof settings.drumConds === 'object' ? settings.drumConds : {};
-  const lens = settings.drumLens && typeof settings.drumLens === 'object' ? settings.drumLens : {};
-  settings.drumConds = {};
-  settings.drumLens = {};
+  const preset = presets[state.preset] || state.preset === 'custom' ? state.preset : Object.keys(presets)[0];
+  const rows = normalizeRows(state.rows, voices) || parsePattern(presets[preset] || {}, voices);
+  const conds = state.conds && typeof state.conds === 'object' ? state.conds : {};
+  const lens = state.lens && typeof state.lens === 'object' ? state.lens : {};
+  const out = { preset, rows, conds: {}, lens: {} };
   for (const { id } of voices) {
     const c = Array.isArray(conds[id]) ? conds[id] : [];
-    settings.drumConds[id] = Array.from({ length: DRUM_STEPS }, (_, i) => (CONDITIONS[c[i]] !== undefined ? c[i] : ''));
+    out.conds[id] = Array.from({ length: DRUM_STEPS }, (_, i) => (CONDITIONS[c[i]] !== undefined ? c[i] : ''));
     const n = Number(lens[id]);
-    settings.drumLens[id] = n >= 1 && n <= DRUM_STEPS ? n : DRUM_STEPS;
+    out.lens[id] = n >= 1 && n <= DRUM_STEPS ? n : DRUM_STEPS;
   }
+  return out;
+}
+
+function loadKitState() {
+  if (!KITS[settings.drumKit]) settings.drumKit = 'latin';
+  const s = normalizeDrumState({
+    preset: settings.drumPreset, rows: settings.drumRows, conds: settings.drumConds, lens: settings.drumLens,
+  });
+  settings.drumPreset = s.preset;
+  settings.drumRows = s.rows;
+  settings.drumConds = s.conds;
+  settings.drumLens = s.lens;
+  if (!settings.drumMuted || typeof settings.drumMuted !== 'object') settings.drumMuted = {};
+  if (!SLOTS.includes(settings.drumSlot)) settings.drumSlot = 'A';
+  if (!settings.drumSlots || typeof settings.drumSlots !== 'object') settings.drumSlots = {};
+}
+
+// ---- Pattern slots A–D: the slot being edited lives in drumRows/drumConds/drumLens/
+// drumPreset; the others wait in drumSlots (per kit, via the kit store).
+const SLOTS = ['A', 'B', 'C', 'D'];
+const drumSlotCache = {};
+
+function currentDrumState() {
+  return { preset: settings.drumPreset, rows: settings.drumRows, conds: settings.drumConds, lens: settings.drumLens };
+}
+
+/** Pattern data for a slot (the edited one is live; empty slots fall back to it). */
+function drumSlotData(slot) {
+  if (!slot || slot === settings.drumSlot || !settings.drumSlots[slot]) return currentDrumState();
+  const stored = settings.drumSlots[slot];
+  const cached = drumSlotCache[slot];
+  if (cached && cached.src === stored && cached.kit === settings.drumKit) return cached.data;
+  const data = normalizeDrumState(stored);
+  drumSlotCache[slot] = { src: stored, kit: settings.drumKit, data };
+  return data;
+}
+
+function selectDrumSlot(slot) {
+  if (slot === settings.drumSlot) return;
+  settings.drumSlots[settings.drumSlot] = structuredClone(currentDrumState());
+  // A new slot starts as a copy of the one you were on, ready to vary.
+  const next = settings.drumSlots[slot] ? structuredClone(settings.drumSlots[slot]) : structuredClone(currentDrumState());
+  delete settings.drumSlots[slot];
+  settings.drumSlot = slot;
+  Object.assign(settings, { drumPreset: next.preset, drumRows: next.rows, drumConds: next.conds, drumLens: next.lens });
+  loadKitState();
+  buildDrumGrid();
+  fillDrumPresets();
+  renderDrumGrid();
+  renderSlotButtons();
+  save();
 }
 if (!settings.drumKitStore || typeof settings.drumKitStore !== 'object') settings.drumKitStore = {};
 loadKitState();
@@ -993,7 +1060,7 @@ function switchKit(next) {
   if (next === settings.drumKit || !KITS[next]) return;
   settings.drumKitStore[settings.drumKit] = {
     preset: settings.drumPreset, rows: settings.drumRows, muted: settings.drumMuted,
-    conds: settings.drumConds, lens: settings.drumLens,
+    conds: settings.drumConds, lens: settings.drumLens, slot: settings.drumSlot, slots: settings.drumSlots,
   };
   const stored = settings.drumKitStore[next] || {};
   settings.drumKit = next;
@@ -1002,7 +1069,10 @@ function switchKit(next) {
   settings.drumMuted = stored.muted || {};
   settings.drumConds = stored.conds || {};
   settings.drumLens = stored.lens || {};
+  settings.drumSlot = stored.slot || 'A';
+  settings.drumSlots = stored.slots || {};
   loadKitState();
+  renderSlotButtons();
   showDrumStep(-1, []);
   $('sample-tools').hidden = settings.drumKit !== 'user';
   if (settings.drumKit === 'user') updateSampleStatus();
@@ -1425,7 +1495,8 @@ function orderedPattern() {
 
 function playBreakStep(step) {
   const idx = step.stepNumber % settings.breakSteps;
-  const row = evolveBreakRow(settings.breakPattern[idx], settings.breakEvolve / 100,
+  const pattern = breakPatternFor(songSlot(step.stepNumber) || settings.breakSlot);
+  const row = evolveBreakRow(pattern[idx], settings.breakEvolve / 100,
     barRng(runSeed, Math.floor(step.stepNumber / settings.breakSteps), idx + 101), sliceCount());
   const triggers = rowTriggers(row, step.duration);
   let shown = null;
@@ -1755,6 +1826,136 @@ loadBreak().then(async (stored) => {
   }
   setBreak(await renderDemoBreak(), 'Demo break (synthesized)');
 });
+
+// ---------------------------------------------------------------- UI: song mode & slots
+// Break slots: the edited slot is settings.breakPattern; the others wait in breakSlots.
+const breakSlotCache = {};
+function breakPatternFor(slot) {
+  if (!slot || slot === settings.breakSlot || !settings.breakSlots[slot]) return settings.breakPattern;
+  const stored = settings.breakSlots[slot];
+  const c = breakSlotCache[slot];
+  if (c && c.src === stored && c.steps === settings.breakSteps) return c.rows;
+  const rows = resizePattern(stored, settings.breakSteps);
+  breakSlotCache[slot] = { src: stored, steps: settings.breakSteps, rows };
+  return rows;
+}
+
+function selectBreakSlot(slot) {
+  if (slot === settings.breakSlot) return;
+  settings.breakSlots[settings.breakSlot] = structuredClone(settings.breakPattern);
+  const next = settings.breakSlots[slot] ? structuredClone(settings.breakSlots[slot]) : structuredClone(settings.breakPattern);
+  delete settings.breakSlots[slot];
+  settings.breakSlot = slot;
+  settings.breakPattern = resizePattern(next, settings.breakSteps);
+  settings.breakPatternAuto = false;
+  buildBreakRows();
+  renderSlotButtons();
+  save();
+}
+
+function copySlot(kind, to) {
+  if (!to) return;
+  if (kind === 'drum') {
+    if (to === settings.drumSlot) return;
+    settings.drumSlots[to] = structuredClone(currentDrumState());
+  } else {
+    if (to === settings.breakSlot) return;
+    settings.breakSlots[to] = structuredClone(settings.breakPattern);
+  }
+  renderSlotButtons();
+  save();
+}
+
+let songNowBar = -1;
+function renderSlotButtons() {
+  const playingSlot = settings.songOn && songNowBar >= 0 ? settings.songChain[songNowBar % settings.songChain.length] : null;
+  for (const [kind, current, stored] of [['drum', settings.drumSlot, settings.drumSlots], ['break', settings.breakSlot, settings.breakSlots]]) {
+    $(`${kind}-slots`).querySelectorAll('button').forEach((b) => {
+      const s = b.dataset.slot;
+      b.setAttribute('aria-pressed', String(s === current));
+      b.classList.toggle('used', s === current || !!stored[s]);
+      b.classList.toggle('playing', s === playingSlot);
+    });
+  }
+}
+
+function renderSong() {
+  $('song-on').setAttribute('aria-pressed', String(settings.songOn));
+  $('song-on').textContent = settings.songOn ? 'On' : 'Off';
+  $('song-panel').classList.toggle('off', !settings.songOn);
+  const wrap = $('song-chain');
+  wrap.replaceChildren();
+  settings.songChain.forEach((slot, i) => {
+    const chip = document.createElement('span');
+    chip.className = 'song-bar';
+    const b = document.createElement('button');
+    b.textContent = slot;
+    b.title = `Bar ${i + 1}: click to change the slot`;
+    b.addEventListener('click', () => {
+      settings.songChain[i] = SLOTS[(SLOTS.indexOf(slot) + 1) % SLOTS.length];
+      renderSong();
+      save();
+    });
+    const x = document.createElement('button');
+    x.className = 'song-x';
+    x.textContent = '×';
+    x.title = `Remove bar ${i + 1}`;
+    x.addEventListener('click', () => {
+      settings.songChain.splice(i, 1);
+      renderSong();
+      save();
+    });
+    const n = document.createElement('small');
+    n.textContent = String(i + 1);
+    chip.append(n, b, x);
+    wrap.append(chip);
+  });
+  if (!settings.songChain.length) wrap.textContent = 'Empty: add bars below.';
+  showSongBar(songNowBar);
+}
+
+function showSongBar(bar) {
+  songNowBar = bar;
+  const len = settings.songChain.length;
+  $('song-chain').querySelectorAll('.song-bar').forEach((el, i) => {
+    el.classList.toggle('now', bar >= 0 && len > 0 && i === bar % len);
+  });
+  $('song-pos').textContent = bar >= 0 && len ? `bar ${(bar % len) + 1} of ${len}` : '';
+  renderSlotButtons();
+}
+
+if (!SLOTS.includes(settings.breakSlot)) settings.breakSlot = 'A';
+if (!settings.breakSlots || typeof settings.breakSlots !== 'object') settings.breakSlots = {};
+if (!Array.isArray(settings.songChain)) settings.songChain = ['A', 'A', 'B', 'A'];
+settings.songChain = settings.songChain.filter((s) => SLOTS.includes(s));
+
+for (const kind of ['drum', 'break']) {
+  for (const s of SLOTS) {
+    const b = document.createElement('button');
+    b.textContent = s;
+    b.dataset.slot = s;
+    b.title = `Edit pattern ${s} (a new slot starts as a copy of the current one)`;
+    b.addEventListener('click', () => (kind === 'drum' ? selectDrumSlot(s) : selectBreakSlot(s)));
+    $(`${kind}-slots`).append(b);
+  }
+  const copy = $(`${kind}-copy`);
+  for (const s of SLOTS) copy.add(new Option(`Copy to ${s}`, s));
+  copy.addEventListener('change', () => { copySlot(kind, copy.value); copy.value = ''; });
+}
+$('song-on').addEventListener('click', () => {
+  settings.songOn = !settings.songOn;
+  if (settings.songOn && !playing && settings.sync === 'internal' && (settings.drumOn || settings.breakOn)) setPlaying(true);
+  renderSong();
+  save();
+});
+document.querySelectorAll('[data-add-bar]').forEach((b) => b.addEventListener('click', () => {
+  settings.songChain.push(b.dataset.addBar);
+  renderSong();
+  save();
+}));
+$('song-clear').addEventListener('click', () => { settings.songChain = []; renderSong(); save(); });
+renderSong();
+renderSlotButtons();
 
 // ---------------------------------------------------------------- UI: effects
 let lastDelayBpm = 0;
@@ -2194,6 +2395,10 @@ function frame() {
   const now = audioTime();
   while (uiEvents.length && uiEvents[0].time <= now) {
     const ev = uiEvents.shift();
+    if (ev.kind === 'song') {
+      showSongBar(ev.bar);
+      continue;
+    }
     if (ev.kind === 'break') {
       showBreakStep(ev.step, ev.slice);
       continue;

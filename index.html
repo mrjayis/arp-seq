@@ -17,8 +17,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=41" />
-  <link rel="stylesheet" href="mac.css?v=41" />
+  <link rel="stylesheet" href="styles.css?v=42" />
+  <link rel="stylesheet" href="mac.css?v=42" />
 </head>
 <body>
   <main class="device">
@@ -55,6 +55,24 @@
           </select>
         </label>
         <label class="check"><input id="clock-out" type="checkbox" /> Send MIDI clock</label>
+      </div>
+    </section>
+
+    <section class="panel song" id="song-panel" aria-label="Song">
+      <div class="seq-head">
+        <h2>Song</h2>
+        <button id="song-on" aria-pressed="false" title="Play the chain: each bar plays its pattern slot in the Percussion and Breakbeat">Off</button>
+        <span class="status" id="song-pos"></span>
+      </div>
+      <p class="hint">Chain pattern slots A–D, one per bar, so the drums and break move through sections instead of
+        looping one bar. Click a bar to change its slot; × removes it. Edit each slot with the A–D buttons in the
+        Percussion and Breakbeat windows.</p>
+      <div id="song-chain" class="song-chain"></div>
+      <div class="row">
+        <span class="field inline">Add bar</span>
+        <button data-add-bar="A">+A</button><button data-add-bar="B">+B</button>
+        <button data-add-bar="C">+C</button><button data-add-bar="D">+D</button>
+        <button id="song-clear">Clear</button>
       </div>
     </section>
 
@@ -197,6 +215,8 @@
         <h2>Percussion</h2>
         <button id="drum-on" aria-pressed="false" title="Play the percussion">Off</button>
         <label class="field inline">Kit <select id="drum-kit"></select></label>
+        <div class="field inline">Pattern <div class="seg slots" id="drum-slots" role="group" aria-label="Drum pattern slot"></div></div>
+        <select id="drum-copy" aria-label="Copy this pattern to another slot"><option value="">Copy to…</option></select>
         <label class="field inline">Rhythm <select id="drum-preset"></select></label>
         <label class="field inline slider">Level <output id="drum-level-val"></output>
           <input id="drum-level" type="range" min="0" max="100" value="70" />
@@ -236,6 +256,8 @@
       <div class="seq-head">
         <h2>Breakbeat</h2>
         <button id="break-on" aria-pressed="false" title="Play the break pattern">Off</button>
+        <div class="field inline">Pattern <div class="seg slots" id="break-slots" role="group" aria-label="Break pattern slot"></div></div>
+        <select id="break-copy" aria-label="Copy this pattern to another slot"><option value="">Copy to…</option></select>
         <label class="field inline">Slicing <select id="break-mode" title="Equal slices, or slices that start on the detected hits"></select></label>
         <label class="field inline">Slices <select id="break-slices"></select></label>
         <label class="field inline slider">Sensitivity <output id="break-sensitivity-val"></output>
@@ -468,6 +490,6 @@
       <div id="keyboard" class="keyboard"></div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=41"></script>
+  <script type="module" src="src/app.js?v=42"></script>
 </body>
 </html>
