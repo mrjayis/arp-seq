@@ -72,3 +72,16 @@ test('FM deviation scales with depth and modulator pitch; AM swings within 0..1'
   }
   assert.deepEqual(amGains(0), { base: 1, swing: 0 });
 });
+
+import { blendGains } from '../src/synth.js';
+
+test('blend is an equal-power crossfade between two waves', () => {
+  assert.deepEqual(blendGains(0).map((g) => +g.toFixed(6)), [1, 0]);
+  assert.deepEqual(blendGains(1).map((g) => +g.toFixed(6)), [0, 1]);
+  const [a, b] = blendGains(0.5);
+  assert.ok(near(a, b) && near(a * a + b * b, 1));
+  for (const x of [0.1, 0.3, 0.8]) {
+    const [p, q] = blendGains(x);
+    assert.ok(near(p * p + q * q, 1));
+  }
+});

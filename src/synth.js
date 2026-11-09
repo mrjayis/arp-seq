@@ -54,6 +54,12 @@ export function strikeDecay(opening) {
   return STRIKE_MIN * Math.pow(STRIKE_MAX / STRIKE_MIN, o);
 }
 
+/** Equal-power crossfade: blend 0 = all of the first, 1 = all of the second. */
+export function blendGains(blend) {
+  const x = Math.min(1, Math.max(0, blend));
+  return [Math.cos((x * Math.PI) / 2), Math.sin((x * Math.PI) / 2)];
+}
+
 export const LPG_MODES = { combo: 'Combo', lp: 'LP', vca: 'VCA' };
 
 // ---- Oscillator 2 → oscillator 1 modulation
@@ -100,16 +106,12 @@ export class Synth {
   play(note, velocity, time, duration, {
     wave = this.wave, detune = 0, level = 1,
     cutoff = this.cutoff, resonance = this.resonance, out = this.master,
+    layers = null, // [{wave, gain, detune}]: several oscillators through one filter and envelope
   } = {}) {
     const ctx = this.ctx;
     const t0 = Math.max(time, ctx.currentTime);
     const tOff = t0 + Math.max(0.01, duration);
     const peak = Math.pow(velocity / 127, 1.5) * 0.35 * level;
-
-    const osc = ctx.createOscillator();
-    osc.type = wave;
-    osc.detune.setValueAtTime(detune, t0);
-    osc.frequency.setValueAtTime(mtof(note), t0);
 
     const filter = ctx.createBiquadFilter();
     filter.type = 'lowpass';
@@ -126,16 +128,26 @@ export class Synth {
     amp.gain.setValueAtTime(peak * 0.7, tOff);
     amp.gain.setTargetAtTime(0, tOff, this.release / 4);
 
-    osc.connect(filter).connect(amp).connect(out);
-    osc.start(t0);
+    filter.connect(amp).connect(out);
     const end = tOff + this.release * 1.5;
-    osc.stop(end);
-    const voice = { osc, amp };
-    this.voices.add(voice);
-    osc.onended = () => {
-      amp.disconnect();
-      this.voices.delete(voice);
-    };
+    const stack = (layers || [{ wave, gain: 1, detune }]).filter((l) => l.gain > 0);
+    stack.forEach((layer, i) => {
+      const osc = ctx.createOscillator();
+      osc.type = layer.wave;
+      osc.detune.setValueAtTime(layer.detune || 0, t0);
+      osc.frequency.setValueAtTime(mtof(note), t0);
+      const g = ctx.createGain();
+      g.gain.value = layer.gain;
+      osc.connect(g).connect(filter);
+      osc.start(t0);
+      osc.stop(end);
+      const voice = { osc, amp };
+      this.voices.add(voice);
+      osc.onended = () => {
+        if (i === 0) amp.disconnect();
+        this.voices.delete(voice);
+      };
+    });
   }
 
   /** Lazily-built shared resources for the west-coast voice. */

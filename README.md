@@ -57,7 +57,8 @@ The arp has two monophonic voices: **Oscillator 1**, and **Oscillator 2**, which
 A separate layer that repeats the **held chord** in a Euclidean rhythm while the arpeggiator (and oscillator 2) keep playing on top.
 - **Steps** (2–16), **Hits** and **Rotate**: the hits are spread as evenly as possible over the steps. For example, 3 in 8 = `x..x..x.`. A dot display shows where the pattern is.
 - **Rate:** the chord layer has its own rate, separate from the arp's (default 1/8). It runs on the same clock.
-- **Sound:** its own wave, octave (±2), gate and level, plus an optional MIDI out channel.
+- **Sound:** two oscillators per chord note, **Wave 1** and **Wave 2** (default Saw and Square), with an equal-power **Blend** and **Detune 2** (±50 cents) for thickness. Also octave (±2), gate and level, plus an optional MIDI out channel.
+- **Sub** (Off / Square / Sine, with its own level): one octave below the chord's lowest note. It goes through the chord filter but skips the chorus, so the bass stays tight.
 - **Gate arp:** the arp plays only while the chord pattern is on a hit. With the defaults (chord at 1/8, arp at 1/16), each hit lets two arp notes through. The arp and sequencer hold their place during rests. Works even with the chord layer turned off.
 - **Filter:** the chords have their own low-pass **Cutoff** and **Resonance**, separate from the main filter.
 - **Chorus:** a two-voice stereo chorus on the chords only, with **Mix**, **Rate** and **Depth** controls.

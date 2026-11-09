@@ -4,11 +4,11 @@ import {
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=18';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=18';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX } from './synth.js?v=18';
-import { Midi } from './midi.js?v=18';
-import { DrumSynth, DRUM_PRESETS, DRUM_STEPS, VOICES, parsePattern, hitsAt } from './percussion.js?v=18';
+} from './core.js?v=19';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=19';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains } from './synth.js?v=19';
+import { Midi } from './midi.js?v=19';
+import { DrumSynth, DRUM_PRESETS, DRUM_STEPS, VOICES, parsePattern, hitsAt } from './percussion.js?v=19';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -62,7 +62,12 @@ const settings = {
   chordSteps: 8,
   chordHits: 3,
   chordRotate: 0,
-  chordWave: 'triangle',
+  chordWave: 'sawtooth',
+  chordWave2: 'square',
+  chordBlend: 50, // 0 = Wave 1 only, 100 = Wave 2 only
+  chordDetune2: 7, // cents
+  chordSub: 'off', // 'off' | 'square' | 'sine': one octave below the lowest chord note
+  chordSubLevel: 60,
   chordOctave: 0,
   chordGate: 80,
   chordLevel: 45,
@@ -259,20 +264,37 @@ function playChord(step) {
     : [];
   const on = toPerfMs(step.time);
   const off = toPerfMs(step.time + gateLen);
+  const [g1, g2] = blendGains(settings.chordBlend / 100);
+  const layers = [
+    { wave: settings.chordWave, gain: g1, detune: 0 },
+    { wave: settings.chordWave2, gain: g2, detune: settings.chordDetune2 },
+  ];
+  const filterOpts = { cutoff: settings.chordCutoff, resonance: settings.chordResonance };
+  const sound = settings.synthOn && synth && settings.chordLevel > 0;
+  const sendMidi = (note, velocity) => {
+    if (settings.chordMidiCh < 0) return;
+    midi.noteOn(note, velocity, on, settings.chordMidiCh);
+    midi.noteOff(note, off, settings.chordMidiCh);
+  };
   for (const { note, velocity } of notes) {
-    if (settings.synthOn && synth && settings.chordLevel > 0) {
+    if (sound) {
       synth.play(note, velocity, step.time, gateLen, {
-        wave: settings.chordWave,
-        level: settings.chordLevel / 100,
-        cutoff: settings.chordCutoff,
-        resonance: settings.chordResonance,
-        out: chorus.input,
+        ...filterOpts, layers, level: settings.chordLevel / 100, out: chorus.input,
       });
     }
-    if (settings.chordMidiCh >= 0) {
-      midi.noteOn(note, velocity, on, settings.chordMidiCh);
-      midi.noteOff(note, off, settings.chordMidiCh);
+    sendMidi(note, velocity);
+  }
+  // Sub: one octave under the lowest chord note, kept out of the chorus so the bass stays tight.
+  const sub = settings.chordSub !== 'off' && notes.length && notes[0].note >= 12 ? notes[0] : null;
+  if (sub) {
+    if (sound && settings.chordSubLevel > 0) {
+      synth.play(sub.note - 12, sub.velocity, step.time, gateLen, {
+        ...filterOpts,
+        wave: settings.chordSub,
+        level: (settings.chordLevel / 100) * (settings.chordSubLevel / 100) * 1.4,
+      });
     }
+    sendMidi(sub.note - 12, sub.velocity);
   }
   uiEvents.push({ kind: 'chord', time: step.time, off: step.time + gateLen, rhythmPos, notes });
 }
@@ -668,6 +690,12 @@ for (const [id, key] of [['chord-steps', 'chordSteps'], ['chord-hits', 'chordHit
 }
 bindSelect('chord-rate', 'chordRate', Object.keys(RATES).map((r) => [r, r]));
 bindSelect('chord-wave', 'chordWave');
+bindSelect('chord-wave2', 'chordWave2');
+bindRange('chord-blend', 'chordBlend', (v) => (v === 0 ? 'Wave 1' : v === 100 ? 'Wave 2' : `${100 - v} / ${v}`));
+bindRange('chord-detune2', 'chordDetune2', (v) => `${v > 0 ? '+' : ''}${v} ct`);
+bindSelect('chord-sub', 'chordSub', null, () => { $('chord-sub-level').disabled = settings.chordSub === 'off'; });
+bindRange('chord-sub-level', 'chordSubLevel', (v) => `${v}%`);
+$('chord-sub-level').disabled = settings.chordSub === 'off';
 for (let o = -2; o <= 2; o++) $('chord-octave').add(new Option(o > 0 ? `+${o}` : String(o), String(o)));
 bindSelect('chord-octave', 'chordOctave');
 bindRange('chord-gate', 'chordGate', (v) => `${v}%`);
