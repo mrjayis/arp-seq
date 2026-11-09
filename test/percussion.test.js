@@ -149,3 +149,56 @@ test('sample tuning maps semitones to playback rate', () => {
   assert.equal(tuneRate(undefined), 1);
   assert.equal(tuneRate(99), 4); // clamped to ±24
 });
+
+import { condPasses, isFillBar, drumHits, addFill } from '../src/percussion.js';
+
+test('trig conditions', () => {
+  const on = (cond, cycle, extra = {}) => condPasses(cond, { cycle, ...extra });
+  assert.deepEqual([0, 1, 2, 3].map((c) => on('1:2', c)), [true, false, true, false]);
+  assert.deepEqual([0, 1, 2, 3].map((c) => on('2:2', c)), [false, true, false, true]);
+  assert.deepEqual([0, 1, 2, 3, 4, 5, 6, 7].map((c) => on('4:4', c)), [false, false, false, true, false, false, false, true]);
+  assert.equal(on('first', 0), true);
+  assert.equal(on('first', 1), false);
+  assert.equal(on('!first', 3), true);
+  assert.equal(on('fill', 0, { fill: true }), true);
+  assert.equal(on('fill', 0, { fill: false }), false);
+  assert.equal(on('!fill', 0, { fill: true }), false);
+  assert.equal(on('', 5), true);
+  let n = 0;
+  let seed = 7;
+  const rng = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  for (let i = 0; i < 1000; i++) if (condPasses('25%', { rng })) n++;
+  assert.ok(n > 200 && n < 300, `${n}`);
+});
+
+test('fill bars', () => {
+  assert.deepEqual([0, 1, 2, 3, 4, 7].map((bar) => isFillBar(bar * 16 + 5, 4)), [false, false, false, true, false, true]);
+  assert.equal(isFillBar(16 * 3, 0), false);
+  assert.equal(isFillBar(16, 2), true);
+});
+
+test('per-row lengths make rows drift against each other (polymeter)', () => {
+  const voices = [{ id: 'a' }, { id: 'b' }];
+  const rows = { a: [1, ...new Array(15).fill(0)], b: [1, ...new Array(15).fill(0)] };
+  const hitsOf = (id, steps, opts) => Array.from({ length: steps }, (_, s) => s).filter((s) => drumHits(rows, s, { voices, ...opts }).some((h) => h.id === id));
+  assert.deepEqual(hitsOf('a', 48, { lens: { b: 12 } }), [0, 16, 32]);
+  assert.deepEqual(hitsOf('b', 48, { lens: { b: 12 } }), [0, 12, 24, 36]);
+  // Conditions count loops of the row's own length.
+  assert.deepEqual(hitsOf('b', 48, { lens: { b: 12 }, conds: { b: ['1:2'] } }), [0, 24]);
+  assert.deepEqual(hitsOf('a', 64, { conds: { a: ['fill'] }, fill: true }), [0, 16, 32, 48]);
+  assert.deepEqual(hitsOf('a', 64, { conds: { a: ['fill'] }, fill: false }), []);
+});
+
+test('addFill writes fill-only hits on empty cells of the last beat', () => {
+  const { voices, presets } = KITS[808];
+  const rows = parsePattern(presets.House, voices);
+  const conds = {};
+  const before = JSON.stringify(rows.bd808);
+  const n = addFill(rows, conds, voices);
+  assert.ok(n >= 4, `${n} added`);
+  assert.equal(JSON.stringify(rows.bd808), before); // kick untouched
+  for (const [id, c] of Object.entries(conds)) {
+    c.forEach((cond, i) => { if (cond) { assert.equal(cond, 'fill'); assert.ok(i >= 12 && rows[id][i] > 0); } });
+  }
+  assert.ok(addFill(parsePattern(DRUM_PRESETS['Bossa Nova']), {}, KITS.latin.voices) > 0); // Latin uses congas/bongos
+});
