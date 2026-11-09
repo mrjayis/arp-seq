@@ -66,7 +66,12 @@ A separate layer that repeats the **held chord** in a Euclidean rhythm while the
 - **Follow sequencer:** off by default, so the chord repeats unchanged. When on, the chord takes the pitch offset and volume of the step the arp is on. It never moves the sequencer forward.
 
 ### Percussion
-Latin percussion in the style of a 70s preset rhythm box, synthesized live with Web Audio (no samples).
+Three kits, all synthesized live with Web Audio (no samples). Each kit remembers its own pattern, preset and mutes.
+- **Latin:** in the style of a 70s preset rhythm box (below).
+- **808-style:** a long pitch-swept boom kick, a two-tone snare with noise, a multi-burst clap, rim, toms and cowbell, and metallic six-square hats (the closed hat chokes the open one). Presets: Electro, Boom Bap, House, Half-time.
+- **Linn-style:** a tight, clicky kick, a crisp snare, clap, hats, tambourine, cabasa, tom and cowbell. Presets: Synth Pop, Funk, Ballad, New Wave. It's a synthesized take on that early-80s character; the original machine used recorded samples.
+
+The Latin kit:
 - **Voices:** bass drum, conga low and high, bongo low and high, claves, cowbell, maracas and guiro
 - **Rhythms:** Bossa Nova, Samba, Cha-Cha, Mambo, Rhumba, Beguine and Tango. Each is a one-bar, 16th-note pattern written from the standard groove of its style.
 - **Editing:** tap a cell to cycle off → hit → accent, which makes the pattern "Custom". Tap a voice name to mute it.
