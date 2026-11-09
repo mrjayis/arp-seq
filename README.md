@@ -92,6 +92,11 @@ Latin percussion in the style of a 70s preset rhythm box, synthesized live with 
 - With **Latch** on, tap a pad and the chord keeps playing. Tapping another pad switches chords.
 - Pads, keys and MIDI can all be used together. A note shared by two of them keeps sounding until both let go.
 
+### Effects
+A shared delay and reverb, with a **send** from each source (Arp, Chords, Drums) into each one.
+- **Delay:** **Time** synced to the tempo (1/16 – 1/2, including dotted and triplet values; it follows tempo changes and MIDI clock). **Feedback** sets each echo's level relative to the last. **Tone** darkens the repeats, and **Ping-pong** bounces echoes left/right.
+- **Reverb:** convolution with a generated, decorrelated stereo tail that darkens as it decays. **Size** is the time to −60 dB (0.3–8 s), plus **Pre-delay** and **Tone**.
+
 ### Input / output
 - On-screen keyboard (click and drag), computer keys `A W S E D F T G Y H U J K O L P ;`, `Z`/`X` to change octave, `Space` to play or stop
 - MIDI in, with a channel filter or omni
@@ -110,5 +115,6 @@ Latin percussion in the style of a 70s preset rhythm box, synthesized live with 
 | `src/synth.js` | Polyphonic Web Audio synth |
 | `src/midi.js` | Web MIDI I/O |
 | `mac.css`, `fonts/` | System 7 theme and its bitmap font |
+| `src/fx.js` | Delay and reverb (timing and impulse-response math tested) |
 | `src/percussion.js` | Percussion voices, rhythm presets and pattern helpers (patterns tested) |
 | `src/app.js` | UI wiring |
