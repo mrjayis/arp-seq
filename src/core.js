@@ -26,7 +26,7 @@ export const RATES = {
 };
 
 export const MIN_SEQ_LENGTH = 2;
-export const MAX_SEQ_LENGTH = 5;
+export const MAX_SEQ_LENGTH = 6;
 export const PITCH_RANGE = 24; // ± semitones per sequencer step
 export const MAX_OCTAVES = 4;
 
@@ -74,6 +74,7 @@ export function defaultSteps() {
     { offset: 0, volume: 85, on: true },
     { offset: 7, volume: 60, on: true },
     { offset: -12, volume: 100, on: true },
+    { offset: 5, volume: 75, on: true },
   ];
 }
 

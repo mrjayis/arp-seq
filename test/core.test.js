@@ -42,10 +42,11 @@ test('per-step volume scales velocity; 0 mutes', () => {
   assert.deepEqual([e.next(), e.next(), e.next()].map((o) => o.velocity), [120, 60, 0]);
 });
 
-test('sequencer length is clamped to 2-5', () => {
+test('sequencer length is clamped to 2-6, with a step for each', () => {
   const e = new ArpSeqEngine();
   e.setLength(1); assert.equal(e.length, 2);
-  e.setLength(9); assert.equal(e.length, 5);
+  e.setLength(9); assert.equal(e.length, 6);
+  assert.equal(e.steps.length, 6);
 });
 
 test('pitch offsets are clamped to ±24 and output to MIDI range', () => {

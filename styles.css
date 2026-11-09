@@ -300,7 +300,7 @@ input[type="range"]::-moz-range-thumb {
 /* ---------- sequencer ---------- */
 .steps {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   border: 1.5px solid var(--line);
   background: var(--plate);
 }
