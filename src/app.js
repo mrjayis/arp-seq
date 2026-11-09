@@ -4,11 +4,11 @@ import {
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=11';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=11';
-import { Synth, Chorus, LPG_MODES } from './synth.js?v=11';
-import { Midi } from './midi.js?v=11';
-import { DrumSynth, DRUM_PRESETS, DRUM_STEPS, VOICES, parsePattern, hitsAt } from './percussion.js?v=11';
+} from './core.js?v=12';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=12';
+import { Synth, Chorus, LPG_MODES } from './synth.js?v=12';
+import { Midi } from './midi.js?v=12';
+import { DrumSynth, DRUM_PRESETS, DRUM_STEPS, VOICES, parsePattern, hitsAt } from './percussion.js?v=12';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -27,6 +27,7 @@ const settings = {
   latch: false,
   length: 4,
   steps: defaultSteps(),
+  theme: 'auto', // 'light' | 'dark' | 'auto' (follow the system)
   synthOn: true,
   wave: 'sawtooth',
   cutoff: 2400,
@@ -89,12 +90,17 @@ try {
 } catch { /* storage unavailable */ }
 
 let saveTimer;
-function save() {
+/** Save settings, debounced for slider drags; `now` writes immediately. */
+function save(now = false) {
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
+  const write = () => {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(settings)); } catch { /* ignore */ }
-  }, 200);
+  };
+  if (now) write();
+  else saveTimer = setTimeout(write, 200);
 }
+// Don't lose a change made in the last moments before leaving or reloading.
+window.addEventListener('pagehide', () => save(true));
 
 function applyEngineSettings() {
   engine.setMode(settings.mode);
@@ -409,6 +415,31 @@ function fillMidiSelects() {
   if (midi.input?.id !== $('midi-in').value) midi.selectInput($('midi-in').value);
   if (midi.output?.id !== $('midi-out').value) midi.selectOutput($('midi-out').value);
 }
+
+// ---------------------------------------------------------------- UI: theme
+const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
+function applyTheme() {
+  const t = settings.theme === 'auto' ? (darkQuery.matches ? 'dark' : 'light') : settings.theme;
+  document.documentElement.dataset.theme = t;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', t === 'dark' ? '#0d0c0b' : '#cfc7b8');
+  $('theme-switch').querySelectorAll('button').forEach((b) => {
+    const sel = b.dataset.theme === settings.theme;
+    b.setAttribute('aria-pressed', String(sel));
+    b.setAttribute('aria-checked', String(sel));
+  });
+}
+for (const [value, label] of [['light', 'Light'], ['dark', 'Dark'], ['auto', 'Auto']]) {
+  const b = document.createElement('button');
+  b.textContent = label;
+  b.dataset.theme = value;
+  b.setAttribute('role', 'radio');
+  b.title = value === 'auto' ? 'Follow the system setting' : `${label} theme`;
+  b.addEventListener('click', () => { settings.theme = value; applyTheme(); save(true); });
+  $('theme-switch').append(b);
+}
+darkQuery.addEventListener('change', () => { if (settings.theme === 'auto') applyTheme(); });
+if (!['light', 'dark', 'auto'].includes(settings.theme)) settings.theme = 'auto';
+applyTheme();
 
 // ---------------------------------------------------------------- UI: controls
 function bindSelect(id, key, options, onChange) {
