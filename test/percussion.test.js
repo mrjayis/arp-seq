@@ -104,3 +104,23 @@ test('assignSamples fills named rows, then empty rows, and reports what did not 
   assert.equal(many.assigned.length, VOICES_USER.length);
   assert.equal(many.leftover.length, 2);
 });
+
+import { mapPreset } from '../src/percussion.js';
+
+test('the Latin rhythms play on the 808 with its congas, claves and maracas', () => {
+  const k808 = KITS[808];
+  for (const name of Object.keys(DRUM_PRESETS)) assert.ok(k808.presets[name], `808 has ${name}`);
+  const latin = DRUM_PRESETS['Bossa Nova'];
+  const on808 = k808.presets['Bossa Nova'];
+  assert.equal(on808.cl808, latin.claves);
+  assert.equal(on808.bd808, latin.kick);
+  assert.equal(on808.lc808, latin.congaLo);
+  // Mambo's bongo and conga parts share the mid conga: merged, stronger hit wins.
+  const mambo = k808.presets.Mambo;
+  assert.equal(mambo.mc808.length, DRUM_STEPS);
+  const rows = parsePattern(mambo, k808.voices);
+  const hits = (id) => rows[id].map((v, i) => (v ? i : -1)).filter((i) => i >= 0);
+  assert.deepEqual(hits('cb808'), [0, 2, 4, 6, 8, 10, 12, 14]);
+  assert.deepEqual(mapPreset({ a: 'x.X.', b: 'X.x.' }, { a: 't', b: 't' }), { t: 'X.X.' });
+  assert.deepEqual(mapPreset({ a: 'x...', z: 'X...' }, { a: 't' }), { t: 'x...' });
+});
