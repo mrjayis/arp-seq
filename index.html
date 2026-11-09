@@ -8,15 +8,17 @@
   <script>
     // Apply the saved theme before first paint (no flash). app.js keeps it in sync.
     try {
-      var t = (JSON.parse(localStorage.getItem('arp-seq-settings-v1') || '{}').theme) || 'auto';
+      var s = JSON.parse(localStorage.getItem('arp-seq-settings-v1') || '{}');
+      var t = (s.themeV2 && s.theme) || 'mac'; // System 7 became the default look
       if (t === 'auto') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
       document.documentElement.dataset.theme = t;
     } catch (e) { document.documentElement.dataset.theme = 'light'; }
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=17" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
+  <link rel="stylesheet" href="styles.css?v=18" />
+  <link rel="stylesheet" href="mac.css?v=18" />
 </head>
 <body>
   <main class="device">
@@ -314,6 +316,6 @@
       <div id="keyboard" class="keyboard"></div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=17"></script>
+  <script type="module" src="src/app.js?v=18"></script>
 </body>
 </html>

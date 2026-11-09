@@ -95,7 +95,9 @@ Latin percussion in the style of a 70s preset rhythm box, synthesized live with 
 - MIDI in, with a channel filter or omni
 - Built-in synth (wave, cutoff, volume) and/or MIDI out on any channel, timestamped for tight timing
 - Cutoff sliders are logarithmic (60 Hz – 12 kHz), so each octave gets the same slider travel and the low end has more room
-- **Light / Dark / Auto** theme switch in the header. Auto follows your system setting and is the default; the theme is applied before the page draws, so there's no flash.
+- **Looks:** **System 7** (the default), or the modular faceplate in **Light**, **Dark** or **Auto** (Auto follows your system setting). The theme is applied before the page draws, so there's no flash.
+  - **System 7** is a black-and-white classic-Mac homage: a menu bar, pinstriped windows with close boxes, rounded buttons that invert, pop-up menus, X checkboxes, dithered scroll-bar sliders and dither patterns instead of color.
+  - It uses a locally installed "Chicago" font if you have one (Chrome and Firefox; Safari only exposes system fonts). Otherwise titles fall back to Pixelify Sans. Small text uses the CC BY Geneva 9 recreation; see `fonts/README.md` for credits.
 - Settings are saved in `localStorage`
 
 ## Layout
@@ -105,5 +107,6 @@ Latin percussion in the style of a 70s preset rhythm box, synthesized live with 
 | `src/clock.js` | Internal and external (MIDI) clocks, and pulse→step conversion with swing (pure, tested) |
 | `src/synth.js` | Polyphonic Web Audio synth |
 | `src/midi.js` | Web MIDI I/O |
+| `mac.css`, `fonts/` | System 7 theme and its bitmap font |
 | `src/percussion.js` | Percussion voices, rhythm presets and pattern helpers (patterns tested) |
 | `src/app.js` | UI wiring |

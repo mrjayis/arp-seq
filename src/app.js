@@ -4,11 +4,11 @@ import {
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=17';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=17';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX } from './synth.js?v=17';
-import { Midi } from './midi.js?v=17';
-import { DrumSynth, DRUM_PRESETS, DRUM_STEPS, VOICES, parsePattern, hitsAt } from './percussion.js?v=17';
+} from './core.js?v=18';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=18';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX } from './synth.js?v=18';
+import { Midi } from './midi.js?v=18';
+import { DrumSynth, DRUM_PRESETS, DRUM_STEPS, VOICES, parsePattern, hitsAt } from './percussion.js?v=18';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -27,7 +27,7 @@ const settings = {
   latch: false,
   length: 4,
   steps: defaultSteps(),
-  theme: 'auto', // 'light' | 'dark' | 'auto' (follow the system)
+  theme: 'mac', // 'mac' (System 7) | 'light' | 'dark' | 'auto' (faceplate, following the system)
   synthOn: true,
   wave: 'sawtooth',
   cutoff: 2400,
@@ -455,24 +455,26 @@ const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
 function applyTheme() {
   const t = settings.theme === 'auto' ? (darkQuery.matches ? 'dark' : 'light') : settings.theme;
   document.documentElement.dataset.theme = t;
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', t === 'dark' ? '#0d0c0b' : '#cfc7b8');
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', { dark: '#0d0c0b', mac: '#ffffff' }[t] || '#cfc7b8');
   $('theme-switch').querySelectorAll('button').forEach((b) => {
     const sel = b.dataset.theme === settings.theme;
     b.setAttribute('aria-pressed', String(sel));
     b.setAttribute('aria-checked', String(sel));
   });
 }
-for (const [value, label] of [['light', 'Light'], ['dark', 'Dark'], ['auto', 'Auto']]) {
+for (const [value, label] of [['mac', 'System 7'], ['light', 'Light'], ['dark', 'Dark'], ['auto', 'Auto']]) {
   const b = document.createElement('button');
   b.textContent = label;
   b.dataset.theme = value;
   b.setAttribute('role', 'radio');
-  b.title = value === 'auto' ? 'Follow the system setting' : `${label} theme`;
+  b.title = { auto: 'Faceplate, following the system light/dark setting', mac: 'Black-and-white classic Mac look' }[value] || `${label} faceplate`;
   b.addEventListener('click', () => { settings.theme = value; applyTheme(); save(true); });
   $('theme-switch').append(b);
 }
 darkQuery.addEventListener('change', () => { if (settings.theme === 'auto') applyTheme(); });
-if (!['light', 'dark', 'auto'].includes(settings.theme)) settings.theme = 'auto';
+// One-time switch to the System 7 look for saves made before it existed.
+if (!settings.themeV2) { settings.theme = 'mac'; settings.themeV2 = true; save(); }
+if (!['mac', 'light', 'dark', 'auto'].includes(settings.theme)) settings.theme = 'mac';
 applyTheme();
 
 // ---------------------------------------------------------------- UI: controls
