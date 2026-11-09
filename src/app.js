@@ -4,11 +4,11 @@ import {
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=19';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=19';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains } from './synth.js?v=19';
-import { Midi } from './midi.js?v=19';
-import { DrumSynth, DRUM_PRESETS, DRUM_STEPS, VOICES, parsePattern, hitsAt } from './percussion.js?v=19';
+} from './core.js?v=21';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=21';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=21';
+import { Midi } from './midi.js?v=21';
+import { DrumSynth, DRUM_PRESETS, DRUM_STEPS, VOICES, parsePattern, hitsAt } from './percussion.js?v=21';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -68,6 +68,9 @@ const settings = {
   chordDetune2: 7, // cents
   chordSub: 'off', // 'off' | 'square' | 'sine': one octave below the lowest chord note
   chordSubLevel: 60,
+  chordPulseWidth: 50, // % — applies to whichever chord wave is Square
+  chordPwmDepth: 40,
+  chordPwmRate: 0.8, // Hz
   chordOctave: 0,
   chordGate: 80,
   chordLevel: 45,
@@ -153,6 +156,7 @@ function ensureAudio() {
     chorus.setMix(settings.chordChorusMix / 100);
     chorus.setRate(settings.chordChorusRate);
     chorus.setDepth(settings.chordChorusDepth / 100);
+    synth.setPwmRate(settings.chordPwmRate);
     drums.setLevel(settings.drumLevel / 100);
   }
   if (ctx.state === 'suspended') ctx.resume();
@@ -265,9 +269,10 @@ function playChord(step) {
   const on = toPerfMs(step.time);
   const off = toPerfMs(step.time + gateLen);
   const [g1, g2] = blendGains(settings.chordBlend / 100);
+  const pulse = pulseOffsets(settings.chordPulseWidth, settings.chordPwmDepth);
   const layers = [
-    { wave: settings.chordWave, gain: g1, detune: 0 },
-    { wave: settings.chordWave2, gain: g2, detune: settings.chordDetune2 },
+    { wave: settings.chordWave, gain: g1, detune: 0, pulse },
+    { wave: settings.chordWave2, gain: g2, detune: settings.chordDetune2, pulse },
   ];
   const filterOpts = { cutoff: settings.chordCutoff, resonance: settings.chordResonance };
   const sound = settings.synthOn && synth && settings.chordLevel > 0;
@@ -695,6 +700,18 @@ bindRange('chord-blend', 'chordBlend', (v) => (v === 0 ? 'Wave 1' : v === 100 ? 
 bindRange('chord-detune2', 'chordDetune2', (v) => `${v > 0 ? '+' : ''}${v} ct`);
 bindSelect('chord-sub', 'chordSub', null, () => { $('chord-sub-level').disabled = settings.chordSub === 'off'; });
 bindRange('chord-sub-level', 'chordSubLevel', (v) => `${v}%`);
+bindRange('chord-width', 'chordPulseWidth', (v) => `${v}%`);
+bindRange('chord-pwm-depth', 'chordPwmDepth', (v) => `${v}%`);
+bindRange('chord-pwm-rate', 'chordPwmRate', (v) => `${v.toFixed(2)} Hz`, (v) => synth?.setPwmRate(v));
+/** PWM only shapes Square waves: grey the row out when neither chord wave is Square. */
+function showPwm() {
+  const off = settings.chordWave !== 'square' && settings.chordWave2 !== 'square';
+  ['chord-width', 'chord-pwm-depth', 'chord-pwm-rate'].forEach((id) => { $(id).disabled = off; });
+  $('pwm-note').textContent = off ? 'Set Wave 1 or Wave 2 to Square to use PWM.' : '';
+}
+$('chord-wave').addEventListener('change', showPwm);
+$('chord-wave2').addEventListener('change', showPwm);
+showPwm();
 $('chord-sub-level').disabled = settings.chordSub === 'off';
 for (let o = -2; o <= 2; o++) $('chord-octave').add(new Option(o > 0 ? `+${o}` : String(o), String(o)));
 bindSelect('chord-octave', 'chordOctave');

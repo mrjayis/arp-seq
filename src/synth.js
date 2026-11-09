@@ -60,6 +60,31 @@ export function blendGains(blend) {
   return [Math.cos((x * Math.PI) / 2), Math.sin((x * Math.PI) / 2)];
 }
 
+/**
+ * Pulse width as a comparator threshold on a saw (−1..1): a pulse is high while
+ * saw + center > 0, so width w ↔ center = 2w − 1. `swing` is how far the PWM LFO
+ * moves the threshold, limited so the width stays within 5–95%.
+ */
+export function pulseOffsets(widthPct, depthPct = 0) {
+  const w = Math.min(95, Math.max(5, widthPct)) / 100;
+  const room = Math.min(w - 0.05, 0.95 - w) * 2;
+  return { center: 2 * w - 1, swing: (Math.min(100, Math.max(0, depthPct)) / 100) * room };
+}
+
+/**
+ * Web Audio's band-limited sawtooth is normalised so its Gibbs overshoot (≈9% of
+ * the jump each side) peaks at ±1, leaving the straight ramp at about ±0.848.
+ * Thresholds are scaled by this so a 25% width really is 25%.
+ */
+export const SAW_RAMP = 1 / (1 + 2 * 0.0895);
+
+/** Comparator curve: a steep tanh step, oversampled to keep aliasing down. */
+export function pulseCurve(size = 2048, steepness = 60) {
+  const c = new Float32Array(size);
+  for (let i = 0; i < size; i++) c[i] = Math.tanh(((i / (size - 1)) * 2 - 1) * steepness);
+  return c;
+}
+
 export const LPG_MODES = { combo: 'Combo', lp: 'LP', vca: 'VCA' };
 
 // ---- Oscillator 2 → oscillator 1 modulation
@@ -106,7 +131,7 @@ export class Synth {
   play(note, velocity, time, duration, {
     wave = this.wave, detune = 0, level = 1,
     cutoff = this.cutoff, resonance = this.resonance, out = this.master,
-    layers = null, // [{wave, gain, detune}]: several oscillators through one filter and envelope
+    layers = null, // [{wave, gain, detune, pulse?}]: several oscillators through one filter and envelope
   } = {}) {
     const ctx = this.ctx;
     const t0 = Math.max(time, ctx.currentTime);
@@ -133,12 +158,39 @@ export class Synth {
     const stack = (layers || [{ wave, gain: 1, detune }]).filter((l) => l.gain > 0);
     stack.forEach((layer, i) => {
       const osc = ctx.createOscillator();
-      osc.type = layer.wave;
       osc.detune.setValueAtTime(layer.detune || 0, t0);
       osc.frequency.setValueAtTime(mtof(note), t0);
       const g = ctx.createGain();
       g.gain.value = layer.gain;
-      osc.connect(g).connect(filter);
+      g.connect(filter);
+      const p = layer.pulse;
+      if (layer.wave === 'square' && p && (p.center !== 0 || p.swing > 0)) {
+        // Variable-width pulse: saw + threshold → comparator, with the threshold's
+        // own DC subtracted afterwards so off-centre widths don't thump.
+        osc.type = 'sawtooth';
+        const threshold = ctx.createConstantSource();
+        threshold.offset.value = p.center * SAW_RAMP;
+        if (p.swing > 0) {
+          const depth = ctx.createGain();
+          depth.gain.value = p.swing * SAW_RAMP;
+          this.pwmLfo.connect(depth).connect(threshold.offset);
+        }
+        const sum = ctx.createGain();
+        const comparator = ctx.createWaveShaper();
+        comparator.curve = this.pulseShape;
+        comparator.oversample = '4x';
+        const dcBlock = ctx.createGain();
+        dcBlock.gain.value = -1 / SAW_RAMP; // the pulse's mean is the unscaled centre
+        osc.connect(sum);
+        threshold.connect(sum);
+        sum.connect(comparator).connect(g);
+        threshold.connect(dcBlock).connect(g);
+        threshold.start(t0);
+        threshold.stop(end);
+      } else {
+        osc.type = layer.wave;
+        osc.connect(g);
+      }
       osc.start(t0);
       osc.stop(end);
       const voice = { osc, amp };
@@ -148,6 +200,26 @@ export class Synth {
         this.voices.delete(voice);
       };
     });
+  }
+
+  /** One free-running LFO shared by every pulse-width-modulated note. */
+  get pwmLfo() {
+    if (!this._pwmLfo) {
+      this._pwmLfo = this.ctx.createOscillator();
+      this._pwmLfo.type = 'triangle';
+      this._pwmLfo.frequency.value = 0.8;
+      this._pwmLfo.start();
+    }
+    return this._pwmLfo;
+  }
+
+  setPwmRate(hz) {
+    this.pwmLfo.frequency.setTargetAtTime(hz, this.ctx.currentTime, 0.05);
+  }
+
+  get pulseShape() {
+    if (!this._pulseShape) this._pulseShape = pulseCurve();
+    return this._pulseShape;
   }
 
   /** Lazily-built shared resources for the west-coast voice. */

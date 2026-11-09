@@ -85,3 +85,22 @@ test('blend is an equal-power crossfade between two waves', () => {
     assert.ok(near(p * p + q * q, 1));
   }
 });
+
+import { pulseOffsets, pulseCurve } from '../src/synth.js';
+
+test('pulse width maps to a comparator threshold and PWM stays within 5–95%', () => {
+  assert.ok(near(pulseOffsets(50).center, 0));
+  assert.ok(near(pulseOffsets(25).center, -0.5));
+  assert.ok(near(pulseOffsets(75).center, 0.5));
+  assert.ok(near(pulseOffsets(1).center, pulseOffsets(5).center)); // clamped
+  for (const w of [5, 20, 50, 80, 95]) {
+    const { center, swing } = pulseOffsets(w, 100);
+    const lo = (center - swing + 1) / 2;
+    const hi = (center + swing + 1) / 2;
+    assert.ok(lo >= 0.05 - 1e-9 && hi <= 0.95 + 1e-9, `${w}: ${lo}..${hi}`);
+  }
+  assert.ok(near(pulseOffsets(50, 100).swing, 0.9));
+  assert.equal(pulseOffsets(50, 0).swing, 0);
+  const c = pulseCurve(101);
+  assert.ok(c[0] < -0.99 && c[100] > 0.99 && Math.abs(c[50]) < 1e-9);
+});
