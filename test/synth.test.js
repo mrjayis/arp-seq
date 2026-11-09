@@ -44,3 +44,16 @@ test('Combo: the cutoff opening also sets loudness, never fully silent', () => {
   const levels = [100, 400, 1600, 6400].map((f) => comboLevel(gateOpening(f)));
   for (let i = 1; i < levels.length; i++) assert.ok(levels[i] > levels[i - 1]);
 });
+
+import { strikeDecay, STRIKE_MIN, STRIKE_MAX } from '../src/synth.js';
+
+test('Combo: opening the gate further makes the strike ring longer', () => {
+  assert.ok(near(strikeDecay(0), STRIKE_MIN));
+  assert.ok(near(strikeDecay(1), STRIKE_MAX));
+  assert.ok(near(strikeDecay(-1), STRIKE_MIN));
+  const rings = [100, 400, 1600, 6400].map((f) => strikeDecay(gateOpening(f)));
+  for (let i = 1; i < rings.length; i++) assert.ok(rings[i] > rings[i - 1]);
+  // Default cutoff (2.4 kHz) rings for roughly two thirds of a second.
+  const d = strikeDecay(gateOpening(2400));
+  assert.ok(d > 0.5 && d < 0.9, `${d}`);
+});

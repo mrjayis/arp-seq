@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Arp-Seq</title>
-  <link rel="stylesheet" href="styles.css?v=9" />
+  <link rel="stylesheet" href="styles.css?v=10" />
 </head>
 <body>
   <main class="device">
@@ -163,10 +163,47 @@
       <div id="steps" class="steps"></div>
     </section>
 
+    <section class="panel voice" aria-label="Arp voice, oscillator 1">
+      <h2>Arp Voice · Oscillator 1</h2>
+      <p class="hint">West-coast style, monophonic: a sine core folded by <b>Timbre</b>, blended by
+        <b>Shape</b> with a second wave, into a low-pass gate. <b>Combo</b> strikes the gate: Cutoff sets
+        brightness, loudness <i>and</i> how long it rings. <b>VCA</b> does the same without the filter.
+        <b>LP</b> holds the note for the arp Gate time.</p>
+      <div class="row">
+        <label class="field">Wave
+          <select id="wave">
+            <option value="sawtooth">Saw</option>
+            <option value="square">Square</option>
+            <option value="triangle">Triangle</option>
+            <option value="spike">Spike</option>
+            <option value="sine">Sine</option>
+          </select>
+        </label>
+        <label class="field slider">Shape <output id="arp-shape-val"></output>
+          <input id="arp-shape" type="range" min="0" max="100" title="Sine (left) to the selected wave (right)" />
+        </label>
+        <label class="field slider">Timbre <output id="arp-timbre-val"></output>
+          <input id="arp-timbre" type="range" min="0" max="100" title="Wavefolding of the sine core" />
+        </label>
+      </div>
+      <div class="row">
+        <label class="field">Gate
+          <select id="lpg-mode" title="Combo: filter + loudness · LP: filter only · VCA: loudness only"></select>
+        </label>
+        <label class="field slider">Cutoff <output id="cutoff-val"></output>
+          <input id="cutoff" type="range" min="0" max="1000" step="1" />
+        </label>
+        <label class="field slider">Resonance <output id="arp-res-val"></output>
+          <input id="arp-res" type="range" min="0.5" max="12" step="0.1" />
+        </label>
+      </div>
+    </section>
+
     <section class="panel osc2" id="osc2-panel" aria-label="Oscillator 2">
-      <h2>Oscillator 2</h2>
-      <p class="hint">A second voice on every arpeggiated note. It plays each sequencer step's offset
-        as-is (<b>Same</b>) or flipped (<b>Inverted</b>: +7 becomes −7, −12 becomes +12).</p>
+      <h2>Arp Voice · Oscillator 2</h2>
+      <p class="hint">A second monophonic arp voice on every arpeggiated note. It plays each sequencer
+        step's offset as-is (<b>Same</b>) or flipped (<b>Inverted</b>: +7 becomes −7). <b>Sync cutoff</b>
+        lets Oscillator 1's Cutoff drive both gates.</p>
       <div class="row">
         <button id="osc2-on" aria-pressed="true" title="Turn oscillator 2 on or off">On</button>
         <div class="field">Sequence
@@ -192,42 +229,23 @@
           <select id="osc2-midi-ch" title="Send oscillator 2 to its own MIDI channel"><option value="-1">Off</option></select>
         </label>
       </div>
-    </section>
-
-    <section class="panel voice" aria-label="Arp voice">
-      <h2>Arp Voice</h2>
-      <p class="hint">West-coast style: a sine core folded by <b>Timbre</b>, blended by <b>Shape</b> with a
-        second wave, into a low-pass gate. In <b>Combo</b> the Cutoff opens brightness <i>and</i> loudness
-        together, and both close on the vactrol-like <b>Decay</b>. Applies to the arp and Oscillator 2.</p>
       <div class="row">
-        <label class="field">Wave
-          <select id="wave">
-            <option value="sawtooth">Saw</option>
-            <option value="square">Square</option>
-            <option value="triangle">Triangle</option>
-            <option value="spike">Spike</option>
-            <option value="sine">Sine</option>
-          </select>
+        <label class="field slider">Shape <output id="osc2-shape-val"></output>
+          <input id="osc2-shape" type="range" min="0" max="100" title="Sine (left) to the selected wave (right)" />
         </label>
-        <label class="field slider">Shape <output id="arp-shape-val"></output>
-          <input id="arp-shape" type="range" min="0" max="100" title="Sine (left) to the selected wave (right)" />
+        <label class="field slider">Timbre <output id="osc2-timbre-val"></output>
+          <input id="osc2-timbre" type="range" min="0" max="100" title="Wavefolding of the sine core" />
         </label>
-        <label class="field slider">Timbre <output id="arp-timbre-val"></output>
-          <input id="arp-timbre" type="range" min="0" max="100" title="Wavefolding of the sine core" />
-        </label>
-      </div>
-      <div class="row">
         <label class="field">Gate
-          <select id="lpg-mode" title="Combo: filter + loudness · LP: filter only · VCA: loudness only"></select>
+          <select id="osc2-lpg" title="Combo: filter + loudness + ring · LP: filter, gate-length notes · VCA: loudness + ring"></select>
         </label>
-        <label class="field slider">Cutoff <output id="cutoff-val"></output>
-          <input id="cutoff" type="range" min="0" max="1000" step="1" />
+        <label class="check" title="Use Oscillator 1's Cutoff for both voices">
+          <input id="osc2-sync" type="checkbox" /> Sync cutoff</label>
+        <label class="field slider">Cutoff <output id="osc2-cutoff-val"></output>
+          <input id="osc2-cutoff" type="range" min="0" max="1000" step="1" />
         </label>
-        <label class="field slider">Decay <output id="lpg-decay-val"></output>
-          <input id="lpg-decay" type="range" min="0" max="1000" step="1" title="Vactrol-like release of the gate" />
-        </label>
-        <label class="field slider">Resonance <output id="arp-res-val"></output>
-          <input id="arp-res" type="range" min="0.5" max="12" step="0.1" />
+        <label class="field slider">Resonance <output id="osc2-res-val"></output>
+          <input id="osc2-res" type="range" min="0.5" max="12" step="0.1" />
         </label>
       </div>
     </section>
@@ -270,6 +288,6 @@
       <div id="keyboard" class="keyboard"></div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=9"></script>
+  <script type="module" src="src/app.js?v=10"></script>
 </body>
 </html>

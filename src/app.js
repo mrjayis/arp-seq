@@ -4,11 +4,11 @@ import {
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=9';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=9';
-import { Synth, Chorus, LPG_MODES } from './synth.js?v=9';
-import { Midi } from './midi.js?v=9';
-import { DrumSynth, DRUM_PRESETS, DRUM_STEPS, VOICES, parsePattern, hitsAt } from './percussion.js?v=9';
+} from './core.js?v=10';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=10';
+import { Synth, Chorus, LPG_MODES } from './synth.js?v=10';
+import { Midi } from './midi.js?v=10';
+import { DrumSynth, DRUM_PRESETS, DRUM_STEPS, VOICES, parsePattern, hitsAt } from './percussion.js?v=10';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -33,7 +33,6 @@ const settings = {
   arpShape: 35,
   arpTimbre: 25,
   lpgMode: 'combo',
-  lpgDecay: 300, // ms
   arpResonance: 1.5,
   volume: 50,
   midiIn: '',
@@ -49,6 +48,12 @@ const settings = {
   osc2Detune: 0,
   osc2Level: 70,
   osc2MidiCh: -1,
+  osc2Shape: 50,
+  osc2Timbre: 40,
+  osc2Lpg: 'combo',
+  osc2Cutoff: 2400,
+  osc2SyncCutoff: true,
+  osc2Resonance: 1.5,
   chordOn: true,
   chordRate: '1/8',
   chordSteps: 8,
@@ -145,15 +150,28 @@ const audioTime = () => (ctx ? ctx.currentTime : performance.now() / 1000);
 // Map AudioContext time to performance.now() ms for timestamped MIDI output.
 const toPerfMs = (t) => performance.now() + (t - audioTime()) * 1000;
 
-/** The arp voice settings shared by oscillator 1 and 2. */
-function westVoice() {
+/** Voice settings for arp oscillator 1 or 2 (each a monophonic west-coast voice). */
+function westVoice(n) {
+  if (n === 2) {
+    return {
+      mono: 'osc2',
+      wave: settings.osc2Wave,
+      cutoff: settings.osc2SyncCutoff ? settings.cutoff : settings.osc2Cutoff,
+      shape: settings.osc2Shape / 100,
+      timbre: settings.osc2Timbre / 100,
+      lpg: settings.osc2Lpg,
+      resonance: settings.osc2Resonance,
+      detune: settings.osc2Detune,
+      level: settings.osc2Level / 100,
+    };
+  }
   return {
+    mono: 'osc1',
     wave: settings.wave,
     cutoff: settings.cutoff,
     shape: settings.arpShape / 100,
     timbre: settings.arpTimbre / 100,
     lpg: settings.lpgMode,
-    decay: settings.lpgDecay / 1000,
     resonance: settings.arpResonance,
   };
 }
@@ -161,18 +179,12 @@ function westVoice() {
 function playVoice(note, note2, velocity, time, gateLen) {
   const on = toPerfMs(time);
   const off = toPerfMs(time + gateLen);
-  if (settings.synthOn && synth) synth.playWest(note, velocity, time, gateLen, { ...westVoice(), mono: 'osc1' });
+  if (settings.synthOn && synth) synth.playWest(note, velocity, time, gateLen, westVoice(1));
   midi.noteOn(note, velocity, on);
   midi.noteOff(note, off);
   if (note2 === null) return;
   if (settings.synthOn && synth && settings.osc2Level > 0) {
-    synth.playWest(note2, velocity, time, gateLen, {
-      ...westVoice(),
-      mono: 'osc2',
-      wave: settings.osc2Wave,
-      detune: settings.osc2Detune,
-      level: settings.osc2Level / 100,
-    });
+    synth.playWest(note2, velocity, time, gateLen, westVoice(2));
   }
   if (settings.osc2MidiCh >= 0) {
     midi.noteOn(note2, velocity, on, settings.osc2MidiCh);
@@ -502,11 +514,13 @@ $('synth-on').addEventListener('change', () => {
   save();
 });
 bindSelect('wave', 'wave', null, (w) => { if (synth) synth.wave = w; });
-bindCutoff('cutoff', 'cutoff', (v) => { if (synth) synth.cutoff = v; });
+bindCutoff('cutoff', 'cutoff', (v) => {
+  if (synth) synth.cutoff = v;
+  if (settings.osc2SyncCutoff) showOsc2Cutoff();
+});
 bindRange('arp-shape', 'arpShape', (v) => (v === 0 ? 'sine' : v === 100 ? 'wave' : `${v}%`));
 bindRange('arp-timbre', 'arpTimbre', (v) => `${v}%`);
 bindSelect('lpg-mode', 'lpgMode', Object.entries(LPG_MODES));
-bindLog('lpg-decay', 'lpgDecay', 20, 3000, (ms) => (ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(2)} s`));
 bindRange('arp-res', 'arpResonance', (v) => v.toFixed(1));
 bindRange('volume', 'volume', (v) => `${v}%`, (v) => synth?.setVolume(v / 100));
 
@@ -864,6 +878,26 @@ bindRange('osc2-detune', 'osc2Detune', (v) => `${v > 0 ? '+' : ''}${v} ct`);
 bindRange('osc2-level', 'osc2Level', (v) => `${v}%`);
 for (let c = 1; c <= 16; c++) $('osc2-midi-ch').add(new Option(String(c), String(c - 1)));
 bindSelect('osc2-midi-ch', 'osc2MidiCh', null, () => midi.allNotesOff());
+bindRange('osc2-shape', 'osc2Shape', (v) => (v === 0 ? 'sine' : v === 100 ? 'wave' : `${v}%`));
+bindRange('osc2-timbre', 'osc2Timbre', (v) => `${v}%`);
+bindSelect('osc2-lpg', 'osc2Lpg', Object.entries(LPG_MODES));
+bindCutoff('osc2-cutoff', 'osc2Cutoff');
+bindRange('osc2-res', 'osc2Resonance', (v) => v.toFixed(1));
+$('osc2-sync').checked = settings.osc2SyncCutoff;
+$('osc2-sync').addEventListener('change', () => {
+  settings.osc2SyncCutoff = $('osc2-sync').checked;
+  showOsc2Cutoff();
+  save();
+});
+/** While synced, Osc 2's cutoff slider follows Osc 1's and is locked. */
+function showOsc2Cutoff() {
+  const el = $('osc2-cutoff');
+  el.disabled = settings.osc2SyncCutoff;
+  const f = settings.osc2SyncCutoff ? settings.cutoff : settings.osc2Cutoff;
+  el.value = freqToSlider(f);
+  $('osc2-cutoff-val').textContent = settings.osc2SyncCutoff ? `${formatHz(f)} (sync)` : formatHz(f);
+}
+showOsc2Cutoff();
 
 // ---------------------------------------------------------------- UI: sequencer
 const stepEls = [];
