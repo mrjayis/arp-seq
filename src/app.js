@@ -4,11 +4,11 @@ import {
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=13';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=13';
-import { Synth, Chorus, LPG_MODES } from './synth.js?v=13';
-import { Midi } from './midi.js?v=13';
-import { DrumSynth, DRUM_PRESETS, DRUM_STEPS, VOICES, parsePattern, hitsAt } from './percussion.js?v=13';
+} from './core.js?v=14';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=14';
+import { Synth, Chorus, LPG_MODES } from './synth.js?v=14';
+import { Midi } from './midi.js?v=14';
+import { DrumSynth, DRUM_PRESETS, DRUM_STEPS, VOICES, parsePattern, hitsAt } from './percussion.js?v=14';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -208,6 +208,20 @@ function playArp(step) {
   const ev = engine.next();
   if (!ev) return;
   const gateLen = gateLength(step, settings.gate);
+  if (ev.rest) {
+    // Step switched off: strike nothing, but move whatever tail is still ringing
+    // by this step's interval (each oscillator its own way).
+    let note2 = null;
+    if (ev.note !== null && settings.synthOn && synth) {
+      synth.retune('osc1', ev.note, step.time);
+      if (settings.osc2On) {
+        note2 = osc2Note({ sourceNote: ev.tailSource, offset: ev.offset }, settings.osc2Mode, settings.osc2Transpose);
+        synth.retune('osc2', note2, step.time);
+      }
+    }
+    uiEvents.push({ kind: 'arp', time: step.time, off: step.time, ...ev, note2 });
+    return;
+  }
   const note2 = settings.osc2On ? osc2Note(ev, settings.osc2Mode, settings.osc2Transpose) : null;
   if (ev.velocity > 0) playVoice(ev.note, note2, ev.velocity, step.time, gateLen);
   uiEvents.push({ kind: 'arp', time: step.time, off: step.time + gateLen, note2, ...ev });
@@ -969,6 +983,8 @@ function buildSteps() {
     el.innerHTML = `
       <div class="led"></div>
       <div class="num" aria-label="Step ${i + 1}">${i + 1}</div>
+      <button class="step-on" aria-pressed="true"
+        title="Off: no new note; a still-ringing tail is moved by this step's interval">On</button>
       <span class="osc2-val" title="Oscillator 2 offset for this step"></span>
       <div class="controls">
         <div class="col">
@@ -994,6 +1010,7 @@ function buildSteps() {
       </div>`;
     const pitch = el.querySelector('.pitch');
     const vol = el.querySelector('.vol');
+    el.querySelector('.step-on').addEventListener('click', () => update({ on: engine.steps[i].on === false }));
     const update = (patch) => {
       engine.setStep(i, patch);
       settings.steps[i] = { ...engine.steps[i] };
@@ -1014,7 +1031,11 @@ function buildSteps() {
 
 function renderStep(i) {
   const el = stepEls[i];
-  const { offset, volume } = engine.steps[i];
+  const { offset, volume, on } = engine.steps[i];
+  const toggle = el.querySelector('.step-on');
+  toggle.setAttribute('aria-pressed', String(on !== false));
+  toggle.textContent = on === false ? 'Off' : 'On';
+  el.classList.toggle('rest', on === false);
   el.querySelector('.pitch').value = offset;
   el.querySelector('.vol').value = volume;
   const pv = el.querySelector('.pitch-val');
@@ -1035,7 +1056,7 @@ function renderSteps() {
 }
 
 $('seq-reset').addEventListener('click', () => {
-  for (let i = 0; i < MAX_SEQ_LENGTH; i++) engine.setStep(i, { offset: 0, volume: 100 });
+  for (let i = 0; i < MAX_SEQ_LENGTH; i++) engine.setStep(i, { offset: 0, volume: 100, on: true });
   settings.steps = engine.steps.map((s) => ({ ...s }));
   renderSteps();
   save();
@@ -1272,7 +1293,9 @@ function frame() {
     lastStepEl = stepEls[ev.stepIndex];
     lastStepEl.classList.add('current');
     $('out-src').textContent = noteName(ev.sourceNote);
-    $('out-note').textContent = ev.velocity ? noteName(ev.note) : '(muted)';
+    $('out-note').textContent = ev.rest
+      ? (ev.note === null ? 'rest' : `tail → ${noteName(ev.note)}`)
+      : ev.velocity ? noteName(ev.note) : '(muted)';
     $('out-vel').textContent = ev.velocity ? `vel ${ev.velocity}` : '';
     $('out-osc2-wrap').hidden = ev.note2 === null;
     if (ev.note2 !== null) $('out-osc2').textContent = ev.velocity ? noteName(ev.note2) : '(muted)';
