@@ -34,6 +34,10 @@ The arp has two monophonic voices: **Oscillator 1**, and **Oscillator 2**, which
   - **VCA** works the same way without the filter.
   - **LP** is filter only: the note holds for exactly the arp's Gate time.
 - **Resonance** for the gate's filter.
+- **Mod → Osc 1** (in Oscillator 2's panel): oscillator 2 modulates oscillator 1 with **AM** or **FM**, using its own pitch for each step (Same/Inverted, Transpose, Detune) and its own Wave.
+  - **Depth** is the AM amount, or the FM index (0–8).
+  - Off-step tail slides move the modulator too.
+  - It still works with oscillator 2 switched Off, which makes oscillator 2 a silent modulator.
 - **Sync cutoff** (Oscillator 2, on by default): Oscillator 1's Cutoff drives both voices.
 - **Monophonic:** each new note on a voice cuts off that voice's previous note, with a 3 ms fade so there's no click. Chords stay polyphonic.
 

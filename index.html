@@ -16,7 +16,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=16" />
+  <link rel="stylesheet" href="styles.css?v=17" />
 </head>
 <body>
   <main class="device">
@@ -264,6 +264,16 @@
           <input id="osc2-res" type="range" min="0.5" max="12" step="0.1" />
         </label>
       </div>
+      <div class="row mod-row">
+        <span class="row-label">Mod → Osc 1</span>
+        <label class="field">Type
+          <select id="osc2-mod" title="Oscillator 2 modulates oscillator 1: amplitude (AM) or frequency (FM)"></select>
+        </label>
+        <label class="field slider">Depth <output id="osc2-mod-depth-val"></output>
+          <input id="osc2-mod-depth" type="range" min="0" max="100" />
+        </label>
+        <span class="status">Works with Osc 2 switched Off, too: it becomes a silent modulator.</span>
+      </div>
     </section>
 
     <section class="panel io" aria-label="Sound and MIDI">
@@ -304,6 +314,6 @@
       <div id="keyboard" class="keyboard"></div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=16"></script>
+  <script type="module" src="src/app.js?v=17"></script>
 </body>
 </html>

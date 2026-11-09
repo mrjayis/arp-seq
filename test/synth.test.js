@@ -57,3 +57,18 @@ test('Combo: opening the gate further makes the strike ring longer', () => {
   const d = strikeDecay(gateOpening(2400));
   assert.ok(d > 0.5 && d < 0.9, `${d}`);
 });
+
+import { fmDeviation, amGains, MAX_FM_INDEX } from '../src/synth.js';
+
+test('FM deviation scales with depth and modulator pitch; AM swings within 0..1', () => {
+  assert.equal(fmDeviation(0, 220), 0);
+  assert.equal(fmDeviation(1, 220), MAX_FM_INDEX * 220);
+  assert.equal(fmDeviation(0.5, 440), fmDeviation(1, 220) * 1);
+  assert.equal(fmDeviation(2, 100), MAX_FM_INDEX * 100);
+  for (const d of [0, 0.3, 1]) {
+    const { base, swing } = amGains(d);
+    assert.ok(near(base - swing, 1 - d)); // trough
+    assert.ok(near(base + swing, 1)); // peak never above unity
+  }
+  assert.deepEqual(amGains(0), { base: 1, swing: 0 });
+});
