@@ -12,6 +12,8 @@ const types = {
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json',
   '.svg': 'image/svg+xml',
+  '.ttf': 'font/ttf',
+  '.woff2': 'font/woff2',
 };
 
 createServer(async (req, res) => {
