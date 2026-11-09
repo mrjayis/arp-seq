@@ -4,11 +4,11 @@ import {
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=10';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=10';
-import { Synth, Chorus, LPG_MODES } from './synth.js?v=10';
-import { Midi } from './midi.js?v=10';
-import { DrumSynth, DRUM_PRESETS, DRUM_STEPS, VOICES, parsePattern, hitsAt } from './percussion.js?v=10';
+} from './core.js?v=11';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=11';
+import { Synth, Chorus, LPG_MODES } from './synth.js?v=11';
+import { Midi } from './midi.js?v=11';
+import { DrumSynth, DRUM_PRESETS, DRUM_STEPS, VOICES, parsePattern, hitsAt } from './percussion.js?v=11';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -934,7 +934,7 @@ function buildSteps() {
     el.className = 'step';
     el.innerHTML = `
       <div class="led"></div>
-      <div class="num">STEP ${i + 1}</div>
+      <div class="num" aria-label="Step ${i + 1}">${i + 1}</div>
       <span class="osc2-val" title="Oscillator 2 offset for this step"></span>
       <div class="controls">
         <div class="col">
