@@ -4,12 +4,12 @@ import {
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=23';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=23';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=23';
-import { Midi } from './midi.js?v=23';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=23';
-import { DrumSynth, DRUM_PRESETS, DRUM_STEPS, VOICES, parsePattern, hitsAt } from './percussion.js?v=23';
+} from './core.js?v=25';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=25';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=25';
+import { Midi } from './midi.js?v=25';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=25';
+import { DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, hitsAt } from './percussion.js?v=25';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -100,6 +100,7 @@ const settings = {
   progOctave: 3,
   progression: defaultProgression(),
   drumOn: false,
+  drumKit: 'latin', // 'latin' | '808' | 'linn'
   drumPreset: 'Bossa Nova',
   drumRows: null, // the pattern being played (a preset, possibly edited)
   drumLevel: 70,
@@ -386,11 +387,12 @@ function onPulse(time, pulse, pulseDuration) {
 
 // Percussion: one-bar 16th-note pattern, locked to the clock and swing.
 function playDrums(step) {
-  const hits = hitsAt(settings.drumRows, step.stepNumber, settings.drumMuted);
+  const voices = kitVoices();
+  const hits = hitsAt(settings.drumRows, step.stepNumber, settings.drumMuted, voices);
   for (const { id, gain } of hits) {
     if (drums && settings.drumLevel > 0) drums.play(id, step.time, gain);
     if (settings.drumMidiCh >= 0) {
-      const { gm } = VOICES.find((v) => v.id === id);
+      const { gm } = voices.find((v) => v.id === id);
       midi.noteOn(gm, Math.round(gain * 127), toPerfMs(step.time), settings.drumMidiCh);
       midi.noteOff(gm, toPerfMs(step.time + 0.05), settings.drumMidiCh);
     }
@@ -890,32 +892,63 @@ buildProgression();
 renderProgression();
 
 // ---------------------------------------------------------------- UI: percussion
+// The current kit's pattern, preset and mutes live in settings.drumRows / drumPreset /
+// drumMuted; the other kits' are parked in settings.drumKitStore until switched back.
 const drumCells = {}; // voice id -> [cell elements]
 const drumLabels = {};
 let drumCol = -1;
 
-function validDrumRows(rows) {
-  return rows && VOICES.every(({ id }) => Array.isArray(rows[id]) && rows[id].length === DRUM_STEPS);
-}
-if (!DRUM_PRESETS[settings.drumPreset] && settings.drumPreset !== 'custom') settings.drumPreset = 'Bossa Nova';
-if (!validDrumRows(settings.drumRows)) settings.drumRows = parsePattern(DRUM_PRESETS[settings.drumPreset] || {});
-if (!settings.drumMuted || typeof settings.drumMuted !== 'object') settings.drumMuted = {};
+const kit = () => KITS[settings.drumKit] || KITS.latin;
+const kitVoices = () => kit().voices;
 
-function buildDrums() {
+function validDrumRows(rows, voices) {
+  return rows && voices.every(({ id }) => Array.isArray(rows[id]) && rows[id].length === DRUM_STEPS);
+}
+
+/** Make the current kit's state valid (also used after loading an older save). */
+function loadKitState() {
+  if (!KITS[settings.drumKit]) settings.drumKit = 'latin';
+  const { presets, voices } = kit();
+  if (!presets[settings.drumPreset] && settings.drumPreset !== 'custom') settings.drumPreset = Object.keys(presets)[0];
+  if (!validDrumRows(settings.drumRows, voices)) settings.drumRows = parsePattern(presets[settings.drumPreset] || {}, voices);
+  if (!settings.drumMuted || typeof settings.drumMuted !== 'object') settings.drumMuted = {};
+}
+if (!settings.drumKitStore || typeof settings.drumKitStore !== 'object') settings.drumKitStore = {};
+loadKitState();
+
+function switchKit(next) {
+  if (next === settings.drumKit || !KITS[next]) return;
+  settings.drumKitStore[settings.drumKit] = {
+    preset: settings.drumPreset, rows: settings.drumRows, muted: settings.drumMuted,
+  };
+  const stored = settings.drumKitStore[next] || {};
+  settings.drumKit = next;
+  settings.drumPreset = stored.preset;
+  settings.drumRows = stored.rows;
+  settings.drumMuted = stored.muted || {};
+  loadKitState();
+  showDrumStep(-1, []);
+  buildDrumGrid();
+  fillDrumPresets();
+  renderDrumGrid();
+  save();
+}
+
+function fillDrumPresets() {
   const preset = $('drum-preset');
-  for (const name of Object.keys(DRUM_PRESETS)) preset.add(new Option(name, name));
+  preset.replaceChildren();
+  for (const name of Object.keys(kit().presets)) preset.add(new Option(name, name));
   preset.add(new Option('Custom (edited)', 'custom'));
   preset.value = settings.drumPreset;
-  preset.addEventListener('change', () => {
-    if (preset.value === 'custom') return;
-    settings.drumPreset = preset.value;
-    settings.drumRows = parsePattern(DRUM_PRESETS[preset.value]);
-    renderDrumGrid();
-    save();
-  });
+}
 
+function buildDrumGrid() {
   const grid = $('drum-grid');
-  for (const { id, label } of VOICES) {
+  grid.replaceChildren();
+  for (const key of Object.keys(drumCells)) delete drumCells[key];
+  for (const key of Object.keys(drumLabels)) delete drumLabels[key];
+  drumCol = -1;
+  for (const { id, label } of kitVoices()) {
     const name = document.createElement('button');
     name.className = 'drum-name';
     name.textContent = label;
@@ -945,6 +978,22 @@ function buildDrums() {
       drumCells[id].push(c);
     }
   }
+}
+
+function buildDrums() {
+  for (const key of KIT_ORDER) $('drum-kit').add(new Option(KITS[key].label, key));
+  $('drum-kit').value = settings.drumKit;
+  $('drum-kit').addEventListener('change', () => switchKit($('drum-kit').value));
+  fillDrumPresets();
+  $('drum-preset').addEventListener('change', () => {
+    const preset = $('drum-preset');
+    if (preset.value === 'custom') return;
+    settings.drumPreset = preset.value;
+    settings.drumRows = parsePattern(kit().presets[preset.value], kitVoices());
+    renderDrumGrid();
+    save();
+  });
+  buildDrumGrid();
 
   $('drum-on').addEventListener('click', () => {
     settings.drumOn = !settings.drumOn;
@@ -965,7 +1014,7 @@ function renderDrumGrid() {
   $('drum-on').setAttribute('aria-pressed', String(settings.drumOn));
   $('drum-on').textContent = settings.drumOn ? 'On' : 'Off';
   $('drum-panel').classList.toggle('off', !settings.drumOn);
-  for (const { id } of VOICES) {
+  for (const { id } of kitVoices()) {
     drumLabels[id].classList.toggle('muted', !!settings.drumMuted[id]);
     drumLabels[id].setAttribute('aria-pressed', String(!settings.drumMuted[id]));
     drumCells[id].forEach((c, s) => {
@@ -977,10 +1026,11 @@ function renderDrumGrid() {
 }
 
 function showDrumStep(step, hits) {
-  if (drumCol >= 0) for (const { id } of VOICES) drumCells[id][drumCol].classList.remove('now');
+  const ids = kitVoices().map((v) => v.id).filter((id) => drumCells[id]);
+  if (drumCol >= 0) for (const id of ids) drumCells[id][drumCol]?.classList.remove('now');
   drumCol = step;
-  if (step >= 0) for (const { id } of VOICES) drumCells[id][step].classList.add('now');
-  for (const { id } of VOICES) drumLabels[id].classList.toggle('hit', hits.includes(id));
+  if (step >= 0) for (const id of ids) drumCells[id][step].classList.add('now');
+  for (const id of ids) drumLabels[id].classList.toggle('hit', hits.includes(id));
 }
 
 buildDrums();
