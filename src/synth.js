@@ -316,6 +316,7 @@ export class Synth {
   playWest(note, velocity, time, duration, {
     wave = this.wave, detune = 0, level = 1, cutoff = this.cutoff,
     shape = 0.5, timbre = 0, lpg = 'combo', resonance = 1, out = this.master, mono = null, mod = null,
+    attack: attackTime = 0.004, release = 0.015, // seconds: fade-in, and extra tail
   } = {}) {
     const ctx = this.ctx;
     const t0 = Math.max(time, ctx.currentTime);
@@ -324,7 +325,8 @@ export class Synth {
     const vel = velocity / 127;
     const opening = gateOpening(cutoff);
     const struck = lpg !== 'lp';
-    const ring = strikeDecay(opening);
+    // Release lengthens the tail: added to the strike's ring, or the fade after an LP note's gate.
+    const ring = strikeDecay(opening) + Math.max(0, release);
     const tau = ring / 5; // exponential fall, ~-43 dB after `ring` seconds
 
     // Sine core → wavefolder.
@@ -360,8 +362,11 @@ export class Synth {
     const floor = 40; // fully closed filter
     const open = lpg === 'vca' ? 18000 : floor * Math.pow(cutoff / floor, 0.55 + 0.45 * vel);
     const peak = Math.pow(vel, 1.5) * 0.35 * level * (lpg === 'lp' ? 1 : comboLevel(opening));
-    const attack = t0 + 0.004;
-    const end = struck ? attack + ring * 1.3 : tOff + 0.1;
+    const rise = Math.max(0.002, attackTime);
+    // An LP note must finish its fade-in before its gate ends.
+    const attack = struck ? t0 + rise : Math.min(t0 + rise, tOff - 0.001);
+    const relTau = Math.max(0.012, release / 4);
+    const end = struck ? attack + ring * 1.3 : tOff + Math.max(0.1, release * 1.6);
 
     if (struck) {
       // Strike: open fast, then filter (Combo) and loudness fall together at once.
@@ -375,16 +380,16 @@ export class Synth {
       amp.gain.linearRampToValueAtTime(peak, attack);
       amp.gain.setTargetAtTime(0, attack, tau);
     } else {
-      // LP: hold for exactly the gate time, then close quickly.
+      // LP: hold for exactly the gate time, then close over the release.
       filter.frequency.setValueAtTime(floor, t0);
       filter.frequency.linearRampToValueAtTime(open, attack);
       filter.frequency.setTargetAtTime(floor + (open - floor) * 0.8, attack, 0.12);
       filter.frequency.setValueAtTime(floor + (open - floor) * 0.8, tOff);
-      filter.frequency.setTargetAtTime(floor, tOff, 0.015);
+      filter.frequency.setTargetAtTime(floor, tOff, relTau);
       amp.gain.setValueAtTime(0, t0);
       amp.gain.linearRampToValueAtTime(peak, attack);
       amp.gain.setValueAtTime(peak, tOff);
-      amp.gain.setTargetAtTime(0, tOff, 0.012);
+      amp.gain.setTargetAtTime(0, tOff, relTau);
     }
 
     // AM stage between the oscillator mix and the gate (unity gain when unused).
