@@ -266,7 +266,7 @@ export class BreakPlayer {
   }
 
   /** Start the break at `offset` seconds into it (into the reversed copy if `reverse`). */
-  trigger(time, { offset = 0, reverse = false, rate = 1, gain = 1 }) {
+  trigger(time, { offset = 0, reverse = false, rate = 1, gain = 1, duration = null }) {
     if (!this.buffer) return;
     const t = Math.max(time, this.ctx.currentTime);
     this.stop(t);
@@ -281,5 +281,12 @@ export class BreakPlayer {
     src.connect(g).connect(this.out);
     src.start(t, Math.max(0, Math.min(buf.duration - 0.001, offset)));
     this.voice = { src, gain: g, level: gain, start: t };
+    if (duration !== null) {
+      // Play just this much of the break (in break seconds), then fade out.
+      const end = t + Math.max(0.02, duration / rate);
+      g.gain.setValueAtTime(gain, end - 0.004);
+      g.gain.linearRampToValueAtTime(0, end);
+      src.stop(end + 0.01);
+    }
   }
 }

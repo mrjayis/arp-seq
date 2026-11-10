@@ -46,3 +46,11 @@ test('evolveBreakRow varies filled rows, rarely fills empty ones, and respects C
     assert.ok(e.slice === null || (e.slice >= 0 && e.slice < 16));
   }
 });
+
+test('evolveDrums leaves conditioned hits (fills, 1:2…) on their steps', () => {
+  const rows = { snare: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0.65, 0, 0.65, 0.65] };
+  const conds = { snare: [...new Array(12).fill(''), 'fill', '', 'fill', 'fill'] };
+  for (let bar = 0; bar < 200; bar++) {
+    assert.deepEqual(evolveDrums(rows, 1, barRng(3, bar), conds).snare, rows.snare);
+  }
+});
