@@ -95,6 +95,7 @@ Three kits, all synthesized live with Web Audio (no samples). Each kit remembers
   - Loading: **Load samples…** (or drop a folder's worth of files on the grid) matches each file to a row by the **first three letters** of its name: KIC/BAS → Kick, SNA → Snare, RIM/SID/SST → Rimshot, CLA → Clap, CHH/CLO/HHC/HIH → Closed HH, OHH/OPE/HHO → Open HH, TOM+H/L → toms, TAM, CAB, COW, CRA/RID/CYM. Short codes like BD, SD or CH1 work too, and a prefix shared by the whole batch (e.g. "LinnDrum " or "LD_") or a track number is skipped first. Unrecognised files fill empty rows; drop a single file on a row to replace it.
   - Hi-hats: names with the word open or closed after it ("Hat Open", "HH Closed") go by that word.
   - **Sample mixer** (under the buttons): shows which file is on each row and lets you put any loaded file on any row, swapping with what was there, or empty a row. Each row also has a **Level** (0–150%, double-click for 100%) and a **Tune** (±12 semitones in 0.1 steps, double-click for 0). Tune changes playback speed like the hardware's tuning knobs, so tuning down also lengthens the sound.
+  - **Mixer** (Latin, 808 and Linn kits): the same **Level** (0–150%) and **Tune** (±12 semitones) per sound, remembered per kit. Tuning a synthesized sound scales every frequency in it (oscillators, sweeps and filters), so a cowbell goes up an octave at +12. **Reset mixer** puts the kit back to 100% and no tuning.
   - Storage: samples are kept in this browser only (IndexedDB) and never uploaded or committed.
   - Playback: the closed hat chokes the open hat, and accents play louder. The Linn-style patterns come mapped onto these rows.
 
@@ -182,3 +183,7 @@ A shared delay and reverb, with a **send** from each source (Arp, Chords, Drums)
 | `src/samples.js` | Stores your own drum samples in the browser |
 | `src/percussion.js` | Percussion voices, rhythm presets and pattern helpers (patterns tested) |
 | `src/app.js` | UI wiring |
+
+## Solo
+
+The Arpeggiator (both voices), Chord Rhythm (with its pad and sub), Mono Synth, Percussion and Breakbeat windows each have an **S** button. In System 7 it sits at the right of the title bar. Solo one or more to hear only those. Their delay and reverb sends go quiet too, but echoes already ringing still finish. Alt-click solos a section on its own. The button still shows when a window is folded, and solo isn't saved: a fresh load starts with everything audible.

@@ -367,7 +367,15 @@ export class DrumSynth {
     const t = Math.max(time, this.ctx.currentTime);
     if (id.startsWith('u_')) return this.playSample(id, t, gain, tune);
     const fn = this[id];
-    if (typeof fn === 'function') fn.call(this, t, gain);
+    if (typeof fn !== 'function') return;
+    // Tuning: every frequency the voice uses is scaled by this factor while it's built.
+    this.k = tuneRate(tune);
+    try { fn.call(this, t, gain); } finally { this.k = 1; }
+  }
+
+  /** A frequency scaled by the current tuning, kept below Nyquist. */
+  hz(f) {
+    return Math.min(this.ctx.sampleRate * 0.45, f * (this.k || 1));
   }
 
   /** Load (or clear, with null) the AudioBuffer for a "Your samples" row. */
@@ -407,8 +415,8 @@ export class DrumSynth {
   tone(t, gain, f0, decay, bend = 1.6, type = 'sine', sweep = 0.03, dest = null) {
     const osc = this.ctx.createOscillator();
     osc.type = type;
-    osc.frequency.setValueAtTime(f0 * bend, t);
-    osc.frequency.exponentialRampToValueAtTime(f0, t + sweep);
+    osc.frequency.setValueAtTime(this.hz(f0 * bend), t);
+    osc.frequency.exponentialRampToValueAtTime(this.hz(f0), t + sweep);
     osc.connect(this.env(t, gain, decay, dest));
     osc.start(t);
     osc.stop(t + decay + 0.02);
@@ -419,7 +427,7 @@ export class DrumSynth {
     src.buffer = this.noise;
     const f = this.ctx.createBiquadFilter();
     f.type = type;
-    f.frequency.value = freq;
+    f.frequency.value = this.hz(freq);
     f.Q.value = q;
     const g = this.env(t, gain, decay, dest);
     src.connect(f).connect(g);
@@ -438,13 +446,13 @@ export class DrumSynth {
   cowbell(t, g) {
     const bp = this.ctx.createBiquadFilter();
     bp.type = 'bandpass';
-    bp.frequency.value = 800;
+    bp.frequency.value = this.hz(800);
     bp.Q.value = 2.5;
     bp.connect(this.env(t, g * 0.35, 0.28));
     for (const f of [540, 800]) {
       const osc = this.ctx.createOscillator();
       osc.type = 'square';
-      osc.frequency.value = f;
+      osc.frequency.value = this.hz(f);
       osc.connect(bp);
       osc.start(t);
       osc.stop(t + 0.3);
@@ -460,7 +468,7 @@ export class DrumSynth {
     chop.gain.value = 0.5;
     const lfo = this.ctx.createOscillator();
     lfo.type = 'square';
-    lfo.frequency.value = 45;
+    lfo.frequency.value = this.hz(45);
     const depth = this.ctx.createGain();
     depth.gain.value = 0.5;
     lfo.connect(depth).connect(chop.gain);
@@ -531,7 +539,7 @@ export class DrumSynth {
     for (const f of [205.3, 304.4, 369.6, 522.7, 540, 800]) {
       const o = this.ctx.createOscillator();
       o.type = 'square';
-      o.frequency.value = f;
+      o.frequency.value = this.hz(f);
       o.connect(sum);
       o.start(t);
       o.stop(stop);
@@ -542,7 +550,7 @@ export class DrumSynth {
   filter(type, freq, q = 0.7) {
     const f = this.ctx.createBiquadFilter();
     f.type = type;
-    f.frequency.value = freq;
+    f.frequency.value = this.hz(freq);
     f.Q.value = q;
     return f;
   }
@@ -626,13 +634,13 @@ export class DrumSynth {
   cbLinn(t, g) {
     const bp = this.ctx.createBiquadFilter();
     bp.type = 'bandpass';
-    bp.frequency.value = 900;
+    bp.frequency.value = this.hz(900);
     bp.Q.value = 3;
     bp.connect(this.env(t, g * 0.45, 0.2));
     for (const f of [587, 845]) {
       const o = this.ctx.createOscillator();
       o.type = 'triangle';
-      o.frequency.value = f;
+      o.frequency.value = this.hz(f);
       o.connect(bp);
       o.start(t);
       o.stop(t + 0.22);

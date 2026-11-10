@@ -479,6 +479,25 @@ input[type="range"]::-moz-range-thumb {
 .sample-map select { width: 100%; }
 .map-row { display: grid; gap: 4px; }
 .map-row .field.slider { min-width: 0; }
+.map-name { font-weight: 600; }
+#drum-mix-reset { margin-top: 8px; }
+
+/* ---------- solo ---------- */
+.solo-btn {
+  min-width: 0;
+  min-height: 0;
+  width: 24px;
+  height: 22px;
+  padding: 0;
+  margin-left: 8px;
+  vertical-align: 2px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+}
+.seq-head > .solo-btn { margin-left: -4px; }
+.solo-btn[aria-pressed="true"] { background: var(--mod); border-color: var(--mod); color: var(--mod-ink); }
+.panel.silenced > h2, .panel.silenced > .seq-head > h2 { opacity: 0.45; }
 .drum-name.empty { font-style: italic; opacity: 0.6; }
 .drum-name.drop { outline: 2px dashed var(--mod); outline-offset: 1px; }
 .drum-name.muted { color: var(--ink-3); text-decoration: line-through; }
@@ -753,7 +772,7 @@ h2.collapsible { cursor: pointer; user-select: none; }
 .panel.collapsed .collapse-btn::before { transform: translate(-30%, -50%) rotate(-90deg); }
 .panel.collapsed { padding-bottom: 10px; }
 .panel.collapsed > h2 { margin-bottom: 0; }
-.panel.collapsed > :not(h2):not(.seq-head):not(.collapse-btn) { display: none !important; }
+.panel.collapsed > :not(h2):not(.seq-head):not(.collapse-btn):not(.solo-btn) { display: none !important; }
 .panel.collapsed > .seq-head > .hint { display: none; }
 .panel:not(.collapsed) > h2 + * { margin-top: 0; }
 .fold-all button { min-width: 0; min-height: 28px; padding: 2px 10px; font-size: 13px; }
