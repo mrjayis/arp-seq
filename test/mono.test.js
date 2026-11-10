@@ -51,3 +51,19 @@ test('step labels and the sub pulse wave', () => {
   assert.equal(real[0], 0);
   assert.ok(Math.abs(imag[2] - (1 - Math.cos(Math.PI)) / (2 * Math.PI)) < 1e-6);
 });
+
+import { envLevel } from '../src/mono.js';
+
+test('envelope level is continuous through attack, decay, release and retrigger', () => {
+  const seg = { t0: 1, v0: 0.2, attack: 0.1, peak: 1, sustain: 0.3, decayTau: 0.05, off: null };
+  const near = (a, b) => Math.abs(a - b) < 1e-9;
+  assert.ok(near(envLevel(seg, 1), 0.2)); // starts where the last note left off
+  assert.ok(near(envLevel(seg, 1.05), 0.6)); // half-way up the attack
+  assert.ok(near(envLevel(seg, 1.1), 1)); // peak
+  assert.ok(Math.abs(envLevel(seg, 2) - 0.3) < 1e-6); // settled at sustain
+  const v = envLevel(seg, 1.2);
+  const released = { ...seg, off: { t: 1.2, v, tau: 0.02 } };
+  assert.ok(near(envLevel(released, 1.2), v)); // release starts at the current level
+  assert.ok(envLevel(released, 1.3) < v * 0.01);
+  assert.equal(envLevel(null, 5), 0);
+});
