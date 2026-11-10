@@ -2,7 +2,7 @@
 // into a 24 dB resonant low-pass, with ADSR, LFO and portamento, played by its
 // own step sequencer. Sequencer logic is pure and unit-tested.
 
-import { pulseCurve, SAW_RAMP } from './synth.js?v=53';
+import { pulseCurve, SAW_RAMP } from './synth.js?v=57';
 
 export const MAX_MONO_STEPS = 64;
 export const SUB_MODES = { sq1: '−1 oct square', sq2: '−2 oct square', pl2: '−2 oct pulse' };
@@ -75,6 +75,63 @@ export function pulseSeries(duty = 0.25, harmonics = 48) {
     imag[n] = (1 - Math.cos(2 * Math.PI * n * duty)) / (n * Math.PI);
   }
   return { real, imag };
+}
+
+// ------------------------------------------------------------------ envelopes
+// Each envelope remembers what it scheduled, so the level at any moment can be
+// worked out exactly. New notes and releases start from that level: relying on
+// cancelAndHoldAtTime to find it made Chrome snap a release tail to 0 (a click).
+
+/**
+ * Level of an envelope segment at time t. `seg` is {t0, v0, attack, peak,
+ * sustain, decayTau} for a note, plus `off: {t, v, tau}` once released.
+ */
+export function envLevel(seg, t) {
+  if (!seg) return 0;
+  if (seg.off && t >= seg.off.t) return seg.off.v * Math.exp(-(t - seg.off.t) / seg.off.tau);
+  if (t <= seg.t0) return seg.v0;
+  const peakAt = seg.t0 + seg.attack;
+  if (t < peakAt) return seg.v0 + (seg.peak - seg.v0) * ((t - seg.t0) / seg.attack);
+  return seg.sustain + (seg.peak - seg.sustain) * Math.exp(-(t - peakAt) / seg.decayTau);
+}
+
+class EnvTrack {
+  constructor(param) {
+    this.param = param;
+    this.seg = null;
+  }
+
+  /**
+   * Cut the schedule at t and pin the level there. Inside an unfinished attack ramp,
+   * cancelling also erases the part already under way, so the ramp is re-drawn up to t.
+   */
+  cut(t, v) {
+    const p = this.param;
+    const inAttack = this.seg && !this.seg.off && t > this.seg.t0 && t < this.seg.t0 + this.seg.attack;
+    p.cancelScheduledValues(t);
+    if (inAttack) p.linearRampToValueAtTime(v, t);
+    else p.setValueAtTime(v, t);
+  }
+
+  /** Attack from the current level to `peak`, then decay toward `sustain`. */
+  on(t, { attack, peak, sustain, decayTau }) {
+    const v0 = envLevel(this.seg, t);
+    const a = Math.max(0.001, attack);
+    this.cut(t, v0);
+    this.seg = { t0: t, v0, attack: a, peak, sustain, decayTau, off: null };
+    const p = this.param;
+    p.linearRampToValueAtTime(peak, t + a);
+    if (sustain !== peak) p.setTargetAtTime(sustain, t + a, decayTau);
+  }
+
+  /** Fall from the current level to 0 with time constant `tau`. */
+  off(t, tau) {
+    if (!this.seg) return;
+    const v = envLevel(this.seg, t);
+    this.cut(t, v);
+    this.seg = { ...this.seg, off: { t, v, tau } };
+    this.param.setTargetAtTime(0, t, tau);
+  }
 }
 
 // ------------------------------------------------------------------ voice
@@ -157,6 +214,8 @@ export class MonoSynth {
       lfoRate: 5, vibrato: 0, lfoFilter: 0, porta: 'off', glide: 0.08, level: 0.5,
     };
     this.note = null;
+    this.envTrack = new EnvTrack(this.env.offset);
+    this.vcaTrack = new EnvTrack(this.vca.gain);
     this.set({});
   }
 
@@ -201,11 +260,6 @@ export class MonoSynth {
     }
   }
 
-  hold(param, t) {
-    if (param.cancelAndHoldAtTime) param.cancelAndHoldAtTime(t);
-    else param.cancelScheduledValues(t);
-  }
-
   /** Start a note at time t; `legato` changes pitch without retriggering the envelope. */
   noteOn(note, t, { legato = false, velocity = 1 } = {}) {
     const p = this.p;
@@ -214,37 +268,24 @@ export class MonoSynth {
     this.setCutoff(note, t);
     this.note = note;
     if (legato) return;
-    const env = this.env.offset;
-    this.hold(env, t);
-    env.setValueAtTime(0, t);
-    env.linearRampToValueAtTime(1, t + p.attack);
-    env.setTargetAtTime(p.sustain, t + p.attack, Math.max(0.005, p.decay / 3));
-    const vca = this.vca.gain;
-    this.hold(vca, t);
-    vca.setValueAtTime(0, t);
-    if (p.vcaGate) {
-      vca.linearRampToValueAtTime(velocity, t + 0.003);
-    } else {
-      vca.linearRampToValueAtTime(velocity, t + p.attack);
-      vca.setTargetAtTime(velocity * p.sustain, t + p.attack, Math.max(0.005, p.decay / 3));
-    }
+    // Retrigger from wherever the envelope is now (as analog envelopes do).
+    const decayTau = Math.max(0.005, p.decay / 3);
+    this.envTrack.on(t, { attack: p.attack, peak: 1, sustain: p.sustain, decayTau });
+    if (p.vcaGate) this.vcaTrack.on(t, { attack: 0.003, peak: velocity, sustain: velocity, decayTau });
+    else this.vcaTrack.on(t, { attack: p.attack, peak: velocity, sustain: velocity * p.sustain, decayTau });
   }
 
   noteOff(t) {
     const r = Math.max(0.005, this.p.release / 3);
-    for (const param of [this.env.offset, this.vca.gain]) {
-      this.hold(param, t);
-      param.setTargetAtTime(0, t, this.p.vcaGate && param === this.vca.gain ? 0.004 : r);
-    }
+    this.envTrack.off(t, r);
+    this.vcaTrack.off(t, this.p.vcaGate ? 0.004 : r);
   }
 
   /** Silence now (Stop). */
   panic() {
     const now = this.ctx.currentTime;
-    for (const param of [this.env.offset, this.vca.gain]) {
-      this.hold(param, now);
-      param.setTargetAtTime(0, now, 0.01);
-    }
+    this.envTrack.off(now, 0.01);
+    this.vcaTrack.off(now, 0.01);
     this.note = null;
   }
 }
