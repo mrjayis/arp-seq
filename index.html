@@ -17,8 +17,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=42" />
-  <link rel="stylesheet" href="mac.css?v=42" />
+  <link rel="stylesheet" href="styles.css?v=44" />
+  <link rel="stylesheet" href="mac.css?v=44" />
 </head>
 <body>
   <main class="device">
@@ -309,6 +309,106 @@
       <div id="steps" class="steps"></div>
     </section>
 
+    <section class="panel mono" id="mono-panel" aria-label="Mono synth">
+      <div class="seq-head">
+        <h2>Mono Synth · 101-style</h2>
+        <button id="mono-on" aria-pressed="false" title="Play the mono sequence in time with everything else">Off</button>
+        <label class="field inline">Rate <select id="mono-rate"></select></label>
+        <label class="field inline slider">Gate <output id="mono-gate-val"></output>
+          <input id="mono-gate" type="range" min="5" max="100" />
+        </label>
+        <label class="field inline">Transpose <select id="mono-transpose"></select></label>
+        <label class="check" title="Keys you play shift the sequence (C3 = no change), as on the original"><input id="mono-keys" type="checkbox" /> Keys transpose</label>
+        <label class="field inline slider">Level <output id="mono-level-val"></output>
+          <input id="mono-level" type="range" min="0" max="100" />
+        </label>
+        <label class="field inline">MIDI Out Ch <select id="mono-midi-ch"><option value="-1">Off</option></select></label>
+      </div>
+      <p class="hint">Arm <b>Write</b> and play notes on the Keyboard (on screen, computer keys or MIDI): each one fills the next
+        step. <b>Rest</b> adds silence, <b>Tie</b> holds the previous note, and with <b>Legato</b> on, the next notes slide in
+        without retriggering. Click a step to write from there. While Write is armed, the arpeggiator is left alone.</p>
+      <div class="row mono-tools">
+        <button id="mono-write" aria-pressed="false" title="Keys write into the sequence">Write</button>
+        <button id="mono-legato" aria-pressed="false" title="Notes written now slide from the previous one">Legato</button>
+        <button id="mono-rest">Rest</button>
+        <button id="mono-tie" title="Hold the previous note for another step">Tie</button>
+        <button id="mono-back" title="Delete the step before the cursor">Back</button>
+        <button id="mono-clear">Clear</button>
+        <button id="mono-demo" title="Load the starting bass line">Demo line</button>
+        <span class="status" id="mono-status"></span>
+      </div>
+      <div id="mono-steps" class="mono-steps"></div>
+      <div class="row">
+        <span class="row-label">Source</span>
+        <label class="field slider">Saw <output id="mono-saw-val"></output>
+          <input id="mono-saw" type="range" min="0" max="100" />
+        </label>
+        <label class="field slider">Pulse <output id="mono-pulse-val"></output>
+          <input id="mono-pulse" type="range" min="0" max="100" />
+        </label>
+        <label class="field slider">Width <output id="mono-width-val"></output>
+          <input id="mono-width" type="range" min="5" max="95" />
+        </label>
+        <label class="field slider">PWM (LFO) <output id="mono-pwm-val"></output>
+          <input id="mono-pwm" type="range" min="0" max="100" />
+        </label>
+        <label class="field slider">Sub <output id="mono-sub-val"></output>
+          <input id="mono-sub" type="range" min="0" max="100" />
+        </label>
+        <label class="field">Sub type <select id="mono-sub-mode"></select></label>
+        <label class="field slider">Noise <output id="mono-noise-val"></output>
+          <input id="mono-noise" type="range" min="0" max="100" />
+        </label>
+      </div>
+      <div class="row">
+        <span class="row-label">Filter</span>
+        <label class="field slider">Cutoff <output id="mono-cutoff-val"></output>
+          <input id="mono-cutoff" type="range" min="0" max="1000" step="1" />
+        </label>
+        <label class="field slider">Resonance <output id="mono-res-val"></output>
+          <input id="mono-res" type="range" min="0.5" max="20" step="0.1" />
+        </label>
+        <label class="field slider">Env <output id="mono-env-val"></output>
+          <input id="mono-env" type="range" min="0" max="100" />
+        </label>
+        <label class="field slider">Key follow <output id="mono-keyfollow-val"></output>
+          <input id="mono-keyfollow" type="range" min="0" max="100" />
+        </label>
+      </div>
+      <div class="row">
+        <span class="row-label">Env</span>
+        <label class="field slider">A <output id="mono-attack-val"></output>
+          <input id="mono-attack" type="range" min="0" max="1000" step="1" />
+        </label>
+        <label class="field slider">D <output id="mono-decay-val"></output>
+          <input id="mono-decay" type="range" min="0" max="1000" step="1" />
+        </label>
+        <label class="field slider">S <output id="mono-sustain-val"></output>
+          <input id="mono-sustain" type="range" min="0" max="100" />
+        </label>
+        <label class="field slider">R <output id="mono-release-val"></output>
+          <input id="mono-release" type="range" min="0" max="1000" step="1" />
+        </label>
+        <label class="field">VCA <select id="mono-vca" title="Env: the amp follows the envelope. Gate: it just opens and closes."></select></label>
+      </div>
+      <div class="row">
+        <span class="row-label">Mod</span>
+        <label class="field slider">LFO rate <output id="mono-lfo-rate-val"></output>
+          <input id="mono-lfo-rate" type="range" min="0.1" max="20" step="0.1" />
+        </label>
+        <label class="field slider">Vibrato <output id="mono-vibrato-val"></output>
+          <input id="mono-vibrato" type="range" min="0" max="100" />
+        </label>
+        <label class="field slider">LFO → filter <output id="mono-lfo-filter-val"></output>
+          <input id="mono-lfo-filter" type="range" min="0" max="100" />
+        </label>
+        <label class="field">Portamento <select id="mono-porta" title="Auto: glide only on legato steps"></select></label>
+        <label class="field slider">Glide <output id="mono-glide-val"></output>
+          <input id="mono-glide" type="range" min="0" max="1000" step="1" />
+        </label>
+      </div>
+    </section>
+
     <section class="panel voice" aria-label="Arp voice, oscillator 1">
       <h2>Arp Voice · Oscillator 1</h2>
       <p class="hint">West-coast style, monophonic: a sine core folded by <b>Timbre</b>, blended by
@@ -428,6 +528,9 @@
         <label class="field slider">Drums send <output id="delay-send-drums-val"></output>
           <input id="delay-send-drums" type="range" min="0" max="100" />
         </label>
+        <label class="field slider">Bass send <output id="delay-send-bass-val"></output>
+          <input id="delay-send-bass" type="range" min="0" max="100" />
+        </label>
       </div>
       <div class="row">
         <span class="row-label">Reverb</span>
@@ -448,6 +551,9 @@
         </label>
         <label class="field slider">Drums send <output id="reverb-send-drums-val"></output>
           <input id="reverb-send-drums" type="range" min="0" max="100" />
+        </label>
+        <label class="field slider">Bass send <output id="reverb-send-bass-val"></output>
+          <input id="reverb-send-bass" type="range" min="0" max="100" />
         </label>
       </div>
     </section>
@@ -490,6 +596,6 @@
       <div id="keyboard" class="keyboard"></div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=42"></script>
+  <script type="module" src="src/app.js?v=44"></script>
 </body>
 </html>

@@ -4,20 +4,23 @@ import {
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=42';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=42';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=42';
-import { Midi } from './midi.js?v=42';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=42';
+} from './core.js?v=44';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=44';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=44';
+import { Midi } from './midi.js?v=44';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=44';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=42';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=42';
+} from './percussion.js?v=44';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=44';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
-} from './breaks.js?v=42';
-import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=42';
+} from './breaks.js?v=44';
+import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=44';
+import {
+  MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
+} from './mono.js?v=44';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -93,6 +96,8 @@ const settings = {
   reverbSendArp: 25,
   reverbSendChords: 35,
   reverbSendDrums: 15,
+  delaySendBass: 20,
+  reverbSendBass: 5,
   chordOctave: 0,
   chordGate: 80,
   chordLevel: 45,
@@ -208,16 +213,20 @@ function ensureAudio() {
     buses.arp.connect(synth.master);
     buses.chords.connect(synth.master);
     buses.drums.connect(synth.out);
+    buses.bass = ctx.createGain();
+    buses.bass.connect(synth.master);
     delayFx = new Delay(ctx, synth.master);
     reverbFx = new Reverb(ctx, synth.master);
     for (const [fx, node] of [['delay', delayFx], ['reverb', reverbFx]]) {
-      for (const src of ['arp', 'chords', 'drums']) {
+      for (const src of ['arp', 'chords', 'drums', 'bass']) {
         sends[fx][src] = ctx.createGain();
         buses[src].connect(sends[fx][src]).connect(node.input);
       }
     }
     applyFx();
     drums = new DrumSynth(ctx, buses.drums);
+    monoSynth = new MonoSynth(ctx, buses.bass);
+    applyMono();
     breakPlayer = new BreakPlayer(ctx, buses.drums);
     breakPlayer.setLevel(settings.breakLevel / 100);
     if (breakBuffer) breakPlayer.setBuffer(breakBuffer);
@@ -414,6 +423,10 @@ function onPulse(time, pulse, pulseDuration) {
       uiEvents.push({ kind: 'chord', time: cstep.time, rhythmPos: cstep.stepNumber % settings.chordSteps, notes: [] });
     }
   }
+  if (settings.monoOn) {
+    const mstep = pulseToStep(pulse, time, pulseDuration, RATES[settings.monoRate] || RATES['1/16'], swing);
+    if (mstep) playMonoStep(mstep);
+  }
   if (settings.songOn && !settings.drumOn && settings.breakOn && pulse % (RATES['1/16'] * DRUM_STEPS) === 0) {
     uiEvents.push({ kind: 'song', time, bar: Math.floor(pulse / (RATES['1/16'] * DRUM_STEPS)) });
   }
@@ -508,6 +521,8 @@ function setPlaying(on, { fromClock = false } = {}) {
   }
   if (!on) {
     synth?.panic();
+    monoSynth?.panic();
+    showMonoStep(-1);
     midi.allNotesOff();
     uiEvents.length = 0;
     clearCurrentStep();
@@ -532,6 +547,9 @@ const holdCount = new Map();
 
 function noteOn(note, vel = 100) {
   ensureAudio();
+  // Mono synth Write armed: the key goes into its sequence instead of the arp.
+  if (settings.monoArmed) { monoWrite(note); return; }
+  if (settings.monoKeys) monoKeyTranspose = note - 48; // keys transpose the mono sequence (C3 = none)
   const count = holdCount.get(note) || 0;
   holdCount.set(note, count + 1);
   if (count === 0) engine.noteOn(note, vel);
@@ -1957,6 +1975,234 @@ $('song-clear').addEventListener('click', () => { settings.songChain = []; rende
 renderSong();
 renderSlotButtons();
 
+// ---------------------------------------------------------------- UI: mono synth (101-style)
+let monoSynth = null;
+let monoCursor = 0; // where the next written step goes
+let monoKeyTranspose = 0; // live transpose from held keys (Keys transpose)
+let monoMidiNote = null; // the note last sent to MIDI out
+let monoNowStep = -1;
+const monoStepEls = [];
+
+// Settings key → MonoSynth parameter (and how to convert the stored value).
+const MONO_PARAMS = [
+  ['monoSaw', 'saw', (v) => v / 100], ['monoPulse', 'pulse', (v) => v / 100], ['monoSub', 'sub', (v) => v / 100],
+  ['monoNoise', 'noise', (v) => v / 100], ['monoSubMode', 'subMode'], ['monoWidth', 'width'], ['monoPwm', 'pwm'],
+  ['monoCutoff', 'cutoff'], ['monoRes', 'resonance'], ['monoEnv', 'envAmount', (v) => v / 100],
+  ['monoKeyFollow', 'keyFollow', (v) => v / 100], ['monoAttack', 'attack', (v) => v / 1000],
+  ['monoDecay', 'decay', (v) => v / 1000], ['monoSustain', 'sustain', (v) => v / 100],
+  ['monoRelease', 'release', (v) => v / 1000], ['monoVca', 'vcaGate', (v) => v === 'gate'],
+  ['monoLfoRate', 'lfoRate'], ['monoVibrato', 'vibrato', (v) => v / 100], ['monoLfoFilter', 'lfoFilter', (v) => v / 100],
+  ['monoPorta', 'porta'], ['monoGlide', 'glide', (v) => v / 1000], ['monoLevel', 'level', (v) => v / 100],
+];
+const MONO_DEFAULTS = {
+  monoSaw: 70, monoPulse: 0, monoSub: 60, monoNoise: 0, monoSubMode: 'sq1', monoWidth: 50, monoPwm: 0,
+  monoCutoff: 600, monoRes: 8, monoEnv: 55, monoKeyFollow: 50, monoAttack: 3, monoDecay: 250, monoSustain: 20,
+  monoRelease: 80, monoVca: 'env', monoLfoRate: 5, monoVibrato: 0, monoLfoFilter: 0, monoPorta: 'auto',
+  monoGlide: 70, monoLevel: 55,
+};
+for (const [k, v] of Object.entries(MONO_DEFAULTS)) if (settings[k] === undefined) settings[k] = v;
+
+function monoParams() {
+  return Object.fromEntries(MONO_PARAMS.map(([key, name, conv]) => [name, conv ? conv(settings[key]) : settings[key]]));
+}
+function applyMono() { monoSynth?.set(monoParams()); }
+
+// A starting line in C minor: legato slides, a tie and rests.
+const DEMO_MONO = [
+  noteStep(36), noteStep(48, true), noteStep(36), restStep(), noteStep(39), holdStep(), noteStep(41, true), noteStep(43),
+  noteStep(36), noteStep(48), restStep(), noteStep(46, true), noteStep(43), holdStep(), noteStep(39), noteStep(41),
+];
+if (!Array.isArray(settings.monoSeq)) settings.monoSeq = DEMO_MONO.map((s) => ({ ...s }));
+settings.monoSeq = settings.monoSeq
+  .filter((s) => s && (s.n === null || (Number.isInteger(s.n) && s.n >= 0 && s.n < 128)))
+  .slice(0, MAX_MONO_STEPS)
+  .map((s) => ({ n: s.n, t: !!s.t }));
+monoCursor = settings.monoSeq.length;
+
+function playMonoStep(step) {
+  const seq = settings.monoSeq;
+  if (!seq.length) return;
+  const idx = step.stepNumber % seq.length;
+  const act = stepAction(seq, idx);
+  const shift = settings.monoTranspose + monoKeyTranspose;
+  const t = step.time;
+  const off = t + step.duration * Math.min(settings.monoGate / 100, 0.98);
+  const midiOn = (n) => {
+    if (settings.monoMidiCh < 0) return;
+    midi.noteOn(n, 100, toPerfMs(t), settings.monoMidiCh);
+  };
+  const midiOff = (n, at) => {
+    if (settings.monoMidiCh < 0 || n === null) return;
+    midi.noteOff(n, toPerfMs(at), settings.monoMidiCh);
+  };
+  if (act.type === 'rest') {
+    if (monoSynth && settings.synthOn) monoSynth.noteOff(t);
+    midiOff(monoMidiNote, t);
+    monoMidiNote = null;
+  } else if (act.type === 'note' || act.type === 'legato') {
+    const n = Math.max(0, Math.min(127, act.note + shift));
+    if (monoSynth && settings.synthOn) monoSynth.noteOn(n, t, { legato: act.type === 'legato' });
+    // MIDI: legato overlaps the old note so a mono synth slides; a new note releases first.
+    if (act.type === 'note') midiOff(monoMidiNote, t);
+    midiOn(n);
+    if (act.type === 'legato') midiOff(monoMidiNote, t + 0.002);
+    monoMidiNote = n;
+  }
+  if (act.release) {
+    if (monoSynth && settings.synthOn) monoSynth.noteOff(off);
+    midiOff(monoMidiNote, off);
+    monoMidiNote = null;
+  }
+  uiEvents.push({ kind: 'mono', time: t, step: idx });
+}
+
+/** A key while Write is armed: write it into the sequence (and hear it). */
+function monoWrite(note) {
+  const r = writeStep(settings.monoSeq, monoCursor, noteStep(note, settings.monoLegato));
+  settings.monoSeq = r.seq;
+  monoCursor = r.cursor;
+  if (monoSynth && !playing) {
+    monoSynth.noteOn(note, ctx.currentTime + 0.005);
+    monoSynth.noteOff(ctx.currentTime + 0.25);
+  }
+  renderMonoSteps();
+  save();
+}
+
+function monoEdit(step) {
+  const r = writeStep(settings.monoSeq, monoCursor, step);
+  settings.monoSeq = r.seq;
+  monoCursor = r.cursor;
+  renderMonoSteps();
+  save();
+}
+
+function renderMonoSteps() {
+  const wrap = $('mono-steps');
+  wrap.replaceChildren();
+  monoStepEls.length = 0;
+  settings.monoSeq.forEach((s, i) => {
+    const b = document.createElement('button');
+    b.className = `mono-step${s.n === null ? (s.t ? ' hold' : ' rest') : ''}${s.n !== null && s.t ? ' legato' : ''}`;
+    b.textContent = stepLabel(s, noteName);
+    b.title = `Step ${i + 1}${s.n !== null && s.t ? ' (legato)' : ''}: click to write from here`;
+    b.addEventListener('click', () => { monoCursor = i; renderMonoSteps(); });
+    if (i === monoCursor) b.classList.add('cursor');
+    wrap.append(b);
+    monoStepEls.push(b);
+  });
+  const end = document.createElement('span');
+  end.className = `mono-end${monoCursor >= settings.monoSeq.length ? ' cursor' : ''}`;
+  end.textContent = settings.monoSeq.length < MAX_MONO_STEPS ? '+' : 'full';
+  end.title = 'Writing here adds a step';
+  end.addEventListener('click', () => { monoCursor = settings.monoSeq.length; renderMonoSteps(); });
+  wrap.append(end);
+  $('mono-status').textContent = `${settings.monoSeq.length} step${settings.monoSeq.length === 1 ? '' : 's'} · writing at step ${Math.min(monoCursor, MAX_MONO_STEPS - 1) + 1}`;
+  showMonoStep(monoNowStep);
+}
+
+function showMonoStep(i) {
+  monoStepEls.forEach((el) => el.classList.remove('now'));
+  monoNowStep = i;
+  if (i >= 0) monoStepEls[i]?.classList.add('now');
+}
+
+function renderMonoPanel() {
+  for (const [id, on] of [['mono-on', settings.monoOn], ['mono-write', settings.monoArmed], ['mono-legato', settings.monoLegato]]) {
+    $(id).setAttribute('aria-pressed', String(on));
+  }
+  $('mono-on').textContent = settings.monoOn ? 'On' : 'Off';
+  $('mono-panel').classList.toggle('off', !settings.monoOn);
+  $('mono-panel').classList.toggle('armed', settings.monoArmed);
+}
+
+for (const [k, v] of Object.entries({ monoOn: false, monoArmed: false, monoLegato: false, monoRate: '1/16', monoGate: 70, monoTranspose: 0, monoKeys: false, monoMidiCh: -1 })) {
+  if (settings[k] === undefined) settings[k] = v;
+}
+settings.monoArmed = false; // never start armed: keys would go to the sequence unexpectedly
+
+$('mono-on').addEventListener('click', () => {
+  settings.monoOn = !settings.monoOn;
+  if (settings.monoOn) {
+    ensureAudio();
+    if (!playing && settings.sync === 'internal') setPlaying(true);
+  } else {
+    monoSynth?.panic();
+    showMonoStep(-1);
+  }
+  renderMonoPanel();
+  save();
+});
+$('mono-write').addEventListener('click', () => {
+  settings.monoArmed = !settings.monoArmed;
+  if (settings.monoArmed) ensureAudio();
+  renderMonoPanel();
+});
+$('mono-legato').addEventListener('click', () => { settings.monoLegato = !settings.monoLegato; renderMonoPanel(); save(); });
+$('mono-rest').addEventListener('click', () => monoEdit(restStep()));
+$('mono-tie').addEventListener('click', () => monoEdit(holdStep()));
+$('mono-back').addEventListener('click', () => {
+  const r = backStep(settings.monoSeq, monoCursor);
+  settings.monoSeq = r.seq;
+  monoCursor = r.cursor;
+  renderMonoSteps();
+  save();
+});
+$('mono-clear').addEventListener('click', () => {
+  if (settings.monoSeq.length && !window.confirm('Clear the mono sequence?')) return;
+  settings.monoSeq = [];
+  monoCursor = 0;
+  renderMonoSteps();
+  save();
+});
+$('mono-demo').addEventListener('click', () => {
+  settings.monoSeq = DEMO_MONO.map((s) => ({ ...s }));
+  monoCursor = settings.monoSeq.length;
+  renderMonoSteps();
+  save();
+});
+
+bindSelect('mono-rate', 'monoRate', Object.keys(RATES).map((r) => [r, r]));
+bindRange('mono-gate', 'monoGate', (v) => `${v}%`);
+for (let t = -24; t <= 24; t++) $('mono-transpose').add(new Option(`${t > 0 ? '+' : ''}${t}`, String(t)));
+bindSelect('mono-transpose', 'monoTranspose');
+$('mono-keys').checked = settings.monoKeys;
+$('mono-keys').addEventListener('change', () => {
+  settings.monoKeys = $('mono-keys').checked;
+  if (!settings.monoKeys) monoKeyTranspose = 0;
+  save();
+});
+for (let c = 1; c <= 16; c++) $('mono-midi-ch').add(new Option(String(c), String(c - 1)));
+bindSelect('mono-midi-ch', 'monoMidiCh', null, () => midi.allNotesOff());
+
+const pct = (v) => `${v}%`;
+const ms = (v) => (v < 1000 ? `${v} ms` : `${(v / 1000).toFixed(2)} s`);
+bindRange('mono-saw', 'monoSaw', pct, applyMono);
+bindRange('mono-pulse', 'monoPulse', pct, applyMono);
+bindRange('mono-sub', 'monoSub', pct, applyMono);
+bindSelect('mono-sub-mode', 'monoSubMode', Object.entries(SUB_MODES), applyMono);
+bindRange('mono-noise', 'monoNoise', pct, applyMono);
+bindRange('mono-width', 'monoWidth', pct, applyMono);
+bindRange('mono-pwm', 'monoPwm', pct, applyMono);
+bindCutoff('mono-cutoff', 'monoCutoff', applyMono);
+bindRange('mono-res', 'monoRes', (v) => v.toFixed(1), applyMono);
+bindRange('mono-env', 'monoEnv', pct, applyMono);
+bindRange('mono-keyfollow', 'monoKeyFollow', pct, applyMono);
+bindLog('mono-attack', 'monoAttack', 1, 2000, ms, applyMono);
+bindLog('mono-decay', 'monoDecay', 10, 3000, ms, applyMono);
+bindRange('mono-sustain', 'monoSustain', pct, applyMono);
+bindLog('mono-release', 'monoRelease', 5, 3000, ms, applyMono);
+bindSelect('mono-vca', 'monoVca', [['env', 'Env'], ['gate', 'Gate']], applyMono);
+bindRange('mono-lfo-rate', 'monoLfoRate', (v) => `${v.toFixed(1)} Hz`, applyMono);
+bindRange('mono-vibrato', 'monoVibrato', pct, applyMono);
+bindRange('mono-lfo-filter', 'monoLfoFilter', pct, applyMono);
+bindSelect('mono-porta', 'monoPorta', Object.entries(PORTA_MODES), applyMono);
+bindLog('mono-glide', 'monoGlide', 10, 1000, ms, applyMono);
+bindRange('mono-level', 'monoLevel', pct, applyMono);
+
+renderMonoPanel();
+renderMonoSteps();
+
 // ---------------------------------------------------------------- UI: effects
 let lastDelayBpm = 0;
 function currentBpm() {
@@ -1980,7 +2226,7 @@ function applyFx() {
   reverbTimer = setTimeout(() => reverbFx.setSize(settings.reverbSize / 1000), 120);
   const now = ctx.currentTime;
   for (const fx of ['delay', 'reverb']) {
-    for (const src of ['arp', 'chords', 'drums']) {
+    for (const src of ['arp', 'chords', 'drums', 'bass']) {
       const key = `${fx}Send${src[0].toUpperCase()}${src.slice(1)}`;
       sends[fx][src].gain.setTargetAtTime(settings[key] / 100, now, 0.02);
     }
@@ -1995,7 +2241,7 @@ bindLog('reverb-size', 'reverbSize', 300, 8000, (ms) => `${(ms / 1000).toFixed(1
 bindRange('reverb-pre', 'reverbPre', (v) => `${v} ms`, applyFx);
 bindLog('reverb-tone', 'reverbTone', 300, 12000, formatHz, applyFx);
 for (const fx of ['delay', 'reverb']) {
-  for (const src of ['Arp', 'Chords', 'Drums']) {
+  for (const src of ['Arp', 'Chords', 'Drums', 'Bass']) {
     bindRange(`${fx}-send-${src.toLowerCase()}`, `${fx}Send${src}`, (v) => `${v}%`, applyFx);
   }
 }
@@ -2395,6 +2641,10 @@ function frame() {
   const now = audioTime();
   while (uiEvents.length && uiEvents[0].time <= now) {
     const ev = uiEvents.shift();
+    if (ev.kind === 'mono') {
+      showMonoStep(ev.step);
+      continue;
+    }
     if (ev.kind === 'song') {
       showSongBar(ev.bar);
       continue;
