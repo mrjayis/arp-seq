@@ -311,6 +311,7 @@ export function patternAt(pulse, pulsesPerStep, hits, steps, rotate = 0) {
 
 // ---- chord progression sequencer
 export const MAX_PROGRESSION = 8;
+export const PROG_VOICINGS = { set: 'As set', smooth: 'Smooth (auto)' };
 export const PROGRESSION_BEATS = [1, 2, 3, 4, 6, 8];
 
 /** Which slot is playing at clock `pulse`, for slots of {beats}. Loops forever. */
@@ -325,10 +326,60 @@ export function progressionAt(pulse, slots) {
   return slots.length - 1;
 }
 
-/** Notes for a progression slot {root (0-11), type, beats} in the given octave; [] for a rest. */
+/** Inversion names; a chord can't be inverted further than it has notes. */
+export const INVERSIONS = ['Root', '1st', '2nd', '3rd'];
+
+/** Raise the lowest `k` notes of a chord an octave: 1 = first inversion, and so on. */
+export function invertChord(notes, k) {
+  const sorted = [...notes].sort((a, b) => a - b);
+  const n = clamp(Math.round(k) || 0, 0, Math.max(0, sorted.length - 1));
+  return sorted.map((note, i) => (i < n ? note + 12 : note)).sort((a, b) => a - b).filter((x) => x <= 127);
+}
+
+/**
+ * Notes for a progression slot {root (0-11), type, beats, inv} in the given octave,
+ * in its inversion; [] for a rest.
+ */
 export function slotNotes(slot, octave) {
   if (!slot || slot.type === 'rest') return [];
-  return chordNotes((octave + 1) * 12 + slot.root, slot.type);
+  return invertChord(chordNotes((octave + 1) * 12 + slot.root, slot.type), slot.inv || 0);
+}
+
+/** How far a hand moves between two voicings: each note to the nearest note of the other. */
+export function voiceDistance(a, b) {
+  const near = (x, set) => Math.min(...set.map((y) => Math.abs(x - y)));
+  return a.reduce((s, x) => s + near(x, b), 0) + b.reduce((s, y) => s + near(y, a), 0);
+}
+
+/**
+ * The notes every slot plays, plus the inversion used. 'set': each slot's own inversion.
+ * 'smooth': the first chord keeps its inversion; each later one takes whichever inversion
+ * (in its own octave, or the one below) moves least from the chord before it, so the
+ * voices lead smoothly and the progression loops the same way every time.
+ * @returns {{notes: number[], inv: number}[]}
+ */
+export function progressionVoicings(slots, octave, mode = 'set') {
+  let prev = null;
+  return slots.map((slot, i) => {
+    const notes = slotNotes(slot, octave);
+    if (!notes.length || mode !== 'smooth' || prev === null || i === 0) {
+      if (notes.length) prev = notes;
+      return { notes, inv: notes.length ? clamp(slot.inv || 0, 0, notes.length - 1) : 0 };
+    }
+    const root = chordNotes((octave + 1) * 12 + slot.root, slot.type);
+    let best = null;
+    for (let k = 0; k < root.length; k++) {
+      for (const shift of [0, -12]) {
+        const cand = invertChord(root, k).map((x) => x + shift);
+        if (cand[0] < 0) continue;
+        const d = voiceDistance(cand, prev);
+        // Ties go to the higher, less inverted voicing so the register doesn't sink.
+        if (!best || d < best.d) best = { d, notes: cand, inv: k };
+      }
+    }
+    prev = best.notes;
+    return { notes: best.notes, inv: best.inv };
+  });
 }
 
 export const PROGRESSION_PRESETS = {
