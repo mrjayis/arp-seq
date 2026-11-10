@@ -4,23 +4,23 @@ import {
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=48';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=48';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=48';
-import { Midi } from './midi.js?v=48';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=48';
+} from './core.js?v=50';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=50';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=50';
+import { Midi } from './midi.js?v=50';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=50';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=48';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=48';
+} from './percussion.js?v=50';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=50';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
-} from './breaks.js?v=48';
-import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=48';
+} from './breaks.js?v=50';
+import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=50';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=48';
+} from './mono.js?v=50';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -2806,6 +2806,37 @@ document.querySelectorAll('main > .panel').forEach((panel) => {
   h2.addEventListener('click', toggle);
   setCollapsed(panel, !!settings.collapsed[panel.getAttribute('aria-label')]);
 });
+// Jump bar: one chip per window, in page order, grouped by what they do. A dot
+// shows which modules are switched on; clicking opens the window and scrolls to it.
+const DOCK_NAMES = {
+  Transport: 'Clock', Keyboard: 'Keys', Arpeggiator: 'Arp', Sequencer: 'Seq', 'Arp voice, oscillator 1': 'Osc 1',
+  'Oscillator 2': 'Osc 2', 'Chord progression': 'Prog', 'Chord rhythm': 'Chords', 'Mono synth': 'Mono',
+  Percussion: 'Drums', 'Breakbeat slicer': 'Break', Song: 'Song', Effects: 'FX', 'Sound and MIDI': 'MIDI',
+};
+const DOCK_GROUP_STARTS = new Set(['Arpeggiator', 'Chord progression', 'Mono synth', 'Percussion', 'Effects']);
+document.querySelectorAll('main > .panel').forEach((panel) => {
+  const label = panel.getAttribute('aria-label');
+  const chip = document.createElement('button');
+  chip.textContent = DOCK_NAMES[label] || label;
+  chip.title = `Go to ${panel.querySelector('h2')?.textContent || label}`;
+  if (DOCK_GROUP_STARTS.has(label)) chip.classList.add('group-start');
+  chip.addEventListener('click', () => {
+    if (panel.classList.contains('collapsed')) { setCollapsed(panel, false); save(); }
+    panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+  const onBtn = panel.querySelector('button[id$="-on"]');
+  if (onBtn) {
+    const sync = () => chip.classList.toggle('on', onBtn.getAttribute('aria-pressed') === 'true');
+    new MutationObserver(sync).observe(onBtn, { attributes: true, attributeFilter: ['aria-pressed'] });
+    sync();
+  }
+  $('dock-nav').append(chip);
+});
+// Windows scroll to just below the sticky bar.
+const setDockHeight = () => document.documentElement.style.setProperty('--dock-h', `${document.querySelector('.dock').offsetHeight + 8}px`);
+setDockHeight();
+window.addEventListener('resize', setDockHeight);
+
 for (const [id, collapse] of [['collapse-all', true], ['expand-all', false]]) {
   $(id).addEventListener('click', () => {
     document.querySelectorAll('main > .panel').forEach((p) => setCollapsed(p, collapse));
