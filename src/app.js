@@ -5,23 +5,23 @@ import {
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=61';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=61';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=61';
-import { Midi } from './midi.js?v=61';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=61';
+} from './core.js?v=62';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=62';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=62';
+import { Midi } from './midi.js?v=62';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=62';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=61';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=61';
+} from './percussion.js?v=62';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=62';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
-} from './breaks.js?v=61';
-import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=61';
+} from './breaks.js?v=62';
+import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=62';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=61';
+} from './mono.js?v=62';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -1088,13 +1088,13 @@ function renderSlot(i, voicing) {
   el.querySelector('.beats').value = String(slot.beats);
   el.querySelector('.root').disabled = rest || off;
   // Smooth voicing picks every inversion after the first chord's.
-  const auto = settings.progVoicing === 'smooth' && i > 0;
+  const auto = settings.progVoicing !== 'set' && i > 0;
   const inv = el.querySelector('.inv');
   const size = rest ? 1 : CHORDS[slot.type].intervals.length;
   [...inv.options].forEach((o, k) => { o.hidden = k >= size; });
   inv.value = String(auto && voicing ? voicing.inv : Math.min(slot.inv || 0, size - 1));
   inv.disabled = rest || off || auto;
-  inv.title = auto ? 'Chosen by Smooth voicing: the inversion closest to the chord before' : 'Inversion: which chord note is lowest';
+  inv.title = auto ? 'Chosen by the voicing: which chord tone ended up in the bass' : 'Inversion: which chord note is lowest';
   const bass = voicing?.notes?.[0];
   const nameEl = el.querySelector('.name');
   nameEl.textContent = slotName(slot);

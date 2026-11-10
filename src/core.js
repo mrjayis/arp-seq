@@ -311,7 +311,7 @@ export function patternAt(pulse, pulsesPerStep, hits, steps, rotate = 0) {
 
 // ---- chord progression sequencer
 export const MAX_PROGRESSION = 8;
-export const PROG_VOICINGS = { set: 'As set', smooth: 'Smooth (auto)' };
+export const PROG_VOICINGS = { set: 'As set', smooth: 'Smooth (inversions)', nearest: 'Nearest tones' };
 export const PROGRESSION_BEATS = [1, 2, 3, 4, 6, 8];
 
 /** Which slot is playing at clock `pulse`, for slots of {beats}. Loops forever. */
@@ -351,22 +351,67 @@ export function voiceDistance(a, b) {
   return a.reduce((s, x) => s + near(x, b), 0) + b.reduce((s, y) => s + near(y, a), 0);
 }
 
+/** Total movement when voices `a` move to `b`: matched in pitch order if the counts agree. */
+function moveCost(a, b) {
+  if (a.length !== b.length) return voiceDistance(a, b);
+  return a.reduce((s, x, i) => s + Math.abs(x - b[i]), 0);
+}
+
+/**
+ * Voice leading by nearest chord tones: every tone of the next chord is placed in
+ * whichever octave keeps the total movement from `prev` smallest, so voices can open
+ * out beyond close position (C E G → B D G for G major). Notes stay between `low`
+ * and `high`, never double up, and ties go to the narrower spread.
+ */
+export function nearestVoicing(prev, pitchClasses, low, high) {
+  const options = pitchClasses.map((pc) => {
+    const out = [];
+    for (let n = pc; n <= high; n += 12) if (n >= low) out.push(n);
+    return out;
+  });
+  let best = null;
+  const pick = (i, chosen) => {
+    if (i === options.length) {
+      const notes = [...chosen].sort((a, b) => a - b);
+      if (new Set(notes).size !== notes.length) return;
+      const cost = moveCost(prev, notes);
+      const span = notes[notes.length - 1] - notes[0];
+      if (!best || cost < best.cost || (cost === best.cost && span < best.span)) best = { cost, span, notes };
+      return;
+    }
+    for (const n of options[i]) pick(i + 1, [...chosen, n]);
+  };
+  pick(0, []);
+  return best ? best.notes : null;
+}
+
 /**
  * The notes every slot plays, plus the inversion used. 'set': each slot's own inversion.
  * 'smooth': the first chord keeps its inversion; each later one takes whichever inversion
  * (in its own octave, or the one below) moves least from the chord before it, so the
  * voices lead smoothly and the progression loops the same way every time.
+ * 'nearest': like smooth, but each voice moves to the nearest tone of the next chord in
+ * any octave (open voicings allowed), kept within an octave and a half of the first chord.
+ * `inv` is then which chord tone is in the bass.
  * @returns {{notes: number[], inv: number}[]}
  */
 export function progressionVoicings(slots, octave, mode = 'set') {
   let prev = null;
   return slots.map((slot, i) => {
     const notes = slotNotes(slot, octave);
-    if (!notes.length || mode !== 'smooth' || prev === null || i === 0) {
+    if (!notes.length || mode === 'set' || prev === null || i === 0) {
       if (notes.length) prev = notes;
       return { notes, inv: notes.length ? clamp(slot.inv || 0, 0, notes.length - 1) : 0 };
     }
     const root = chordNotes((octave + 1) * 12 + slot.root, slot.type);
+    if (mode === 'nearest') {
+      const low = Math.max(0, (octave + 1) * 12 - 7);
+      const high = Math.min(127, (octave + 1) * 12 + 26);
+      const voiced = nearestVoicing(prev, root.map((n) => n % 12), low, high) || notes;
+      prev = voiced;
+      const bassPc = voiced[0] % 12;
+      return { notes: voiced, inv: Math.max(0, root.findIndex((n) => n % 12 === bassPc)) };
+    }
     let best = null;
     for (let k = 0; k < root.length; k++) {
       for (const shift of [0, -12]) {
