@@ -406,6 +406,7 @@ input[type="range"]::-moz-range-thumb {
   transition: background 60ms, opacity 120ms;
 }
 .slot:first-child { border-left: 0; }
+.slot .name .bass { font-size: 0.6em; font-weight: 600; }
 .slot .num { font-size: 12px; font-style: italic; color: var(--ink-3); }
 .slot .name {
   font-size: 22px;

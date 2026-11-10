@@ -182,7 +182,7 @@ test('patternAt follows a pattern running at its own rate', () => {
   assert.deepEqual(patternAt(12 * 9, 12, 3, 8), { pos: 1, hit: false });
 });
 
-import { progressionAt, slotNotes, PPQN } from '../src/core.js';
+import { progressionAt, slotNotes, invertChord, progressionVoicings, PPQN } from '../src/core.js';
 
 test('progressionAt walks the slots by their beat lengths and loops', () => {
   const slots = [{ beats: 4 }, { beats: 2 }, { beats: 2 }];
@@ -258,4 +258,29 @@ test('step on/off is stored per step', () => {
   e.setStep(0, { on: true });
   assert.equal(e.steps[0].on, true);
   assert.equal(e.next().rest, false);
+});
+
+test('invertChord raises the lowest notes an octave, never past the chord size', () => {
+  assert.deepEqual(invertChord([60, 64, 67], 0), [60, 64, 67]);
+  assert.deepEqual(invertChord([60, 64, 67], 1), [64, 67, 72]);
+  assert.deepEqual(invertChord([60, 64, 67], 2), [67, 72, 76]);
+  assert.deepEqual(invertChord([60, 64, 67], 3), [67, 72, 76]);
+  assert.deepEqual(slotNotes({ root: 0, type: 'maj7', inv: 3 }, 3), [59, 60, 64, 67]);
+});
+
+test('progressionVoicings: smooth voice leading picks the nearest inversion and loops the same', () => {
+  // C – F – G – C in octave 3: F and G move to inversions near C.
+  const slots = [[0, 'maj'], [5, 'maj'], [7, 'maj'], [0, 'maj']].map(([root, type]) => ({ root, type, beats: 4 }));
+  const set = progressionVoicings(slots, 3, 'set');
+  assert.deepEqual(set.map((v) => v.notes), [[48, 52, 55], [53, 57, 60], [55, 59, 62], [48, 52, 55]]);
+  const smooth = progressionVoicings(slots, 3, 'smooth');
+  assert.deepEqual(smooth[0].notes, [48, 52, 55]);
+  assert.deepEqual(smooth[1].notes, [48, 53, 57]); // F/C: second inversion
+  assert.deepEqual(smooth[2].notes, [47, 50, 55]); // G/B: first inversion, an octave down
+  assert.deepEqual(smooth[3].notes, [48, 52, 55]);
+  assert.deepEqual(progressionVoicings(slots, 3, 'smooth'), smooth);
+  // Rests stay silent and don't break the chain.
+  const withRest = progressionVoicings([slots[0], { root: 0, type: 'rest', beats: 4 }, slots[1]], 3, 'smooth');
+  assert.deepEqual(withRest[1].notes, []);
+  assert.deepEqual(withRest[2].notes, [48, 53, 57]);
 });

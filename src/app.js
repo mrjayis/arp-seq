@@ -3,24 +3,25 @@ import {
   MIN_SEQ_LENGTH, MAX_SEQ_LENGTH, noteName, defaultSteps, CHORDS, chordNotes,
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
+  INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=59';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=59';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=59';
-import { Midi } from './midi.js?v=59';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=59';
+} from './core.js?v=61';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=61';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=61';
+import { Midi } from './midi.js?v=61';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=61';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=59';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=59';
+} from './percussion.js?v=61';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=61';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
-} from './breaks.js?v=59';
-import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=59';
+} from './breaks.js?v=61';
+import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=61';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=59';
+} from './mono.js?v=61';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -117,6 +118,7 @@ const settings = {
   progOn: false,
   progLength: 4,
   progOctave: 3,
+  progVoicing: 'set', // 'set': each chord's own inversion; 'smooth': nearest inversion to the last chord
   progression: defaultProgression(),
   drumOn: false,
   drumKit: 'latin', // 'latin' | '808' | 'linn' | 'user'
@@ -189,6 +191,7 @@ applyEngineSettings();
       root: Number.isInteger(s.root) && s.root >= 0 && s.root < 12 ? s.root : def.root,
       type: s.type === 'rest' || CHORDS[s.type] ? s.type : def.type,
       beats: PROGRESSION_BEATS.includes(s.beats) ? s.beats : def.beats,
+      inv: Number.isInteger(s.inv) && s.inv >= 0 && s.inv < INVERSIONS.length ? s.inv : 0,
     };
   });
 }
@@ -476,7 +479,7 @@ function stepProgression(time, pulse) {
   const i = progressionAt(pulse, slots);
   if (i === progIndex) return;
   progIndex = i;
-  engine.setProgressionNotes(slotNotes(slots[i], settings.progOctave));
+  engine.setProgressionNotes(progVoicings()[i]?.notes || []);
   uiEvents.push({ kind: 'prog', time, index: i });
 }
 
@@ -985,8 +988,14 @@ function slotName(slot) {
   return slot.type === 'rest' ? '—' : NOTE_CLASSES[slot.root] + CHORD_SUFFIX[slot.type];
 }
 
+/** What each slot plays, after inversions and voice leading. */
+function progVoicings() {
+  return progressionVoicings(settings.progression.slice(0, settings.progLength), settings.progOctave, settings.progVoicing);
+}
+
 function progEdited() {
   progIndex = -1; // pick up the change on the next clock pulse
+  renderProgression(); // smooth voicing can change the other slots' inversions
   save();
 }
 
@@ -1000,20 +1009,24 @@ function buildProgression() {
       <div class="name"></div>
       <select class="root" aria-label="Slot ${i + 1} root"></select>
       <select class="type" aria-label="Slot ${i + 1} chord"></select>
+      <select class="inv" aria-label="Slot ${i + 1} inversion"></select>
       <select class="beats" aria-label="Slot ${i + 1} length"></select>`;
     const root = el.querySelector('.root');
     const type = el.querySelector('.type');
     const beats = el.querySelector('.beats');
+    const inv = el.querySelector('.inv');
+    INVERSIONS.forEach((label, v) => inv.add(new Option(label, String(v))));
     NOTE_CLASSES.forEach((n, v) => root.add(new Option(n, String(v))));
     for (const [t, { label }] of Object.entries(CHORDS)) type.add(new Option(label, t));
     type.add(new Option('Rest', 'rest'));
     for (const b of PROGRESSION_BEATS) beats.add(new Option(`${b} beat${b > 1 ? 's' : ''}`, String(b)));
     const update = () => {
-      settings.progression[i] = { root: Number(root.value), type: type.value, beats: Number(beats.value) };
-      renderSlot(i);
+      settings.progression[i] = {
+        root: Number(root.value), type: type.value, beats: Number(beats.value), inv: Number(inv.value),
+      };
       progEdited();
     };
-    [root, type, beats].forEach((s) => s.addEventListener('change', update));
+    [root, type, inv, beats].forEach((s) => s.addEventListener('change', update));
     wrap.append(el);
     slotEls.push(el);
   }
@@ -1034,6 +1047,7 @@ function buildProgression() {
 
   for (let o = 1; o <= 6; o++) $('prog-octave').add(new Option(`C${o}`, String(o)));
   bindSelect('prog-octave', 'progOctave', null, () => progEdited());
+  bindSelect('prog-voicing', 'progVoicing', Object.entries(PROG_VOICINGS), () => progEdited());
 
   const preset = $('prog-preset');
   for (const name of Object.keys(PROGRESSION_PRESETS)) preset.add(new Option(name, name));
@@ -1041,7 +1055,7 @@ function buildProgression() {
     const chords = PROGRESSION_PRESETS[preset.value];
     preset.value = '';
     if (!chords) return;
-    chords.forEach(([root, type], i) => { settings.progression[i] = { root, type, beats: 4 }; });
+    chords.forEach(([root, type], i) => { settings.progression[i] = { root, type, beats: 4, inv: 0 }; });
     settings.progLength = chords.length;
     renderProgression();
     progEdited();
@@ -1064,14 +1078,32 @@ function buildProgression() {
   });
 }
 
-function renderSlot(i) {
+function renderSlot(i, voicing) {
   const el = slotEls[i];
   const slot = settings.progression[i];
+  const off = i >= settings.progLength;
+  const rest = slot.type === 'rest';
   el.querySelector('.root').value = String(slot.root);
   el.querySelector('.type').value = slot.type;
   el.querySelector('.beats').value = String(slot.beats);
-  el.querySelector('.root').disabled = slot.type === 'rest' || i >= settings.progLength;
-  el.querySelector('.name').textContent = slotName(slot);
+  el.querySelector('.root').disabled = rest || off;
+  // Smooth voicing picks every inversion after the first chord's.
+  const auto = settings.progVoicing === 'smooth' && i > 0;
+  const inv = el.querySelector('.inv');
+  const size = rest ? 1 : CHORDS[slot.type].intervals.length;
+  [...inv.options].forEach((o, k) => { o.hidden = k >= size; });
+  inv.value = String(auto && voicing ? voicing.inv : Math.min(slot.inv || 0, size - 1));
+  inv.disabled = rest || off || auto;
+  inv.title = auto ? 'Chosen by Smooth voicing: the inversion closest to the chord before' : 'Inversion: which chord note is lowest';
+  const bass = voicing?.notes?.[0];
+  const nameEl = el.querySelector('.name');
+  nameEl.textContent = slotName(slot);
+  if (!rest && bass !== undefined && bass % 12 !== slot.root) {
+    const over = document.createElement('small');
+    over.className = 'bass';
+    over.textContent = `/${NOTE_CLASSES[bass % 12]}`; // slash chord: the inversion's bass note
+    nameEl.append(over);
+  }
 }
 
 function renderProgression() {
@@ -1081,11 +1113,13 @@ function renderProgression() {
   $('prog-length').querySelectorAll('button').forEach((b) => {
     b.setAttribute('aria-pressed', String(Number(b.dataset.n) === settings.progLength));
   });
+  const voicings = progVoicings();
   slotEls.forEach((el, i) => {
     const off = i >= settings.progLength;
     el.classList.toggle('disabled', off);
     el.querySelectorAll('select').forEach((s) => { s.disabled = off; });
-    renderSlot(i);
+    // Slots past the length still show their own inversion as a slash chord.
+    renderSlot(i, voicings[i] || { notes: slotNotes(settings.progression[i], settings.progOctave), inv: settings.progression[i].inv || 0 });
   });
 }
 
