@@ -4,23 +4,23 @@ import {
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=52';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=52';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=52';
-import { Midi } from './midi.js?v=52';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=52';
+} from './core.js?v=53';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=53';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=53';
+import { Midi } from './midi.js?v=53';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=53';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=52';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=52';
+} from './percussion.js?v=53';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=53';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
-} from './breaks.js?v=52';
-import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=52';
+} from './breaks.js?v=53';
+import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=53';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=52';
+} from './mono.js?v=53';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -47,6 +47,8 @@ const settings = {
   arpTimbre: 25,
   lpgMode: 'combo',
   arpResonance: 1.5,
+  arpAttack: 4, // ms, both arp oscillators
+  arpRelease: 15, // ms of extra tail, both arp oscillators
   volume: 50,
   midiIn: '',
   midiInCh: -1,
@@ -262,9 +264,13 @@ function westVoice(n) {
       resonance: settings.osc2Resonance,
       detune: settings.osc2Detune,
       level: settings.osc2Level / 100,
+      attack: settings.arpAttack / 1000,
+      release: settings.arpRelease / 1000,
     };
   }
   return {
+    attack: settings.arpAttack / 1000,
+    release: settings.arpRelease / 1000,
     mono: 'osc1',
     wave: settings.wave,
     cutoff: settings.cutoff,
@@ -801,6 +807,9 @@ bindRange('arp-shape', 'arpShape', (v) => (v === 0 ? 'sine' : v === 100 ? 'wave'
 bindRange('arp-timbre', 'arpTimbre', (v) => `${v}%`);
 bindSelect('lpg-mode', 'lpgMode', Object.entries(LPG_MODES));
 bindRange('arp-res', 'arpResonance', (v) => v.toFixed(1));
+const arMs = (v) => (v < 1000 ? `${v} ms` : `${(v / 1000).toFixed(2)} s`);
+bindLog('arp-attack', 'arpAttack', 2, 2000, arMs);
+bindLog('arp-release', 'arpRelease', 10, 4000, arMs);
 bindRange('volume', 'volume', (v) => `${v}%`, (v) => synth?.setVolume(v / 100));
 
 for (let c = 1; c <= 16; c++) {

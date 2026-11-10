@@ -17,8 +17,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=52" />
-  <link rel="stylesheet" href="mac.css?v=52" />
+  <link rel="stylesheet" href="styles.css?v=53" />
+  <link rel="stylesheet" href="mac.css?v=53" />
 </head>
 <body>
   <main class="device">
@@ -152,6 +152,16 @@
         <label class="field slider">Resonance <output id="arp-res-val"></output>
           <input id="arp-res" type="range" min="0.5" max="12" step="0.1" />
         </label>
+      </div>
+      <div class="row">
+        <span class="row-label">Envelope</span>
+        <label class="field slider">Attack <output id="arp-attack-val"></output>
+          <input id="arp-attack" type="range" min="0" max="1000" step="1" title="How quickly each note fades in (both arp oscillators)" />
+        </label>
+        <label class="field slider">Release <output id="arp-release-val"></output>
+          <input id="arp-release" type="range" min="0" max="1000" step="1" title="Extra tail on each note (both arp oscillators)" />
+        </label>
+        <span class="status">Applies to Oscillator 1 and 2.</span>
       </div>
     </section>
 
@@ -617,6 +627,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=52"></script>
+  <script type="module" src="src/app.js?v=53"></script>
 </body>
 </html>

@@ -52,6 +52,7 @@ The arp has two monophonic voices: **Oscillator 1**, and **Oscillator 2**, which
   - **VCA** works the same way without the filter.
   - **LP** is filter only: the note holds for exactly the arp's Gate time.
 - **Resonance** for the gate's filter.
+- **Attack** and **Release** (shared by both oscillators): Attack is how quickly each note fades in. Release adds tail: on top of the ring in Combo/VCA, or as the fade after the gate in LP. At their minimums the voices sound as before.
 - **Mod → Osc 1** (in Oscillator 2's panel): oscillator 2 modulates oscillator 1 with **AM** or **FM**, using its own pitch for each step (Same/Inverted, Transpose, Detune) and its own Wave.
   - **Depth** is the AM amount, or the FM index (0–8).
   - Off-step tail slides move the modulator too.
