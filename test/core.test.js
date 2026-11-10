@@ -182,7 +182,7 @@ test('patternAt follows a pattern running at its own rate', () => {
   assert.deepEqual(patternAt(12 * 9, 12, 3, 8), { pos: 1, hit: false });
 });
 
-import { progressionAt, slotNotes, invertChord, progressionVoicings, PPQN } from '../src/core.js';
+import { progressionAt, slotNotes, invertChord, progressionVoicings, nearestVoicing, PPQN } from '../src/core.js';
 
 test('progressionAt walks the slots by their beat lengths and loops', () => {
   const slots = [{ beats: 4 }, { beats: 2 }, { beats: 2 }];
@@ -283,4 +283,19 @@ test('progressionVoicings: smooth voice leading picks the nearest inversion and 
   const withRest = progressionVoicings([slots[0], { root: 0, type: 'rest', beats: 4 }, slots[1]], 3, 'smooth');
   assert.deepEqual(withRest[1].notes, []);
   assert.deepEqual(withRest[2].notes, [48, 53, 57]);
+});
+
+test('nearest-tone voice leading moves each voice the least, open voicings allowed', () => {
+  // C E G → G major: E→D, G stays, C→B.
+  assert.deepEqual(nearestVoicing([48, 52, 55], [7, 11, 2], 41, 74), [47, 50, 55]);
+  // Triad → 7th chord adds a voice; nothing doubles.
+  const v = nearestVoicing([48, 52, 55], [2, 5, 9, 0], 41, 74);
+  assert.equal(new Set(v).size, 4);
+  assert.deepEqual(v.map((n) => n % 12).sort((a, b) => a - b), [0, 2, 5, 9]);
+  const slots = [[0, 'maj'], [5, 'maj'], [7, 'dom7'], [0, 'maj']].map(([root, type]) => ({ root, type, beats: 4 }));
+  const near = progressionVoicings(slots, 3, 'nearest');
+  assert.deepEqual(near[0].notes, [48, 52, 55]);
+  assert.deepEqual(near[1].notes, [48, 53, 57]); // F/C
+  for (const { notes } of near) assert.ok(notes.every((n) => n >= 41 && n <= 74));
+  assert.deepEqual(progressionVoicings(slots, 3, 'nearest'), near);
 });
