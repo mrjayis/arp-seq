@@ -4,23 +4,23 @@ import {
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=57';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=57';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=57';
-import { Midi } from './midi.js?v=57';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=57';
+} from './core.js?v=58';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=58';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=58';
+import { Midi } from './midi.js?v=58';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=58';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=57';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=57';
+} from './percussion.js?v=58';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=58';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
-} from './breaks.js?v=57';
-import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=57';
+} from './breaks.js?v=58';
+import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=58';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=57';
+} from './mono.js?v=58';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -229,10 +229,16 @@ function ensureAudio() {
       }
     }
     applyFx();
-    drums = new DrumSynth(ctx, buses.drums);
+    // The percussion and the break share the drum bus, so each gets its own solo gate into it.
+    buses.perc = ctx.createGain();
+    buses.break = ctx.createGain();
+    buses.perc.connect(buses.drums);
+    buses.break.connect(buses.drums);
+    applySolo(true);
+    drums = new DrumSynth(ctx, buses.perc);
     monoSynth = new MonoSynth(ctx, buses.bass);
     applyMono();
-    breakPlayer = new BreakPlayer(ctx, buses.drums);
+    breakPlayer = new BreakPlayer(ctx, buses.break);
     breakPlayer.setLevel(settings.breakLevel / 100);
     if (breakBuffer) breakPlayer.setBuffer(breakBuffer);
     decodeAllSamples();
@@ -528,10 +534,9 @@ function playDrums(step) {
     fill: isFillBar(step.stepNumber, settings.drumFillEvery),
   });
   for (const { id, gain } of hits) {
-    // Your samples: each row has its own level (the sample mixer).
-    const user = settings.drumKit === 'user';
-    const rowLevel = user ? (settings.sampleLevels?.[id] ?? 100) / 100 : 1;
-    const rowTune = user ? settings.sampleTunes?.[id] ?? 0 : 0;
+    // Each row has its own level and tuning (the sample mixer, or the kit's mixer).
+    const { level, tune: rowTune } = rowMix(id);
+    const rowLevel = level / 100;
     if (drums && settings.drumLevel > 0 && rowLevel > 0) drums.play(id, step.time, gain * rowLevel, rowTune);
     if (settings.drumMidiCh >= 0) {
       const { gm } = voices.find((v) => v.id === id);
@@ -1178,6 +1183,7 @@ function switchKit(next) {
   showDrumStep(-1, []);
   $('sample-tools').hidden = settings.drumKit !== 'user';
   if (settings.drumKit === 'user') updateSampleStatus();
+  renderDrumMix();
   buildDrumGrid();
   fillDrumPresets();
   renderDrumGrid();
@@ -1431,55 +1437,85 @@ function renderSampleMap() {
     select.value = sampleStore[id] ? id : '';
     select.addEventListener('change', () => moveSample(select.value, id));
     field.append(select);
-    // Level for this row: 0–150%, so a quiet recording can be lifted a little.
-    const level = document.createElement('label');
-    level.className = 'field slider';
-    const out = document.createElement('output');
-    const range = document.createElement('input');
-    range.type = 'range';
-    range.min = '0';
-    range.max = '150';
-    range.value = String(settings.sampleLevels[id] ?? 100);
-    range.setAttribute('aria-label', `${label} level`);
-    const show = () => { out.textContent = `${range.value}%`; };
-    show();
-    range.addEventListener('input', () => {
-      settings.sampleLevels[id] = Number(range.value);
-      show();
-      save();
-    });
-    range.addEventListener('dblclick', () => { range.value = '100'; range.dispatchEvent(new Event('input')); });
-    level.append('Level ', out, range);
-    // Tune for this row: ±12 semitones in 0.1 steps (changes speed, like the hardware).
-    const tune = document.createElement('label');
-    tune.className = 'field slider';
-    const tuneOut = document.createElement('output');
-    const tuneRange = document.createElement('input');
-    tuneRange.type = 'range';
-    tuneRange.min = '-12';
-    tuneRange.max = '12';
-    tuneRange.step = '0.1';
-    tuneRange.value = String(settings.sampleTunes[id] ?? 0);
-    tuneRange.setAttribute('aria-label', `${label} tune`);
-    const showTune = () => {
-      const v = Number(tuneRange.value);
-      tuneOut.textContent = `${v > 0 ? '+' : ''}${v.toFixed(1)} st`;
-    };
-    showTune();
-    tuneRange.addEventListener('input', () => {
-      settings.sampleTunes[id] = Number(tuneRange.value);
-      showTune();
-      save();
-    });
-    tuneRange.addEventListener('dblclick', () => { tuneRange.value = '0'; tuneRange.dispatchEvent(new Event('input')); });
-    tune.append('Tune ', tuneOut, tuneRange);
     const cell = document.createElement('div');
     cell.className = 'map-row';
-    cell.append(field, level, tune);
+    cell.append(field, ...mixSliders(id, label));
     wrap.append(cell);
   }
 }
 if (!settings.sampleLevels || typeof settings.sampleLevels !== 'object') settings.sampleLevels = {};
+if (!settings.drumMix || typeof settings.drumMix !== 'object') settings.drumMix = {};
+
+/** Level (0–150 %) and tune (±12 st) for a drum row in the current kit. */
+function rowMix(id) {
+  if (settings.drumKit === 'user') {
+    return { level: settings.sampleLevels?.[id] ?? 100, tune: settings.sampleTunes?.[id] ?? 0 };
+  }
+  const m = settings.drumMix[settings.drumKit]?.[id];
+  return { level: m?.level ?? 100, tune: m?.tune ?? 0 };
+}
+
+function setRowMix(id, key, value) {
+  if (settings.drumKit === 'user') {
+    (key === 'level' ? settings.sampleLevels : settings.sampleTunes)[id] = value;
+    return;
+  }
+  const kitMix = (settings.drumMix[settings.drumKit] ||= {});
+  const m = (kitMix[id] ||= {});
+  m[key] = value;
+  if ((m.level ?? 100) === 100 && (m.tune ?? 0) === 0) delete kitMix[id];
+}
+
+/** Level and Tune sliders for one drum row (double-click resets). */
+function mixSliders(id, label) {
+  const make = (key, text, min, max, step, rest, fmt) => {
+    const field = document.createElement('label');
+    field.className = 'field slider';
+    const out = document.createElement('output');
+    const range = document.createElement('input');
+    range.type = 'range';
+    range.min = String(min);
+    range.max = String(max);
+    range.step = String(step);
+    range.value = String(rowMix(id)[key]);
+    range.setAttribute('aria-label', `${label} ${key}`);
+    const show = () => { out.textContent = fmt(Number(range.value)); };
+    show();
+    range.addEventListener('input', () => { setRowMix(id, key, Number(range.value)); show(); save(); });
+    range.addEventListener('dblclick', () => { range.value = String(rest); range.dispatchEvent(new Event('input')); });
+    field.append(`${text} `, out, range);
+    return field;
+  };
+  return [
+    // Level 0–150 %, so a quiet sound can be lifted a little.
+    make('level', 'Level', 0, 150, 1, 100, (v) => `${v}%`),
+    // Tune ±12 semitones in 0.1 steps: samples change speed; synthesized voices scale every frequency.
+    make('tune', 'Tune', -12, 12, 0.1, 0, (v) => `${v > 0 ? '+' : ''}${v.toFixed(1)} st`),
+  ];
+}
+
+/** The built-in kits' mixer: a level and a tuning for each sound. */
+function renderDrumMix() {
+  const user = settings.drumKit === 'user';
+  $('drum-mix-tools').hidden = user;
+  if (user) return;
+  const wrap = $('drum-mix');
+  wrap.replaceChildren();
+  for (const { id, label } of kitVoices()) {
+    const name = document.createElement('span');
+    name.className = 'map-name';
+    name.textContent = label;
+    const cell = document.createElement('div');
+    cell.className = 'map-row';
+    cell.append(name, ...mixSliders(id, label));
+    wrap.append(cell);
+  }
+}
+$('drum-mix-reset').addEventListener('click', () => {
+  delete settings.drumMix[settings.drumKit];
+  renderDrumMix();
+  save();
+});
 if (!settings.sampleTunes || typeof settings.sampleTunes !== 'object') settings.sampleTunes = {};
 
 /** Put the sample now on row `from` onto row `to` (swapping), or empty `to` if `from` is ''. */
@@ -1530,6 +1566,7 @@ $('sample-clear').addEventListener('click', async () => {
 
 buildDrums();
 $('sample-tools').hidden = settings.drumKit !== 'user';
+renderDrumMix();
 renderDrumGrid();
 loadSamples().then(async (stored) => {
   // Once: re-sort samples loaded under the old keyword matching with the
@@ -2844,6 +2881,53 @@ document.querySelectorAll('main > .panel').forEach((panel) => {
   h2.classList.add('collapsible');
   h2.addEventListener('click', toggle);
   setCollapsed(panel, !!settings.collapsed[panel.getAttribute('aria-label')]);
+});
+// Solo: each sound-making window has an S button. Soloing one or more silences the
+// rest (their effects sends too, but tails already in the delay/reverb ring out).
+// Not saved: a fresh load always starts with everything audible.
+const SOLO_PANELS = {
+  Arpeggiator: 'arp', 'Chord rhythm': 'chords', 'Mono synth': 'bass', Percussion: 'perc', 'Breakbeat slicer': 'break',
+};
+const soloed = new Set();
+const soloButtons = {};
+function applySolo(instant = false) {
+  if (!ctx) return;
+  for (const key of Object.values(SOLO_PANELS)) {
+    const bus = buses[key];
+    if (!bus) continue;
+    const v = soloed.size === 0 || soloed.has(key) ? 1 : 0;
+    if (instant) bus.gain.value = v;
+    else bus.gain.setTargetAtTime(v, ctx.currentTime, 0.008);
+  }
+}
+function renderSolo() {
+  for (const [key, btn] of Object.entries(soloButtons)) {
+    const on = soloed.has(key);
+    btn.setAttribute('aria-pressed', String(on));
+    btn.closest('.panel').classList.toggle('silenced', soloed.size > 0 && !on);
+  }
+}
+document.querySelectorAll('main > .panel').forEach((panel) => {
+  const key = SOLO_PANELS[panel.getAttribute('aria-label')];
+  if (!key) return;
+  const btn = document.createElement('button');
+  btn.className = 'solo-btn';
+  btn.textContent = 'S';
+  btn.setAttribute('aria-pressed', 'false');
+  btn.setAttribute('aria-label', `Solo ${panel.querySelector('h2').textContent}`);
+  btn.title = 'Solo: hear only this (and any other soloed sections). Alt-click to solo this alone.';
+  btn.addEventListener('click', (e) => {
+    if (e.altKey) {
+      const only = soloed.size === 1 && soloed.has(key);
+      soloed.clear();
+      if (!only) soloed.add(key);
+    } else if (soloed.has(key)) soloed.delete(key);
+    else soloed.add(key);
+    applySolo();
+    renderSolo();
+  });
+  soloButtons[key] = btn;
+  panel.querySelector('h2').after(btn);
 });
 // Jump bar: one chip per window, in page order, grouped by what they do. A dot
 // shows which modules are switched on; clicking opens the window and scrolls to it.
