@@ -4,23 +4,23 @@ import {
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=46';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=46';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=46';
-import { Midi } from './midi.js?v=46';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=46';
+} from './core.js?v=48';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=48';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=48';
+import { Midi } from './midi.js?v=48';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=48';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=46';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=46';
+} from './percussion.js?v=48';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=48';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
-} from './breaks.js?v=46';
-import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=46';
+} from './breaks.js?v=48';
+import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=48';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=46';
+} from './mono.js?v=48';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -2775,6 +2775,42 @@ function frame() {
     if (Math.abs(externalClock.bpm - lastDelayBpm) > 0.5) updateDelayTime();
   }
   requestAnimationFrame(frame);
+}
+
+// ---------------------------------------------------------------- UI: collapsible windows
+// Each panel folds down to its header (the title, plus its header row of controls
+// where it has one). The title, a toggle button, or in System 7 the close box,
+// fold it; the state is remembered per panel.
+if (!settings.collapsed || typeof settings.collapsed !== 'object') settings.collapsed = {};
+
+function setCollapsed(panel, collapsed) {
+  const key = panel.getAttribute('aria-label');
+  panel.classList.toggle('collapsed', collapsed);
+  panel.querySelector('.collapse-btn')?.setAttribute('aria-expanded', String(!collapsed));
+  if (collapsed) settings.collapsed[key] = true;
+  else delete settings.collapsed[key];
+  if (!collapsed && panel.id === 'break-panel') requestAnimationFrame(() => drawBreak()); // canvas needs its width again
+}
+
+document.querySelectorAll('main > .panel').forEach((panel) => {
+  const h2 = panel.querySelector('h2');
+  if (!h2) return;
+  const btn = document.createElement('button');
+  btn.className = 'collapse-btn';
+  btn.setAttribute('aria-label', `Collapse or expand ${panel.getAttribute('aria-label')}`);
+  btn.title = 'Collapse / expand';
+  const toggle = () => { setCollapsed(panel, !panel.classList.contains('collapsed')); save(); };
+  btn.addEventListener('click', toggle);
+  h2.before(btn);
+  h2.classList.add('collapsible');
+  h2.addEventListener('click', toggle);
+  setCollapsed(panel, !!settings.collapsed[panel.getAttribute('aria-label')]);
+});
+for (const [id, collapse] of [['collapse-all', true], ['expand-all', false]]) {
+  $(id).addEventListener('click', () => {
+    document.querySelectorAll('main > .panel').forEach((p) => setCollapsed(p, collapse));
+    save();
+  });
 }
 
 // ---------------------------------------------------------------- boot

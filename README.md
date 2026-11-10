@@ -161,6 +161,7 @@ A shared delay and reverb, with a **send** from each source (Arp, Chords, Drums)
 - **Looks:** **System 7** (the default), or the modular faceplate in **Light**, **Dark** or **Auto** (Auto follows your system setting). The theme is applied before the page draws, so there's no flash.
   - **System 7** is a black-and-white classic-Mac homage: a menu bar, pinstriped windows with close boxes, rounded buttons that invert, pop-up menus, X checkboxes, dithered scroll-bar sliders and dither patterns instead of color.
   - It uses a locally installed "Chicago" font if you have one (Chrome and Firefox; Safari only exposes system fonts). Otherwise titles fall back to Pixelify Sans. Small text uses the CC BY Geneva 9 recreation; see `fonts/README.md` for credits.
+- **Collapsible windows:** click a window's title (or the triangle; in System 7, the close box) to fold it down to its header, which keeps its On button and main controls where it has them. **Collapse all / Expand all** are in the menu bar, and folded windows stay folded next visit.
 - Settings are saved in `localStorage`
 
 ## Layout
