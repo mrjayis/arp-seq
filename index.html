@@ -17,8 +17,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=58" />
-  <link rel="stylesheet" href="mac.css?v=58" />
+  <link rel="stylesheet" href="styles.css?v=59" />
+  <link rel="stylesheet" href="mac.css?v=59" />
 </head>
 <body>
   <main class="device">
@@ -266,7 +266,7 @@
         <label class="field slider">Level <output id="chord-level-val"></output>
           <input id="chord-level" type="range" min="0" max="100" value="45" />
         </label>
-        <label class="check" title="Shift and scale the chord by the sequencer step the arp is on">
+        <label class="check" title="Shift and scale the chord by the sequencer step the arp is on. A pad slides to each step (see Glide).">
           <input id="chord-follow" type="checkbox" /> Follow sequencer</label>
         <label class="field">MIDI Out Ch
           <select id="chord-midi-ch" title="Send the chords to their own MIDI channel"><option value="-1">Off</option></select>
@@ -279,6 +279,9 @@
         </label>
         <label class="field slider">Release <output id="pad-release-val"></output>
           <input id="pad-release" type="range" min="0" max="1000" step="1" title="How long old chord notes take to fade" />
+        </label>
+        <label class="field slider" title="With Follow sequencer on: how long the pad takes to slide to each step's pitch and level">Glide <output id="pad-glide-val"></output>
+          <input id="pad-glide" type="range" min="0" max="1000" step="1" />
         </label>
         <span class="status">The chord holds while there are notes to play (keys, latch or the progression).</span>
       </div>
@@ -634,6 +637,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=58"></script>
+  <script type="module" src="src/app.js?v=59"></script>
 </body>
 </html>
