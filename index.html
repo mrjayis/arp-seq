@@ -17,8 +17,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=48" />
-  <link rel="stylesheet" href="mac.css?v=48" />
+  <link rel="stylesheet" href="styles.css?v=50" />
+  <link rel="stylesheet" href="mac.css?v=50" />
 </head>
 <body>
   <main class="device">
@@ -41,17 +41,23 @@
       </div>
     </header>
 
-    <section class="panel transport" aria-label="Transport">
-      <h2>Clock</h2>
-      <div class="row">
+    <nav class="dock" aria-label="Transport and window shortcuts">
+      <div class="dock-transport">
         <button id="play" class="play" aria-pressed="false" title="Play / Stop (Space)"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 1.5v13l11-6.5z"/></svg><span>Play</span></button>
-        <label class="field">Tempo
+        <label class="field inline">Tempo
           <span class="bpm-wrap">
             <input id="bpm" type="number" min="20" max="300" step="0.1" value="120" />
             <span class="unit">BPM</span>
           </span>
         </label>
         <button id="tap" title="Tap tempo">Tap</button>
+      </div>
+      <div class="dock-nav" id="dock-nav" aria-label="Jump to a window"></div>
+    </nav>
+
+    <section class="panel transport" aria-label="Transport">
+      <h2>Clock</h2>
+      <div class="row">
         <label class="field">Sync
           <select id="sync">
             <option value="internal">Internal</option>
@@ -62,22 +68,23 @@
       </div>
     </section>
 
-    <section class="panel song" id="song-panel" aria-label="Song">
+    <section class="panel keys-panel" aria-label="Keyboard">
       <div class="seq-head">
-        <h2>Song</h2>
-        <button id="song-on" aria-pressed="false" title="Play the chain: each bar plays its pattern slot in the Percussion and Breakbeat">Off</button>
-        <span class="status" id="song-pos"></span>
+        <h2>Keyboard</h2>
+        <span class="hint">Play with A–; (W E T Y U O P for sharps) · 1–4 chords · Z / X octave · Space play/stop</span>
+        <span class="oct">
+          <button id="oct-down" aria-label="Octave down">−</button>
+          <span id="oct-label">C3</span>
+          <button id="oct-up" aria-label="Octave up">+</button>
+        </span>
+        <button id="panic" title="Release all notes">Clear notes</button>
       </div>
-      <p class="hint">Chain pattern slots A–D, one per bar, so the drums and break move through sections instead of
-        looping one bar. Click a bar to change its slot; × removes it. Edit each slot with the A–D buttons in the
-        Percussion and Breakbeat windows.</p>
-      <div id="song-chain" class="song-chain"></div>
-      <div class="row">
-        <span class="field inline">Add bar</span>
-        <button data-add-bar="A">+A</button><button data-add-bar="B">+B</button>
-        <button data-add-bar="C">+C</button><button data-add-bar="D">+D</button>
-        <button id="song-clear">Clear</button>
+      <div class="chords">
+        <span class="chords-label">Chords</span>
+        <label class="field">Root <select id="chord-root" aria-label="Chord root"></select></label>
+        <div id="chord-pads" class="chord-pads" aria-label="Chord pads — hold to play into the arpeggiator"></div>
       </div>
+      <div id="keyboard" class="keyboard"></div>
     </section>
 
     <section class="panel arp" aria-label="Arpeggiator">
@@ -97,6 +104,115 @@
           <input id="swing" type="range" min="0" max="75" value="0" />
         </label>
         <button id="latch" aria-pressed="false" title="Hold notes after release">Latch</button>
+      </div>
+    </section>
+
+    <section class="panel seq" aria-label="Sequencer">
+      <div class="seq-head">
+        <h2>Sequencer</h2>
+        <div class="len" role="radiogroup" aria-label="Sequencer length" id="length"></div>
+        <button id="seq-reset" title="Reset all steps">Reset steps</button>
+      </div>
+      <p class="hint">Each arpeggiated note takes the next step: its pitch is shifted by the step's
+        semitones and its volume scaled by the step's level. A step switched <b>Off</b> strikes nothing,
+        but a tail still ringing from the note before slides to the next arp note plus its interval.</p>
+      <div id="steps" class="steps"></div>
+    </section>
+
+    <section class="panel voice" aria-label="Arp voice, oscillator 1">
+      <h2>Arp Voice · Oscillator 1</h2>
+      <p class="hint">West-coast style, monophonic: a sine core folded by <b>Timbre</b>, blended by
+        <b>Shape</b> with a second wave, into a low-pass gate. <b>Combo</b> strikes the gate: Cutoff sets
+        brightness, loudness <i>and</i> how long it rings. <b>VCA</b> does the same without the filter.
+        <b>LP</b> holds the note for the arp Gate time.</p>
+      <div class="row">
+        <label class="field">Wave
+          <select id="wave">
+            <option value="sawtooth">Saw</option>
+            <option value="square">Square</option>
+            <option value="triangle">Triangle</option>
+            <option value="spike">Spike</option>
+            <option value="sine">Sine</option>
+          </select>
+        </label>
+        <label class="field slider">Shape <output id="arp-shape-val"></output>
+          <input id="arp-shape" type="range" min="0" max="100" title="Sine (left) to the selected wave (right)" />
+        </label>
+        <label class="field slider">Timbre <output id="arp-timbre-val"></output>
+          <input id="arp-timbre" type="range" min="0" max="100" title="Wavefolding of the sine core" />
+        </label>
+      </div>
+      <div class="row">
+        <label class="field">Gate
+          <select id="lpg-mode" title="Combo: filter + loudness · LP: filter only · VCA: loudness only"></select>
+        </label>
+        <label class="field slider">Cutoff <output id="cutoff-val"></output>
+          <input id="cutoff" type="range" min="0" max="1000" step="1" />
+        </label>
+        <label class="field slider">Resonance <output id="arp-res-val"></output>
+          <input id="arp-res" type="range" min="0.5" max="12" step="0.1" />
+        </label>
+      </div>
+    </section>
+
+    <section class="panel osc2" id="osc2-panel" aria-label="Oscillator 2">
+      <h2>Arp Voice · Oscillator 2</h2>
+      <p class="hint">A second monophonic arp voice on every arpeggiated note. It plays each sequencer
+        step's offset as-is (<b>Same</b>) or flipped (<b>Inverted</b>: +7 becomes −7). <b>Sync cutoff</b>
+        lets Oscillator 1's Cutoff drive both gates.</p>
+      <div class="row">
+        <button id="osc2-on" aria-pressed="true" title="Turn oscillator 2 on or off">On</button>
+        <div class="field">Sequence
+          <div class="seg" id="osc2-mode" role="radiogroup" aria-label="Oscillator 2 sequence"></div>
+        </div>
+        <label class="field">Wave
+          <select id="osc2-wave">
+            <option value="sawtooth">Saw</option>
+            <option value="square">Square</option>
+            <option value="triangle">Triangle</option>
+            <option value="spike">Spike</option>
+            <option value="sine">Sine</option>
+          </select>
+        </label>
+        <label class="field">Transpose <select id="osc2-transpose"></select></label>
+        <label class="field slider">Detune <output id="osc2-detune-val"></output>
+          <input id="osc2-detune" type="range" min="-50" max="50" value="0" />
+        </label>
+        <label class="field slider">Level <output id="osc2-level-val"></output>
+          <input id="osc2-level" type="range" min="0" max="100" value="70" />
+        </label>
+        <label class="field">MIDI Out Ch
+          <select id="osc2-midi-ch" title="Send oscillator 2 to its own MIDI channel"><option value="-1">Off</option></select>
+        </label>
+      </div>
+      <div class="row">
+        <label class="field slider">Shape <output id="osc2-shape-val"></output>
+          <input id="osc2-shape" type="range" min="0" max="100" title="Sine (left) to the selected wave (right)" />
+        </label>
+        <label class="field slider">Timbre <output id="osc2-timbre-val"></output>
+          <input id="osc2-timbre" type="range" min="0" max="100" title="Wavefolding of the sine core" />
+        </label>
+        <label class="field">Gate
+          <select id="osc2-lpg" title="Combo: filter + loudness + ring · LP: filter, gate-length notes · VCA: loudness + ring"></select>
+        </label>
+        <label class="check" title="Use Oscillator 1's Cutoff for both voices">
+          <input id="osc2-sync" type="checkbox" /> Sync cutoff</label>
+        <label class="field slider">Cutoff <output id="osc2-cutoff-val"></output>
+          <input id="osc2-cutoff" type="range" min="0" max="1000" step="1" />
+        </label>
+        <label class="field slider">Resonance <output id="osc2-res-val"></output>
+          <input id="osc2-res" type="range" min="0.5" max="12" step="0.1" />
+        </label>
+      </div>
+      <div class="row mod-row">
+        <span class="row-label">Mod → Osc 1</span>
+        <label class="field">Type
+          <select id="osc2-mod" title="Oscillator 2 modulates oscillator 1: amplitude (AM) or frequency (FM)"></select>
+        </label>
+        <label class="field slider">Depth <output id="osc2-mod-depth-val"></output>
+          <input id="osc2-mod-depth" type="range" min="0" max="100" />
+        </label>
+        <span class="status">Works with Osc 2 switched Off, too: it becomes a silent modulator.</span>
       </div>
     </section>
 
@@ -225,105 +341,6 @@
       </div>
     </section>
 
-    <section class="panel drums" id="drum-panel" aria-label="Percussion">
-      <div class="seq-head">
-        <h2>Percussion</h2>
-        <button id="drum-on" aria-pressed="false" title="Play the percussion">Off</button>
-        <label class="field inline">Kit <select id="drum-kit"></select></label>
-        <div class="field inline">Pattern <div class="seg slots" id="drum-slots" role="group" aria-label="Drum pattern slot"></div></div>
-        <select id="drum-copy" aria-label="Copy this pattern to another slot"><option value="">Copy to…</option></select>
-        <label class="field inline">Rhythm <select id="drum-preset"></select></label>
-        <label class="field inline slider">Level <output id="drum-level-val"></output>
-          <input id="drum-level" type="range" min="0" max="100" value="70" />
-        </label>
-        <label class="field inline">MIDI Out Ch
-          <select id="drum-midi-ch" title="Send the percussion as General MIDI drum notes (usually channel 10)"><option value="-1">Off</option></select>
-        </label>
-      </div>
-      <p class="hint">Synthesized Latin, 808-style and Linn-style kits, or <b>Your samples</b>: load your own recordings (they stay in this browser). In time with the clock and swing. Tap a
-        cell to cycle off → hit → accent; tap a name to mute it. Conditions make hits play only on some bars; a row's
-        length (right) lets it loop sooner and drift against the others.</p>
-      <div class="row drum-vary">
-        <label class="field inline">Tap sets <select id="drum-tap" title="Hits: tap cycles off → hit → accent. Conditions: tap gives a hit the chosen condition."></select></label>
-        <label class="field inline">Condition <select id="drum-cond"></select></label>
-        <label class="field inline">Fill <select id="drum-fill-every" title="Fill bars switch on hits marked Fill (and off those marked Not fill)"></select></label>
-        <span class="fill-led" id="drum-fill-led" title="Lit during a fill bar"></span>
-        <button id="drum-add-fill" title="Add a snare/tom fill on the last beat that plays only on fill bars">Add fill</button>
-        <label class="field inline slider" title="Each bar, nudge, drop and ghost a few ordinary hits (accents stay). Your pattern itself isn't changed.">Evolve <output id="drum-evolve-val"></output>
-          <input id="drum-evolve" type="range" min="0" max="100" />
-        </label>
-        <button id="drum-clear-conds" title="Remove all conditions and reset row lengths to 16">Clear conditions</button>
-      </div>
-      <div class="row sample-tools" id="sample-tools" hidden>
-        <button id="sample-load" title="Pick audio files: they're matched to rows by name (Kick, Snare, HHOPEN…)">Load samples…</button>
-        <input id="sample-file" type="file" multiple accept="audio/*,.wav,.aif,.aiff" hidden />
-        <button id="sample-clear">Clear samples</button>
-        <span class="status" id="sample-status"></span>
-        <details class="sample-map-wrap" open>
-          <summary>Sample mixer: which file plays on each row, its level and its tuning</summary>
-          <div id="sample-map" class="sample-map"></div>
-        </details>
-      </div>
-      <div id="drum-grid" class="drum-grid"></div>
-    </section>
-
-    <section class="panel brk" id="break-panel" aria-label="Breakbeat slicer">
-      <div class="seq-head">
-        <h2>Breakbeat</h2>
-        <button id="break-on" aria-pressed="false" title="Play the break pattern">Off</button>
-        <div class="field inline">Pattern <div class="seg slots" id="break-slots" role="group" aria-label="Break pattern slot"></div></div>
-        <select id="break-copy" aria-label="Copy this pattern to another slot"><option value="">Copy to…</option></select>
-        <label class="field inline">Slicing <select id="break-mode" title="Equal slices, or slices that start on the detected hits"></select></label>
-        <label class="field inline">Slices <select id="break-slices"></select></label>
-        <label class="field inline slider">Sensitivity <output id="break-sensitivity-val"></output>
-          <input id="break-sensitivity" type="range" min="0" max="100" title="How many hits count: low = only the big ones, high = ghost notes too" />
-        </label>
-        <label class="field inline">Steps <select id="break-steps"></select></label>
-        <label class="field inline">Break is <select id="break-bars" title="How long the loaded break is, so it can be fitted to the tempo"></select></label>
-        <label class="check"><input id="break-fit" type="checkbox" /> Fit to tempo</label>
-        <label class="field inline slider">Pitch <output id="break-pitch-val"></output>
-          <input id="break-pitch" type="range" min="-12" max="12" step="0.1" />
-        </label>
-        <label class="field inline slider">Level <output id="break-level-val"></output>
-          <input id="break-level" type="range" min="0" max="100" />
-        </label>
-        <label class="field inline slider" title="Each bar, swap a few slices and add the odd roll or reverse. Your pattern itself isn't changed.">Evolve <output id="break-evolve-val"></output>
-          <input id="break-evolve" type="range" min="0" max="100" />
-        </label>
-      </div>
-      <p class="hint">A drum break cut into slices and re-sequenced, tracker style. Select a row, then click a
-        slice in the waveform to put it there. An empty row lets the last slice keep playing.
-        <b>C</b> is the chance the row plays; <b>R</b> splits the step into a roll (R regular, Rv/RV volume down/up,
-        Rn/RN note down/up, RR random notes).
-        Your own break stays in this browser.</p>
-      <div class="row break-tools">
-        <button id="break-load">Load break…</button>
-        <input id="break-file" type="file" accept="audio/*,.wav,.aif,.aiff" hidden />
-        <button id="break-demo" title="A synthesized two-bar break">Demo break</button>
-        <span class="status" id="break-status"></span>
-        <span class="break-gen">
-          <button data-gen="order" title="The slices in their original order">In order</button>
-          <button data-gen="chop" title="A jungle-style rearrangement">Chop</button>
-          <button data-gen="random">Randomize</button>
-          <button data-gen="clear">Clear</button>
-        </span>
-      </div>
-      <canvas id="break-wave" class="break-wave" title="Click a slice to put it on the selected row · drop a break here to load it"></canvas>
-      <div id="break-rows" class="tracker"></div>
-    </section>
-
-    <section class="panel seq" aria-label="Sequencer">
-      <div class="seq-head">
-        <h2>Sequencer</h2>
-        <div class="len" role="radiogroup" aria-label="Sequencer length" id="length"></div>
-        <button id="seq-reset" title="Reset all steps">Reset steps</button>
-      </div>
-      <p class="hint">Each arpeggiated note takes the next step: its pitch is shifted by the step's
-        semitones and its volume scaled by the step's level. A step switched <b>Off</b> strikes nothing,
-        but a tail still ringing from the note before slides to the next arp note plus its interval.</p>
-      <div id="steps" class="steps"></div>
-    </section>
-
     <section class="panel mono" id="mono-panel" aria-label="Mono synth">
       <div class="seq-head">
         <h2>Mono Synth · 101-style</h2>
@@ -424,100 +441,108 @@
       </div>
     </section>
 
-    <section class="panel voice" aria-label="Arp voice, oscillator 1">
-      <h2>Arp Voice · Oscillator 1</h2>
-      <p class="hint">West-coast style, monophonic: a sine core folded by <b>Timbre</b>, blended by
-        <b>Shape</b> with a second wave, into a low-pass gate. <b>Combo</b> strikes the gate: Cutoff sets
-        brightness, loudness <i>and</i> how long it rings. <b>VCA</b> does the same without the filter.
-        <b>LP</b> holds the note for the arp Gate time.</p>
-      <div class="row">
-        <label class="field">Wave
-          <select id="wave">
-            <option value="sawtooth">Saw</option>
-            <option value="square">Square</option>
-            <option value="triangle">Triangle</option>
-            <option value="spike">Spike</option>
-            <option value="sine">Sine</option>
-          </select>
+    <section class="panel drums" id="drum-panel" aria-label="Percussion">
+      <div class="seq-head">
+        <h2>Percussion</h2>
+        <button id="drum-on" aria-pressed="false" title="Play the percussion">Off</button>
+        <label class="field inline">Kit <select id="drum-kit"></select></label>
+        <div class="field inline">Pattern <div class="seg slots" id="drum-slots" role="group" aria-label="Drum pattern slot"></div></div>
+        <select id="drum-copy" aria-label="Copy this pattern to another slot"><option value="">Copy to…</option></select>
+        <label class="field inline">Rhythm <select id="drum-preset"></select></label>
+        <label class="field inline slider">Level <output id="drum-level-val"></output>
+          <input id="drum-level" type="range" min="0" max="100" value="70" />
         </label>
-        <label class="field slider">Shape <output id="arp-shape-val"></output>
-          <input id="arp-shape" type="range" min="0" max="100" title="Sine (left) to the selected wave (right)" />
-        </label>
-        <label class="field slider">Timbre <output id="arp-timbre-val"></output>
-          <input id="arp-timbre" type="range" min="0" max="100" title="Wavefolding of the sine core" />
+        <label class="field inline">MIDI Out Ch
+          <select id="drum-midi-ch" title="Send the percussion as General MIDI drum notes (usually channel 10)"><option value="-1">Off</option></select>
         </label>
       </div>
-      <div class="row">
-        <label class="field">Gate
-          <select id="lpg-mode" title="Combo: filter + loudness · LP: filter only · VCA: loudness only"></select>
+      <p class="hint">Synthesized Latin, 808-style and Linn-style kits, or <b>Your samples</b>: load your own recordings (they stay in this browser). In time with the clock and swing. Tap a
+        cell to cycle off → hit → accent; tap a name to mute it. Conditions make hits play only on some bars; a row's
+        length (right) lets it loop sooner and drift against the others.</p>
+      <div class="row drum-vary">
+        <label class="field inline">Tap sets <select id="drum-tap" title="Hits: tap cycles off → hit → accent. Conditions: tap gives a hit the chosen condition."></select></label>
+        <label class="field inline">Condition <select id="drum-cond"></select></label>
+        <label class="field inline">Fill <select id="drum-fill-every" title="Fill bars switch on hits marked Fill (and off those marked Not fill)"></select></label>
+        <span class="fill-led" id="drum-fill-led" title="Lit during a fill bar"></span>
+        <button id="drum-add-fill" title="Add a snare/tom fill on the last beat that plays only on fill bars">Add fill</button>
+        <label class="field inline slider" title="Each bar, nudge, drop and ghost a few ordinary hits (accents stay). Your pattern itself isn't changed.">Evolve <output id="drum-evolve-val"></output>
+          <input id="drum-evolve" type="range" min="0" max="100" />
         </label>
-        <label class="field slider">Cutoff <output id="cutoff-val"></output>
-          <input id="cutoff" type="range" min="0" max="1000" step="1" />
-        </label>
-        <label class="field slider">Resonance <output id="arp-res-val"></output>
-          <input id="arp-res" type="range" min="0.5" max="12" step="0.1" />
-        </label>
+        <button id="drum-clear-conds" title="Remove all conditions and reset row lengths to 16">Clear conditions</button>
       </div>
+      <div class="row sample-tools" id="sample-tools" hidden>
+        <button id="sample-load" title="Pick audio files: they're matched to rows by name (Kick, Snare, HHOPEN…)">Load samples…</button>
+        <input id="sample-file" type="file" multiple accept="audio/*,.wav,.aif,.aiff" hidden />
+        <button id="sample-clear">Clear samples</button>
+        <span class="status" id="sample-status"></span>
+        <details class="sample-map-wrap" open>
+          <summary>Sample mixer: which file plays on each row, its level and its tuning</summary>
+          <div id="sample-map" class="sample-map"></div>
+        </details>
+      </div>
+      <div id="drum-grid" class="drum-grid"></div>
     </section>
 
-    <section class="panel osc2" id="osc2-panel" aria-label="Oscillator 2">
-      <h2>Arp Voice · Oscillator 2</h2>
-      <p class="hint">A second monophonic arp voice on every arpeggiated note. It plays each sequencer
-        step's offset as-is (<b>Same</b>) or flipped (<b>Inverted</b>: +7 becomes −7). <b>Sync cutoff</b>
-        lets Oscillator 1's Cutoff drive both gates.</p>
-      <div class="row">
-        <button id="osc2-on" aria-pressed="true" title="Turn oscillator 2 on or off">On</button>
-        <div class="field">Sequence
-          <div class="seg" id="osc2-mode" role="radiogroup" aria-label="Oscillator 2 sequence"></div>
-        </div>
-        <label class="field">Wave
-          <select id="osc2-wave">
-            <option value="sawtooth">Saw</option>
-            <option value="square">Square</option>
-            <option value="triangle">Triangle</option>
-            <option value="spike">Spike</option>
-            <option value="sine">Sine</option>
-          </select>
+    <section class="panel brk" id="break-panel" aria-label="Breakbeat slicer">
+      <div class="seq-head">
+        <h2>Breakbeat</h2>
+        <button id="break-on" aria-pressed="false" title="Play the break pattern">Off</button>
+        <div class="field inline">Pattern <div class="seg slots" id="break-slots" role="group" aria-label="Break pattern slot"></div></div>
+        <select id="break-copy" aria-label="Copy this pattern to another slot"><option value="">Copy to…</option></select>
+        <label class="field inline">Slicing <select id="break-mode" title="Equal slices, or slices that start on the detected hits"></select></label>
+        <label class="field inline">Slices <select id="break-slices"></select></label>
+        <label class="field inline slider">Sensitivity <output id="break-sensitivity-val"></output>
+          <input id="break-sensitivity" type="range" min="0" max="100" title="How many hits count: low = only the big ones, high = ghost notes too" />
         </label>
-        <label class="field">Transpose <select id="osc2-transpose"></select></label>
-        <label class="field slider">Detune <output id="osc2-detune-val"></output>
-          <input id="osc2-detune" type="range" min="-50" max="50" value="0" />
+        <label class="field inline">Steps <select id="break-steps"></select></label>
+        <label class="field inline">Break is <select id="break-bars" title="How long the loaded break is, so it can be fitted to the tempo"></select></label>
+        <label class="check"><input id="break-fit" type="checkbox" /> Fit to tempo</label>
+        <label class="field inline slider">Pitch <output id="break-pitch-val"></output>
+          <input id="break-pitch" type="range" min="-12" max="12" step="0.1" />
         </label>
-        <label class="field slider">Level <output id="osc2-level-val"></output>
-          <input id="osc2-level" type="range" min="0" max="100" value="70" />
+        <label class="field inline slider">Level <output id="break-level-val"></output>
+          <input id="break-level" type="range" min="0" max="100" />
         </label>
-        <label class="field">MIDI Out Ch
-          <select id="osc2-midi-ch" title="Send oscillator 2 to its own MIDI channel"><option value="-1">Off</option></select>
+        <label class="field inline slider" title="Each bar, swap a few slices and add the odd roll or reverse. Your pattern itself isn't changed.">Evolve <output id="break-evolve-val"></output>
+          <input id="break-evolve" type="range" min="0" max="100" />
         </label>
       </div>
-      <div class="row">
-        <label class="field slider">Shape <output id="osc2-shape-val"></output>
-          <input id="osc2-shape" type="range" min="0" max="100" title="Sine (left) to the selected wave (right)" />
-        </label>
-        <label class="field slider">Timbre <output id="osc2-timbre-val"></output>
-          <input id="osc2-timbre" type="range" min="0" max="100" title="Wavefolding of the sine core" />
-        </label>
-        <label class="field">Gate
-          <select id="osc2-lpg" title="Combo: filter + loudness + ring · LP: filter, gate-length notes · VCA: loudness + ring"></select>
-        </label>
-        <label class="check" title="Use Oscillator 1's Cutoff for both voices">
-          <input id="osc2-sync" type="checkbox" /> Sync cutoff</label>
-        <label class="field slider">Cutoff <output id="osc2-cutoff-val"></output>
-          <input id="osc2-cutoff" type="range" min="0" max="1000" step="1" />
-        </label>
-        <label class="field slider">Resonance <output id="osc2-res-val"></output>
-          <input id="osc2-res" type="range" min="0.5" max="12" step="0.1" />
-        </label>
+      <p class="hint">A drum break cut into slices and re-sequenced, tracker style. Select a row, then click a
+        slice in the waveform to put it there. An empty row lets the last slice keep playing.
+        <b>C</b> is the chance the row plays; <b>R</b> splits the step into a roll (R regular, Rv/RV volume down/up,
+        Rn/RN note down/up, RR random notes).
+        Your own break stays in this browser.</p>
+      <div class="row break-tools">
+        <button id="break-load">Load break…</button>
+        <input id="break-file" type="file" accept="audio/*,.wav,.aif,.aiff" hidden />
+        <button id="break-demo" title="A synthesized two-bar break">Demo break</button>
+        <span class="status" id="break-status"></span>
+        <span class="break-gen">
+          <button data-gen="order" title="The slices in their original order">In order</button>
+          <button data-gen="chop" title="A jungle-style rearrangement">Chop</button>
+          <button data-gen="random">Randomize</button>
+          <button data-gen="clear">Clear</button>
+        </span>
       </div>
-      <div class="row mod-row">
-        <span class="row-label">Mod → Osc 1</span>
-        <label class="field">Type
-          <select id="osc2-mod" title="Oscillator 2 modulates oscillator 1: amplitude (AM) or frequency (FM)"></select>
-        </label>
-        <label class="field slider">Depth <output id="osc2-mod-depth-val"></output>
-          <input id="osc2-mod-depth" type="range" min="0" max="100" />
-        </label>
-        <span class="status">Works with Osc 2 switched Off, too: it becomes a silent modulator.</span>
+      <canvas id="break-wave" class="break-wave" title="Click a slice to put it on the selected row · drop a break here to load it"></canvas>
+      <div id="break-rows" class="tracker"></div>
+    </section>
+
+    <section class="panel song" id="song-panel" aria-label="Song">
+      <div class="seq-head">
+        <h2>Song</h2>
+        <button id="song-on" aria-pressed="false" title="Play the chain: each bar plays its pattern slot in the Percussion and Breakbeat">Off</button>
+        <span class="status" id="song-pos"></span>
+      </div>
+      <p class="hint">Chain pattern slots A–D, one per bar, so the drums and break move through sections instead of
+        looping one bar. Click a bar to change its slot; × removes it. Edit each slot with the A–D buttons in the
+        Percussion and Breakbeat windows.</p>
+      <div id="song-chain" class="song-chain"></div>
+      <div class="row">
+        <span class="field inline">Add bar</span>
+        <button data-add-bar="A">+A</button><button data-add-bar="B">+B</button>
+        <button data-add-bar="C">+C</button><button data-add-bar="D">+D</button>
+        <button id="song-clear">Clear</button>
       </div>
     </section>
 
@@ -591,26 +616,7 @@
         <span id="midi-status" class="status"></span>
       </div>
     </section>
-
-    <section class="panel keys-panel" aria-label="Keyboard">
-      <div class="seq-head">
-        <h2>Keyboard</h2>
-        <span class="hint">Play with A–; (W E T Y U O P for sharps) · 1–4 chords · Z / X octave · Space play/stop</span>
-        <span class="oct">
-          <button id="oct-down" aria-label="Octave down">−</button>
-          <span id="oct-label">C3</span>
-          <button id="oct-up" aria-label="Octave up">+</button>
-        </span>
-        <button id="panic" title="Release all notes">Clear notes</button>
-      </div>
-      <div class="chords">
-        <span class="chords-label">Chords</span>
-        <label class="field">Root <select id="chord-root" aria-label="Chord root"></select></label>
-        <div id="chord-pads" class="chord-pads" aria-label="Chord pads — hold to play into the arpeggiator"></div>
-      </div>
-      <div id="keyboard" class="keyboard"></div>
-    </section>
   </main>
-  <script type="module" src="src/app.js?v=48"></script>
+  <script type="module" src="src/app.js?v=50"></script>
 </body>
 </html>

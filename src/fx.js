@@ -1,7 +1,7 @@
 // Shared send effects: a tempo-synced (optionally ping-pong) delay and a
 // convolution reverb with a generated stereo impulse response.
 
-import { PPQN, RATES } from './core.js?v=48';
+import { PPQN, RATES } from './core.js?v=50';
 
 export const DELAY_TIMES = ['1/16', '1/8T', '1/8', '1/8D', '1/4T', '1/4', '1/4D', '1/2'];
 const EXTRA_PULSES = { '1/4T': 16, '1/4D': 36, '1/2': 48 };
