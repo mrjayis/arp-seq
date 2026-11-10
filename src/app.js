@@ -4,23 +4,23 @@ import {
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=44';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=44';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=44';
-import { Midi } from './midi.js?v=44';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=44';
+} from './core.js?v=46';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=46';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=46';
+import { Midi } from './midi.js?v=46';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=46';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=44';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=44';
+} from './percussion.js?v=46';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=46';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
-} from './breaks.js?v=44';
-import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=44';
+} from './breaks.js?v=46';
+import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=46';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=44';
+} from './mono.js?v=46';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -83,6 +83,9 @@ const settings = {
   chordPulseWidth: 50, // % — applies to whichever chord wave is Square
   chordPwmDepth: 40,
   chordPwmRate: 0.8, // Hz
+  chordMode: 'rhythm', // 'rhythm' (Euclidean hits) | 'pad' (held, always on)
+  padAttack: 600, // ms
+  padRelease: 1500, // ms
   delayTime: '1/8D',
   delayFeedback: 35,
   delayTone: 4500,
@@ -334,6 +337,54 @@ function playArp(step) {
 
 // Chord layer: repeats the held chord on the hits of its own Euclidean rhythm,
 // alongside the arpeggiator. It only follows the sequencer if asked to.
+// ---- Pad mode: the chord layer holds the current chord, always on. Each 16th it
+// compares what should sound with what does: new notes swell in, old ones fade.
+const padVoices = new Map(); // key ('n:60', 'sub:36') -> voice handle
+
+function chordLayers() {
+  const [g1, g2] = blendGains(settings.chordBlend / 100);
+  const pulse = pulseOffsets(settings.chordPulseWidth, settings.chordPwmDepth);
+  return [
+    { wave: settings.chordWave, gain: g1, detune: 0, pulse },
+    { wave: settings.chordWave2, gain: g2, detune: settings.chordDetune2, pulse },
+  ];
+}
+
+function releasePads(time) {
+  for (const v of padVoices.values()) v.release(time);
+  padVoices.clear();
+}
+
+function updatePad(time) {
+  if (!synth || !settings.synthOn || !settings.chordOn || settings.chordMode !== 'pad' || settings.chordLevel <= 0) {
+    if (padVoices.size) releasePads(time);
+    return;
+  }
+  const notes = chordVoicing(engine.notes, { octave: settings.chordOctave });
+  const want = new Map(notes.map((n) => [`n:${n.note}`, n]));
+  if (settings.chordSub !== 'off' && notes.length && notes[0].note >= 12) {
+    want.set(`sub:${notes[0].note - 12}`, { note: notes[0].note - 12, velocity: notes[0].velocity, sub: true });
+  }
+  for (const [key, v] of padVoices) {
+    if (!want.has(key)) { v.release(time); padVoices.delete(key); }
+  }
+  const common = {
+    cutoff: settings.chordCutoff, resonance: settings.chordResonance,
+    attack: settings.padAttack / 1000, release: settings.padRelease / 1000,
+  };
+  for (const [key, n] of want) {
+    if (padVoices.has(key)) continue;
+    padVoices.set(key, n.sub
+      ? synth.padVoice(n.note, n.velocity, time, {
+        ...common, wave: settings.chordSub, out: buses.chords,
+        level: (settings.chordLevel / 100) * (settings.chordSubLevel / 100) * 1.4,
+      })
+      : synth.padVoice(n.note, n.velocity, time, {
+        ...common, layers: chordLayers(), level: settings.chordLevel / 100, out: chorus.input,
+      }));
+  }
+}
+
 function playChord(step) {
   if (!engine.notes.length) return;
   const rhythmPos = step.stepNumber % settings.chordSteps;
@@ -417,7 +468,7 @@ function onPulse(time, pulse, pulseDuration) {
   if (step && !gated) playArp(step);
   const cstep = pulseToStep(pulse, time, pulseDuration, RATES[settings.chordRate], swing);
   if (cstep) {
-    if (settings.chordOn) playChord(cstep);
+    if (settings.chordOn && settings.chordMode !== 'pad') playChord(cstep);
     else if (settings.chordGateArp && engine.notes.length) {
       // Keep the pattern display moving when only the gate is in use.
       uiEvents.push({ kind: 'chord', time: cstep.time, rhythmPos: cstep.stepNumber % settings.chordSteps, notes: [] });
@@ -430,6 +481,8 @@ function onPulse(time, pulse, pulseDuration) {
   if (settings.songOn && !settings.drumOn && settings.breakOn && pulse % (RATES['1/16'] * DRUM_STEPS) === 0) {
     uiEvents.push({ kind: 'song', time, bar: Math.floor(pulse / (RATES['1/16'] * DRUM_STEPS)) });
   }
+  // Pad: keep the held chord in step with the notes, every 16th.
+  if (pulse % RATES['1/16'] === 0) updatePad(time);
   if (settings.drumOn || settings.breakOn) {
     const dstep = pulseToStep(pulse, time, pulseDuration, RATES['1/16'], swing);
     if (dstep && settings.drumOn) playDrums(dstep);
@@ -521,6 +574,7 @@ function setPlaying(on, { fromClock = false } = {}) {
   }
   if (!on) {
     synth?.panic();
+    padVoices.clear(); // panic already silenced them
     monoSynth?.panic();
     showMonoStep(-1);
     midi.allNotesOff();
@@ -845,6 +899,24 @@ for (let o = -2; o <= 2; o++) $('chord-octave').add(new Option(o > 0 ? `+${o}` :
 bindSelect('chord-octave', 'chordOctave');
 bindRange('chord-gate', 'chordGate', (v) => `${v}%`);
 bindRange('chord-level', 'chordLevel', (v) => `${v}%`);
+bindSelect('chord-mode', 'chordMode', [['rhythm', 'Rhythm'], ['pad', 'Pad (always on)']], () => {
+  renderChordMode();
+  if (ctx) updatePad(ctx.currentTime);
+});
+bindLog('pad-attack', 'padAttack', 5, 5000, (v) => (v < 1000 ? `${v} ms` : `${(v / 1000).toFixed(2)} s`));
+bindLog('pad-release', 'padRelease', 20, 8000, (v) => (v < 1000 ? `${v} ms` : `${(v / 1000).toFixed(2)} s`));
+/** Pad mode greys out the Euclidean controls and shows Attack/Release. */
+function renderChordMode() {
+  const pad = settings.chordMode === 'pad';
+  $('chord-panel').classList.toggle('pad', pad);
+  for (const id of ['chord-rate', 'chord-steps', 'chord-hits', 'chord-rotate', 'chord-gate']) {
+    $(id).closest('label').classList.toggle('rhythm-only', true);
+  }
+  $('chord-pattern').closest('.field').classList.add('rhythm-only');
+  $('chord-follow').closest('label').classList.add('rhythm-only'); // a held pad doesn't follow the steps
+  $('pad-row').hidden = !pad;
+}
+renderChordMode();
 bindCutoff('chord-cutoff', 'chordCutoff');
 bindRange('chord-res', 'chordResonance', (v) => v.toFixed(1));
 bindRange('chorus-mix', 'chordChorusMix', (v) => `${v}%`, (v) => chorus?.setMix(v / 100));

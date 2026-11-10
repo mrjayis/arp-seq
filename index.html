@@ -17,8 +17,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=44" />
-  <link rel="stylesheet" href="mac.css?v=44" />
+  <link rel="stylesheet" href="styles.css?v=46" />
+  <link rel="stylesheet" href="mac.css?v=46" />
 </head>
 <body>
   <main class="device">
@@ -113,10 +113,11 @@
 
     <section class="panel rhythm" id="chord-panel" aria-label="Chord rhythm">
       <h2>Chord Rhythm</h2>
-      <p class="hint">Repeats the held chord in a Euclidean rhythm while the arpeggiator keeps playing.
+      <p class="hint">Repeats the held chord in a Euclidean rhythm (or holds it as a pad) while the arpeggiator keeps playing.
         <b>Hits</b> are spread as evenly as possible over the <b>Steps</b> (3 in 8 = x..x..x.).</p>
       <div class="row">
-        <button id="chord-on" aria-pressed="true" title="Turn the chord rhythm on or off">On</button>
+        <button id="chord-on" aria-pressed="true" title="Turn the chord layer on or off">On</button>
+        <label class="field">Mode <select id="chord-mode" title="Rhythm: Euclidean hits. Pad: the chord holds, always on, changing smoothly with the chords."></select></label>
         <label class="check gate-arp" title="Arp only plays while this pattern is on a hit (works even with the chords off)">
           <input id="chord-gate-arp" type="checkbox" /> Gate arp</label>
         <label class="field">Rate <select id="chord-rate"></select></label>
@@ -140,6 +141,16 @@
         <label class="field">MIDI Out Ch
           <select id="chord-midi-ch" title="Send the chords to their own MIDI channel"><option value="-1">Off</option></select>
         </label>
+      </div>
+      <div class="row" id="pad-row" hidden>
+        <span class="row-label">Pad</span>
+        <label class="field slider">Attack <output id="pad-attack-val"></output>
+          <input id="pad-attack" type="range" min="0" max="1000" step="1" title="How slowly new chord notes swell in" />
+        </label>
+        <label class="field slider">Release <output id="pad-release-val"></output>
+          <input id="pad-release" type="range" min="0" max="1000" step="1" title="How long old chord notes take to fade" />
+        </label>
+        <span class="status">The chord holds while there are notes to play (keys, latch or the progression).</span>
       </div>
       <div class="row">
         <span class="row-label">Voice</span>
@@ -596,6 +607,6 @@
       <div id="keyboard" class="keyboard"></div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=44"></script>
+  <script type="module" src="src/app.js?v=46"></script>
 </body>
 </html>
