@@ -851,3 +851,14 @@ h2.collapsible { cursor: pointer; user-select: none; }
   .drum-grid .cell, .drum-name { min-height: 22px; }
   .drum-grid .cell { border-width: 1px; }
 }
+
+/* ---------- play surfaces: no text selection, callout or magnifier on touch ----------
+   Safari (iPhone/iPad) only honours the -webkit- prefixed user-select, and a long
+   press otherwise brings up the copy/look-up callout. */
+.keys-panel, .keyboard, .chord-pad, .drum-grid, .steps, .prog-slots, .dock, button, .seg, .len {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.keys-panel select, .keys-panel input { -webkit-user-select: auto; user-select: auto; }
