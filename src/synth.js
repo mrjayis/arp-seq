@@ -181,8 +181,9 @@ export class Synth {
         osc.type = 'sawtooth';
         const threshold = ctx.createConstantSource();
         threshold.offset.value = p.center * SAW_RAMP;
+        let depth = null;
         if (p.swing > 0) {
-          const depth = ctx.createGain();
+          depth = ctx.createGain();
           depth.gain.value = p.swing * SAW_RAMP;
           this.pwmLfo.connect(depth).connect(threshold.offset);
         }
@@ -198,7 +199,13 @@ export class Synth {
         threshold.connect(dcBlock).connect(g);
         threshold.start(t0);
         sources.push(threshold);
-        this.voices.add({ osc: threshold, amp });
+        const tVoice = { osc: threshold, amp };
+        this.voices.add(tVoice);
+        threshold.onended = () => {
+          this.voices.delete(tVoice);
+          // Unhook this note from the shared PWM LFO, or the nodes are kept forever.
+          if (depth) { try { this.pwmLfo.disconnect(depth); } catch { /* gone */ } depth.disconnect(); }
+        };
       } else {
         osc.type = layer.wave;
         osc.connect(g);
@@ -242,7 +249,13 @@ export class Synth {
         released = true;
         const at = Math.max(t, ctx.currentTime);
         if (amp.gain.cancelAndHoldAtTime) amp.gain.cancelAndHoldAtTime(at);
-        else { amp.gain.cancelScheduledValues(at); amp.gain.setValueAtTime(peak, at); }
+        else {
+          // No cancel-and-hold (Firefox): hold where the swell has got to, not the peak.
+          const reached = peak * Math.min(1, (at - t0) / Math.max(0.005, attack));
+          // Cancelling drops the unfinished swell ramp, so re-add it up to the release point.
+          amp.gain.cancelScheduledValues(at);
+          amp.gain.linearRampToValueAtTime(reached, at);
+        }
         amp.gain.setTargetAtTime(0, at, Math.max(0.01, release / 4));
         for (const src of sources) { try { src.stop(at + Math.max(0.05, release) * 1.6); } catch { /* stopped */ } }
       },

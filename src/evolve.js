@@ -24,16 +24,17 @@ export function barRng(seed, bar, lane = 0) {
  * ordinary hits may shift a step or drop out; busy rows (3+ ordinary hits) may gain ghost
  * notes. Returns new rows; the input is not modified.
  */
-export function evolveDrums(rows, amount, rng) {
+export function evolveDrums(rows, amount, rng, conds = {}) {
   if (amount <= 0) return rows;
   const out = {};
   for (const [id, row] of Object.entries(rows)) {
     const next = row.slice();
     // Ghost notes only suit busy rows of ordinary hits (hats, shakers), not kicks.
-    const busy = row.filter((v) => v > 0 && v < 1).length >= 3;
+    const busy = row.filter((v, s) => v > 0 && v < 1 && !conds[id]?.[s]).length >= 3;
     for (let s = 0; s < row.length; s++) {
       const v = row[s];
       if (v >= 1) continue; // accents are the backbone
+      if (conds[id]?.[s]) continue; // conditioned hits (fills, 1:2…) stay on their step
       if (v > 0) {
         const r = rng();
         if (r < amount * 0.12) next[s] = 0; // drop

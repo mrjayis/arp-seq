@@ -202,3 +202,13 @@ test('addFill writes fill-only hits on empty cells of the last beat', () => {
   }
   assert.ok(addFill(parsePattern(DRUM_PRESETS['Bossa Nova']), {}, KITS.latin.voices) > 0); // Latin uses congas/bongos
 });
+
+test('a shared first word that names the instrument is kept when matching files', () => {
+  const f = (name) => ({ name });
+  const rowsOf = (names) => Object.fromEntries(assignSamples(names.map(f)).assigned.map(([slot, x]) => [x.name, slot]));
+  assert.deepEqual(rowsOf(['Tom Hi.wav', 'Tom Lo.wav']), { 'Tom Hi.wav': 'u_tomhi', 'Tom Lo.wav': 'u_tomlo' });
+  assert.equal(rowsOf(['Snare 1.wav', 'Snare 2.wav'])['Snare 1.wav'], 'u_snare');
+  assert.deepEqual(rowsOf(['LD_Tom_Hi.wav', 'LD_Tom_Lo.wav']), { 'LD_Tom_Hi.wav': 'u_tomhi', 'LD_Tom_Lo.wav': 'u_tomlo' });
+  // A brand prefix is still skipped.
+  assert.deepEqual(rowsOf(['LinnDrum Clap.wav', 'LinnDrum Kick.wav']), { 'LinnDrum Clap.wav': 'u_clap', 'LinnDrum Kick.wav': 'u_kick' });
+});

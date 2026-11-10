@@ -246,6 +246,12 @@ export function matchSlot(filename, sharedPrefix = '') {
   return null;
 }
 
+function isInstrumentWord(word) {
+  const p3 = word.slice(0, 3);
+  const code = word.slice(0, 2);
+  return p3 === 'tom' || !!BY_PREFIX[p3] || (!!BY_CODE[code] && (word.length === 2 || /\d/.test(word[2])));
+}
+
 /** Text all the names start with, cut back to the last separator ("LinnDrum ", "LD_"). */
 export function sharedPrefix(names) {
   if (names.length < 2) return '';
@@ -253,7 +259,12 @@ export function sharedPrefix(names) {
   let prefix = lower[0];
   for (const n of lower) while (!n.startsWith(prefix)) prefix = prefix.slice(0, -1);
   const cut = Math.max(prefix.lastIndexOf(' '), prefix.lastIndexOf('_'), prefix.lastIndexOf('-'));
-  return cut >= 0 ? prefix.slice(0, cut + 1) : '';
+  prefix = cut >= 0 ? prefix.slice(0, cut + 1) : '';
+  // Keep a shared word that names the instrument ("Tom Hi" + "Tom Lo", "Snare 1" + "Snare 2").
+  for (const m of prefix.matchAll(/[a-z0-9]+/g)) {
+    if (isInstrumentWord(m[0])) return prefix.slice(0, m.index);
+  }
+  return prefix;
 }
 
 /**
@@ -470,6 +481,7 @@ export class DrumSynth {
     if (prev && !open) {
       prev.gain.setValueAtTime(1, t);
       prev.gain.linearRampToValueAtTime(0, t + 0.006);
+      this.chokes[kit] = null; // choked once: later closed hats must not re-open it
     }
     if (open) this.chokes[kit] = bus;
     return bus;

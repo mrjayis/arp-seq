@@ -4,23 +4,23 @@ import {
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=50';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=50';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=50';
-import { Midi } from './midi.js?v=50';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=50';
+} from './core.js?v=52';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=52';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=52';
+import { Midi } from './midi.js?v=52';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=52';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=50';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=50';
+} from './percussion.js?v=52';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=52';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
-} from './breaks.js?v=50';
-import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=50';
+} from './breaks.js?v=52';
+import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=52';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=50';
+} from './mono.js?v=52';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -494,13 +494,13 @@ function onPulse(time, pulse, pulseDuration) {
 // Evolve: a new seed each time Play starts; each bar's variation is derived from it.
 let runSeed = (Math.random() * 2 ** 32) >>> 0;
 let evolveCache = { bar: -1, rows: null, src: null, amount: -1 };
-function evolvedDrumRows(stepNumber, rows) {
+function evolvedDrumRows(stepNumber, rows, conds) {
   const amount = settings.drumEvolve / 100;
   if (amount <= 0) return rows;
   const bar = Math.floor(stepNumber / DRUM_STEPS);
   const c = evolveCache;
   if (c.bar !== bar || c.src !== rows || c.amount !== amount) {
-    evolveCache = { bar, src: rows, amount, rows: evolveDrums(rows, amount, barRng(runSeed, bar)) };
+    evolveCache = { bar, src: rows, amount, rows: evolveDrums(rows, amount, barRng(runSeed, bar), conds) };
   }
   return evolveCache.rows;
 }
@@ -517,7 +517,7 @@ function playDrums(step) {
   }
   const voices = kitVoices();
   const data = drumSlotData(songSlot(step.stepNumber) || settings.drumSlot);
-  const hits = drumHits(evolvedDrumRows(step.stepNumber, data.rows), step.stepNumber, {
+  const hits = drumHits(evolvedDrumRows(step.stepNumber, data.rows, data.conds), step.stepNumber, {
     conds: data.conds, lens: data.lens, muted: settings.drumMuted, voices,
     fill: isFillBar(step.stepNumber, settings.drumFillEvery),
   });
@@ -575,7 +575,10 @@ function setPlaying(on, { fromClock = false } = {}) {
   if (!on) {
     synth?.panic();
     padVoices.clear(); // panic already silenced them
+    breakPlayer?.stop(ctx ? ctx.currentTime : 0);
     monoSynth?.panic();
+    monoGateOpen = false;
+    monoMidiNote = null; // allNotesOff below releases it
     showMonoStep(-1);
     midi.allNotesOff();
     uiEvents.length = 0;
@@ -901,7 +904,7 @@ bindRange('chord-gate', 'chordGate', (v) => `${v}%`);
 bindRange('chord-level', 'chordLevel', (v) => `${v}%`);
 bindSelect('chord-mode', 'chordMode', [['rhythm', 'Rhythm'], ['pad', 'Pad (always on)']], () => {
   renderChordMode();
-  if (ctx) updatePad(ctx.currentTime);
+  if (ctx && (playing || padVoices.size)) updatePad(ctx.currentTime); // start only while playing; always allow release
 });
 bindLog('pad-attack', 'padAttack', 5, 5000, (v) => (v < 1000 ? `${v} ms` : `${(v / 1000).toFixed(2)} s`));
 bindLog('pad-release', 'padRelease', 20, 8000, (v) => (v < 1000 ? `${v} ms` : `${(v / 1000).toFixed(2)} s`));
@@ -1666,13 +1669,17 @@ async function loadBreakFile(file) {
   try { await saveBreak({ name: file.name, data }); } catch { /* storage unavailable: kept for this visit */ }
 }
 
+let breakPeaks = { buffer: null, cols: 0, pk: null, max: 1 };
 function drawBreak() {
   const canvas = $('break-wave');
+  if (!canvas.clientWidth) return; // folded or hidden: nothing to draw (redrawn when reopened)
   const dpr = window.devicePixelRatio || 1;
   const w = Math.max(200, canvas.clientWidth);
   const h = canvas.clientHeight || 96;
-  canvas.width = w * dpr;
-  canvas.height = h * dpr;
+  if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+  }
   const g = canvas.getContext('2d');
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
   const css = getComputedStyle(canvas);
@@ -1697,9 +1704,14 @@ function drawBreak() {
   }
   g.fillStyle = ink;
   const cols = Math.floor(w);
-  const pk = peaks(breakBuffer.getChannelData(0), cols);
-  let max = 0.001;
-  for (const [lo, hi] of pk) max = Math.max(max, -lo, hi);
+  // Scanning the whole break is the slow part: do it once per break and width.
+  if (breakPeaks.buffer !== breakBuffer || breakPeaks.cols !== cols) {
+    const scanned = peaks(breakBuffer.getChannelData(0), cols);
+    let m = 0.001;
+    for (const [lo, hi] of scanned) m = Math.max(m, -lo, hi);
+    breakPeaks = { buffer: breakBuffer, cols, pk: scanned, max: m };
+  }
+  const { pk, max } = breakPeaks;
   const mid = h / 2;
   for (let x = 0; x < cols; x++) {
     const [lo, hi] = pk[x];
@@ -1829,6 +1841,7 @@ $('break-wave').addEventListener('click', (e) => {
   ensureAudio();
   breakPlayer?.trigger(ctx.currentTime + 0.01, {
     offset: breakPoints[slice],
+    duration: (slice + 1 < breakPoints.length ? breakPoints[slice + 1] : breakBuffer.duration) - breakPoints[slice],
     rate: fitRate(breakBuffer.duration, settings.breakBars, currentBpm(), settings.breakPitch, settings.breakFit),
   });
   const row = breakSelected;
@@ -2052,6 +2065,7 @@ let monoSynth = null;
 let monoCursor = 0; // where the next written step goes
 let monoKeyTranspose = 0; // live transpose from held keys (Keys transpose)
 let monoMidiNote = null; // the note last sent to MIDI out
+let monoGateOpen = false; // is a mono note sounding (so legato has something to slide from)?
 let monoNowStep = -1;
 const monoStepEls = [];
 
@@ -2091,6 +2105,14 @@ settings.monoSeq = settings.monoSeq
   .map((s) => ({ n: s.n, t: !!s.t }));
 monoCursor = settings.monoSeq.length;
 
+/** Close the mono voice's gate now (sequence cleared, Mono switched off): no drone, no stuck MIDI note. */
+function monoAllOff() {
+  if (ctx) monoSynth?.noteOff(ctx.currentTime);
+  if (monoMidiNote !== null && settings.monoMidiCh >= 0) midi.noteOff(monoMidiNote, undefined, settings.monoMidiCh);
+  monoMidiNote = null;
+  monoGateOpen = false;
+}
+
 function playMonoStep(step) {
   const seq = settings.monoSeq;
   if (!seq.length) return;
@@ -2111,19 +2133,25 @@ function playMonoStep(step) {
     if (monoSynth && settings.synthOn) monoSynth.noteOff(t);
     midiOff(monoMidiNote, t);
     monoMidiNote = null;
+    monoGateOpen = false;
   } else if (act.type === 'note' || act.type === 'legato') {
     const n = Math.max(0, Math.min(127, act.note + shift));
-    if (monoSynth && settings.synthOn) monoSynth.noteOn(n, t, { legato: act.type === 'legato' });
+    // A legato step with nothing sounding (first pass after Play, or Mono just
+    // switched on) has no note to slide from: strike it as a new note.
+    const legato = act.type === 'legato' && monoGateOpen;
+    if (monoSynth && settings.synthOn) monoSynth.noteOn(n, t, { legato });
     // MIDI: legato overlaps the old note so a mono synth slides; a new note releases first.
-    if (act.type === 'note') midiOff(monoMidiNote, t);
+    if (!legato) midiOff(monoMidiNote, t);
     midiOn(n);
-    if (act.type === 'legato') midiOff(monoMidiNote, t + 0.002);
+    if (legato) midiOff(monoMidiNote, t + 0.002);
     monoMidiNote = n;
+    monoGateOpen = true;
   }
-  if (act.release) {
+  if (act.release && monoGateOpen) {
     if (monoSynth && settings.synthOn) monoSynth.noteOff(off);
     midiOff(monoMidiNote, off);
     monoMidiNote = null;
+    monoGateOpen = false;
   }
   uiEvents.push({ kind: 'mono', time: t, step: idx });
 }
@@ -2199,7 +2227,7 @@ $('mono-on').addEventListener('click', () => {
     ensureAudio();
     if (!playing && settings.sync === 'internal') setPlaying(true);
   } else {
-    monoSynth?.panic();
+    monoAllOff();
     showMonoStep(-1);
   }
   renderMonoPanel();
@@ -2223,6 +2251,7 @@ $('mono-back').addEventListener('click', () => {
 $('mono-clear').addEventListener('click', () => {
   if (settings.monoSeq.length && !window.confirm('Clear the mono sequence?')) return;
   settings.monoSeq = [];
+  monoAllOff();
   monoCursor = 0;
   renderMonoSteps();
   save();
@@ -2598,6 +2627,7 @@ $('panic').addEventListener('click', () => {
   heldChords.clear();
   renderChordPads();
   synth?.panic();
+  padVoices.clear(); // silenced by panic; the next step restarts whatever should still sound
   midi.allNotesOff();
   renderKeyState();
 });
