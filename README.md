@@ -30,6 +30,19 @@ Make the drums and break move through sections instead of looping one bar.
 - **Latch:** keeps notes after you let go; a new chord replaces them. The sustain pedal (CC64) also toggles latch.
 - **Tempo:** 20–300 BPM, with tap tempo
 
+### Mono synth (101-style)
+A monophonic bass/lead voice with its own step sequencer, playing in time with everything else.
+- **Voice:**
+  - **Oscillator:** Saw, Pulse (Width, plus PWM from the LFO), Sub (−1 oct square, −2 oct square or −2 oct narrow pulse) and Noise, each with its own level.
+  - **Filter:** a 24 dB resonant low-pass with Cutoff, Resonance, Env amount and Key follow.
+  - **Envelope and VCA:** ADSR envelope; the VCA follows the envelope or acts as a simple gate.
+  - **Modulation:** LFO for vibrato and filter wobble. **Portamento** Off / On / Auto (Auto glides only into legato steps).
+- **Writing a sequence (up to 64 steps):** arm **Write** and play notes on the Keyboard window, computer keys or MIDI. Each note fills the next step, and the arpeggiator is left alone while Write is armed.
+  - **Rest** adds silence, **Tie** holds the previous note, and with **Legato** on, notes slide in without retriggering.
+  - **Back** deletes, and clicking a step writes from there.
+- **Playing:** **Rate** (default 1/16), **Gate**, **Transpose**, and **Keys transpose**: the keys you play shift the sequence live, with C3 meaning no change.
+- **Output:** **Level**, Bass sends in the Effects window, and an optional MIDI out channel.
+
 ### Arp voices (west-coast style)
 The arp has two monophonic voices: **Oscillator 1**, and **Oscillator 2**, which plays the sequence as-is or inverted. Each voice is a complex oscillator feeding a low-pass gate:
 - **Timbre** folds the sine core (a triangle wavefolder). At 0 it's a pure sine; turning it up adds bright, glassy harmonics.
@@ -159,6 +172,7 @@ A shared delay and reverb, with a **send** from each source (Arp, Chords, Drums)
 | `mac.css`, `fonts/` | System 7 theme and its bitmap font |
 | `src/breaks.js` | Breakbeat slicer: tempo fit, slices, tracker rows, player (logic tested) |
 | `src/evolve.js` | Per-bar, non-destructive variation for drums and breaks (tested) |
+| `src/mono.js` | Mono synth voice and its step-sequencer logic (tested) |
 | `src/fx.js` | Delay and reverb (timing and impulse-response math tested) |
 | `src/samples.js` | Stores your own drum samples in the browser |
 | `src/percussion.js` | Percussion voices, rhythm presets and pattern helpers (patterns tested) |

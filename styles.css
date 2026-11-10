@@ -39,6 +39,7 @@
 .osc2       { --mod: #5f8a2e; }
 .io         { --mod: #6a645b; }
 .fx         { --mod: #9a3b5c; }
+.mono       { --mod: #2a6fb0; }
 .song       { --mod: #4b5d23; }
 .brk        { --mod: #b25a22; }
 .keys-panel { --mod: var(--ink); --mod-ink: var(--plate); }
@@ -576,6 +577,34 @@ input[type="range"]::-moz-range-thumb {
 .song-bar.now { background: var(--mod); border-color: var(--mod); }
 .song-bar.now small { color: var(--mod-ink); }
 
+/* ---------- mono synth ---------- */
+.mono.off .mono-steps { opacity: 0.6; }
+.mono.armed .mono-steps { outline: 2px dashed var(--mod); outline-offset: 4px; }
+.mono-tools { margin-bottom: 8px; }
+.mono-steps { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
+.mono-step, .mono-end {
+  min-width: 44px;
+  min-height: 30px;
+  padding: 2px 6px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+.mono-end {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px dashed var(--line);
+  border-radius: 3px;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+.mono-step.rest { color: var(--ink-3); }
+.mono-step.hold { font-weight: 700; }
+.mono-step.legato { text-decoration: underline wavy; text-underline-offset: 3px; }
+.mono-step.cursor, .mono-end.cursor { outline: 2px solid var(--mod); outline-offset: 1px; }
+.mono-step.now { background: var(--mod); color: var(--mod-ink); border-color: var(--mod); }
+
 /* ---------- oscillator 2 ---------- */
 .osc2.off .row:not(.mod-row) > :not(#osc2-on) { opacity: 0.45; }
 
@@ -696,6 +725,7 @@ input[type="range"]::-moz-range-thumb {
 :root[data-theme="dark"] .osc2   { --mod: #97c55c; --mod-ink: #0d0c0b; }
 :root[data-theme="dark"] .io     { --mod: #a59d90; --mod-ink: #0d0c0b; }
 :root[data-theme="dark"] .fx     { --mod: #e07a9b; --mod-ink: #0d0c0b; }
+:root[data-theme="dark"] .mono   { --mod: #6fb0f0; --mod-ink: #0d0c0b; }
 :root[data-theme="dark"] .song   { --mod: #b0cf6e; --mod-ink: #0d0c0b; }
 :root[data-theme="dark"] .brk    { --mod: #ee8d4c; --mod-ink: #0d0c0b; }
 :root[data-theme="dark"] .panel { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04); }
