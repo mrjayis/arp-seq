@@ -692,6 +692,37 @@ input[type="range"]::-moz-range-thumb {
   border: 1.5px solid var(--kbd-frame);
 }
 
+/* ---------- collapsible windows ---------- */
+h2.collapsible { cursor: pointer; user-select: none; }
+.collapse-btn {
+  min-height: 0;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  margin-right: 6px;
+  vertical-align: 1px;
+  border-radius: 3px;
+  position: relative;
+}
+/* A drawn triangle (not a glyph): pointing down when open, right when collapsed. */
+.collapse-btn::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  border: 5px solid transparent;
+  border-top-color: currentColor;
+  border-bottom-width: 0;
+  transform: translate(-50%, -30%);
+}
+.panel.collapsed .collapse-btn::before { transform: translate(-30%, -50%) rotate(-90deg); }
+.panel.collapsed { padding-bottom: 10px; }
+.panel.collapsed > h2 { margin-bottom: 0; }
+.panel.collapsed > :not(h2):not(.seq-head):not(.collapse-btn) { display: none !important; }
+.panel.collapsed > .seq-head > .hint { display: none; }
+.panel:not(.collapsed) > h2 + * { margin-top: 0; }
+.fold-all button { min-width: 0; min-height: 28px; padding: 2px 10px; font-size: 13px; }
+
 /* ---------- theme switch ---------- */
 .top-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .theme-switch button { min-width: 0; min-height: 28px; padding: 2px 10px; font-size: 13px; }

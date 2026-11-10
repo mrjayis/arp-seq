@@ -344,3 +344,33 @@
   :root[data-theme="mac"] .top { position: static; }
   :root[data-theme="mac"] .panel h2 { max-width: calc(100% - 50px); overflow: hidden; text-overflow: ellipsis; }
 }
+
+/* ---------- collapsible windows: the close box folds the window ---------- */
+:root[data-theme="mac"] .collapse-btn {
+  position: absolute;
+  top: 2px;
+  left: 7px;
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  z-index: 2;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+:root[data-theme="mac"] .collapse-btn::before { display: none; }
+:root[data-theme="mac"] .collapse-btn:active { background: transparent; }
+:root[data-theme="mac"] .collapse-btn:active ~ * { filter: none; }
+:root[data-theme="mac"] .panel.collapsed { padding-top: 20px; padding-bottom: 0; }
+:root[data-theme="mac"] .panel.collapsed > .seq-head { margin: 8px 0; }
+:root[data-theme="mac"] .panel.collapsed::after { background: #000; box-shadow: 0 0 0 2px #fff, inset 0 0 0 2px #fff; }
+:root[data-theme="mac"] .fold-all button {
+  border: 0;
+  border-radius: 0;
+  min-height: 22px;
+  padding: 0 8px;
+  background: #fff;
+  font: 12px var(--chicago);
+}
+:root[data-theme="mac"] .fold-all button:active { background: #000; color: #fff; }
