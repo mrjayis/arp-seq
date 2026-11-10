@@ -83,7 +83,7 @@ A separate layer that repeats the **held chord** in a Euclidean rhythm while the
 - **Gate arp:** the arp plays only while the chord pattern is on a hit. With the defaults (chord at 1/8, arp at 1/16), each hit lets two arp notes through. The arp and sequencer hold their place during rests. Works even with the chord layer turned off.
 - **Filter:** the chords have their own low-pass **Cutoff** and **Resonance**, separate from the main filter.
 - **Chorus:** a two-voice stereo chorus on the chords only, with **Mix**, **Rate** and **Depth** controls.
-- **Follow sequencer:** off by default, so the chord repeats unchanged. When on, the chord takes the pitch offset and volume of the step the arp is on. It never moves the sequencer forward.
+- **Follow sequencer:** off by default, so the chord repeats unchanged. When on, the chord takes the pitch offset and volume of the step the arp is on. It never moves the sequencer forward. In **Pad** mode the held chord slides to each step instead of re-striking: **Glide** (pad row) sets how long the slide takes, from a near-instant jump to a slow 1 s bend, and a step at 0% volume fades the pad out until the next step.
 
 ### Percussion
 Three kits, all synthesized live with Web Audio (no samples). Each kit remembers its own pattern, preset and mutes.

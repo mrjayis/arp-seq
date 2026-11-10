@@ -599,6 +599,7 @@ input[type="range"]::-moz-range-thumb {
 
 /* ---------- chord pad mode ---------- */
 .rhythm.pad .rhythm-only { opacity: 0.4; }
+#pad-row .dim { opacity: 0.4; }
 
 /* ---------- mono synth ---------- */
 .mono.off .mono-steps { opacity: 0.6; }

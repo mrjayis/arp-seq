@@ -224,7 +224,9 @@ export class Synth {
 
   /**
    * A held pad note: swells in over `attack`, sustains until released, then fades
-   * over `release` (seconds). The filter is steady (no pluck). Returns {release(t)}.
+   * over `release` (seconds). The filter is steady (no pluck).
+   * Returns {release(t), follow(semitones, scale, t, glide)}: `follow` slides the
+   * whole note by `semitones` and sets its level to `scale` (0..1), over `glide` s.
    */
   padVoice(note, velocity, time, {
     wave = this.wave, detune = 0, level = 1, cutoff = this.cutoff, resonance = this.resonance,
@@ -240,10 +242,25 @@ export class Synth {
     const amp = ctx.createGain();
     amp.gain.setValueAtTime(0, t0);
     amp.gain.linearRampToValueAtTime(peak, t0 + Math.max(0.005, attack));
-    filter.connect(amp).connect(out);
+    // Following the sequencer: a level trim after the swell, and one pitch offset
+    // (in cents) added to every oscillator's detune.
+    const trim = ctx.createGain();
+    filter.connect(amp).connect(trim).connect(out);
     const sources = this._stack(note, t0, layers || [{ wave, gain: 1, detune }], filter, amp);
+    const bend = ctx.createConstantSource();
+    bend.offset.value = 0;
+    for (const src of sources) if (src.detune) bend.connect(src.detune);
+    bend.start(t0);
+    sources.push(bend);
     let released = false;
     return {
+      follow: (semitones, scale, t, glide = 0.03) => {
+        if (released) return;
+        const at = Math.max(t, ctx.currentTime);
+        const tau = Math.max(0.002, glide / 3); // ~95% of the way there after `glide`
+        bend.offset.setTargetAtTime(semitones * 100, at, tau);
+        trim.gain.setTargetAtTime(scale, at, Math.max(0.004, tau));
+      },
       release: (t) => {
         if (released) return;
         released = true;
