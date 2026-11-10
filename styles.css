@@ -577,6 +577,9 @@ input[type="range"]::-moz-range-thumb {
 .song-bar.now { background: var(--mod); border-color: var(--mod); }
 .song-bar.now small { color: var(--mod-ink); }
 
+/* ---------- chord pad mode ---------- */
+.rhythm.pad .rhythm-only { opacity: 0.4; }
+
 /* ---------- mono synth ---------- */
 .mono.off .mono-steps { opacity: 0.6; }
 .mono.armed .mono-steps { outline: 2px dashed var(--mod); outline-offset: 4px; }

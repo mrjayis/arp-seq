@@ -155,8 +155,19 @@ export class Synth {
 
     filter.connect(amp).connect(out);
     const end = tOff + this.release * 1.5;
-    const stack = (layers || [{ wave, gain: 1, detune }]).filter((l) => l.gain > 0);
-    stack.forEach((layer, i) => {
+    const sources = this._stack(note, t0, layers || [{ wave, gain: 1, detune }], filter, amp);
+    for (const src of sources) src.stop(end);
+  }
+
+  /**
+   * Start the oscillator stack for one note into `filter` at t0 (not stopped):
+   * each layer is a wave (or a variable-width pulse) at its gain and detune.
+   * Returns every started source, so the caller decides when they stop.
+   */
+  _stack(note, t0, layers, filter, amp) {
+    const ctx = this.ctx;
+    const sources = [];
+    layers.filter((l) => l.gain > 0).forEach((layer, i) => {
       const osc = ctx.createOscillator();
       osc.detune.setValueAtTime(layer.detune || 0, t0);
       osc.frequency.setValueAtTime(mtof(note), t0);
@@ -186,13 +197,14 @@ export class Synth {
         sum.connect(comparator).connect(g);
         threshold.connect(dcBlock).connect(g);
         threshold.start(t0);
-        threshold.stop(end);
+        sources.push(threshold);
+        this.voices.add({ osc: threshold, amp });
       } else {
         osc.type = layer.wave;
         osc.connect(g);
       }
       osc.start(t0);
-      osc.stop(end);
+      sources.push(osc);
       const voice = { osc, amp };
       this.voices.add(voice);
       osc.onended = () => {
@@ -200,6 +212,41 @@ export class Synth {
         this.voices.delete(voice);
       };
     });
+    return sources;
+  }
+
+  /**
+   * A held pad note: swells in over `attack`, sustains until released, then fades
+   * over `release` (seconds). The filter is steady (no pluck). Returns {release(t)}.
+   */
+  padVoice(note, velocity, time, {
+    wave = this.wave, detune = 0, level = 1, cutoff = this.cutoff, resonance = this.resonance,
+    out = this.master, layers = null, attack = 0.6, release = 1.5,
+  } = {}) {
+    const ctx = this.ctx;
+    const t0 = Math.max(time, ctx.currentTime);
+    const peak = Math.pow(velocity / 127, 1.5) * 0.35 * level * 0.7;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.Q.value = resonance;
+    filter.frequency.value = Math.max(30, cutoff);
+    const amp = ctx.createGain();
+    amp.gain.setValueAtTime(0, t0);
+    amp.gain.linearRampToValueAtTime(peak, t0 + Math.max(0.005, attack));
+    filter.connect(amp).connect(out);
+    const sources = this._stack(note, t0, layers || [{ wave, gain: 1, detune }], filter, amp);
+    let released = false;
+    return {
+      release: (t) => {
+        if (released) return;
+        released = true;
+        const at = Math.max(t, ctx.currentTime);
+        if (amp.gain.cancelAndHoldAtTime) amp.gain.cancelAndHoldAtTime(at);
+        else { amp.gain.cancelScheduledValues(at); amp.gain.setValueAtTime(peak, at); }
+        amp.gain.setTargetAtTime(0, at, Math.max(0.01, release / 4));
+        for (const src of sources) { try { src.stop(at + Math.max(0.05, release) * 1.6); } catch { /* stopped */ } }
+      },
+    };
   }
 
   /** One free-running LFO shared by every pulse-width-modulated note. */
