@@ -181,6 +181,7 @@ A shared delay and reverb, with a **send** from each source (Arp, Chords, Drums)
 - Settings are saved in `localStorage`
 
 ## Layout
+- **Help:** the explanations in each window are hidden to keep things compact. **Help** (top of the page) shows them all, and **Hide help** hides them again. The choice is remembered on this device. Hovering a control still shows its tooltip.
 | File | Purpose |
 | --- | --- |
 | `src/core.js` | The arp pattern builder and the arp+sequencer engine (pure, tested) |

@@ -12,13 +12,14 @@
       var t = (s.themeV2 && s.theme) || 'mac'; // System 7 became the default look
       if (t === 'auto') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
       document.documentElement.dataset.theme = t;
+      if (s.showHelp) document.documentElement.classList.add('show-help'); // explanations are hidden unless asked for
     } catch (e) { document.documentElement.dataset.theme = 'light'; }
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=67" />
-  <link rel="stylesheet" href="mac.css?v=67" />
+  <link rel="stylesheet" href="styles.css?v=68" />
+  <link rel="stylesheet" href="mac.css?v=68" />
 </head>
 <body>
   <main class="device">
@@ -26,6 +27,7 @@
       <h1>arp<span>·</span>seq<small>arpeggiator, sequencer &amp; rhythm machine</small></h1>
       <div class="top-right">
       <div class="seg theme-switch" id="theme-switch" role="radiogroup" aria-label="Theme"></div>
+      <button id="help-toggle" class="help-toggle" aria-pressed="false" title="Show or hide the explanations in every window">Help</button>
       <div class="seg fold-all" role="group" aria-label="Windows">
         <button id="collapse-all" title="Fold every window down to its header">Collapse all</button>
         <button id="expand-all" title="Open every window">Expand all</button>
@@ -175,7 +177,7 @@
         <label class="field slider">Release <output id="arp-release-val"></output>
           <input id="arp-release" type="range" min="0" max="1000" step="1" title="Extra tail on each note (both arp oscillators)" />
         </label>
-        <span class="status">Applies to Oscillator 1 and 2.</span>
+        <span class="status hint">Applies to Oscillator 1 and 2.</span>
       </div>
     </section>
 
@@ -236,7 +238,7 @@
         <label class="field slider">Depth <output id="osc2-mod-depth-val"></output>
           <input id="osc2-mod-depth" type="range" min="0" max="100" />
         </label>
-        <span class="status">Works with Osc 2 switched Off, too: it becomes a silent modulator.</span>
+        <span class="status hint">Works with Osc 2 switched Off, too: it becomes a silent modulator.</span>
       </div>
     </section>
 
@@ -298,7 +300,7 @@
         <label class="field slider" title="With Follow sequencer on: how long the pad takes to slide to each step's pitch and level">Glide <output id="pad-glide-val"></output>
           <input id="pad-glide" type="range" min="0" max="1000" step="1" />
         </label>
-        <span class="status">The chord holds while there are notes to play (keys, latch or the progression).</span>
+        <span class="status hint">The chord holds while there are notes to play (keys, latch or the progression).</span>
       </div>
       <div class="row">
         <span class="row-label">Voice</span>
@@ -349,7 +351,7 @@
         <label class="field slider ep-only" title="How long a middle-C note rings (lower notes ring longer, higher shorter)">Decay <output id="fm-decay-val"></output>
           <input id="fm-decay" type="range" min="0" max="1000" step="1" />
         </label>
-        <span class="status" id="fm-note"></span>
+        <span class="status hint" id="fm-note"></span>
       </div>
       <div class="row analog-row">
         <span class="row-label">PWM</span>
@@ -362,7 +364,7 @@
         <label class="field slider">PWM rate <output id="chord-pwm-rate-val"></output>
           <input id="chord-pwm-rate" type="range" min="0.05" max="8" step="0.05" />
         </label>
-        <span class="status" id="pwm-note"></span>
+        <span class="status hint" id="pwm-note"></span>
       </div>
       <div class="row">
         <span class="row-label analog-only">Filter</span>
@@ -668,6 +670,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=67"></script>
+  <script type="module" src="src/app.js?v=68"></script>
 </body>
 </html>

@@ -5,23 +5,23 @@ import {
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=67';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=67';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=67';
-import { Midi } from './midi.js?v=67';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=67';
+} from './core.js?v=68';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=68';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=68';
+import { Midi } from './midi.js?v=68';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=68';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=67';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=67';
+} from './percussion.js?v=68';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=68';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
-} from './breaks.js?v=67';
-import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=67';
+} from './breaks.js?v=68';
+import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=68';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=67';
+} from './mono.js?v=68';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -2984,7 +2984,7 @@ function frame() {
 const SCENES_KEY = 'arp-seq-scenes-v1';
 const UNDO_KEY = 'arp-seq-scene-undo-v1';
 const CURRENT_SCENE_KEY = 'arp-seq-scene-current-v1';
-const DEVICE_KEYS = ['theme', 'themeV2', 'collapsed', 'midiIn', 'midiInCh', 'midiOut', 'midiOutCh', 'volume', 'synthOn'];
+const DEVICE_KEYS = ['theme', 'themeV2', 'collapsed', 'showHelp', 'midiIn', 'midiInCh', 'midiOut', 'midiOutCh', 'volume', 'synthOn'];
 
 const readJson = (key, fallback) => {
   try { return JSON.parse(localStorage.getItem(key) || 'null') ?? fallback; } catch { return fallback; }
@@ -3251,6 +3251,19 @@ document.querySelectorAll('main > .panel').forEach((panel) => {
 const setDockHeight = () => document.documentElement.style.setProperty('--dock-h', `${document.querySelector('.dock').offsetHeight + 8}px`);
 setDockHeight();
 window.addEventListener('resize', setDockHeight);
+
+// Help: every window's explanatory text is hidden until asked for (hover titles still work).
+function renderHelp() {
+  document.documentElement.classList.toggle('show-help', !!settings.showHelp);
+  $('help-toggle').setAttribute('aria-pressed', String(!!settings.showHelp));
+  $('help-toggle').textContent = settings.showHelp ? 'Hide help' : 'Help';
+}
+$('help-toggle').addEventListener('click', () => {
+  settings.showHelp = !settings.showHelp;
+  renderHelp();
+  save();
+});
+renderHelp();
 
 for (const [id, collapse] of [['collapse-all', true], ['expand-all', false]]) {
   $(id).addEventListener('click', () => {
