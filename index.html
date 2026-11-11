@@ -17,8 +17,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=63" />
-  <link rel="stylesheet" href="mac.css?v=63" />
+  <link rel="stylesheet" href="styles.css?v=66" />
+  <link rel="stylesheet" href="mac.css?v=66" />
 </head>
 <body>
   <main class="device">
@@ -288,7 +288,10 @@
       </div>
       <div class="row">
         <span class="row-label">Voice</span>
-        <label class="field">Wave 1
+        <label class="field">Sound
+          <select id="chord-sound" title="Analog: the two-wave voice below. FM E.Piano and FM Pad: DX7-style FM sounds (the Wave, PWM and Filter controls don't apply to them)."></select>
+        </label>
+        <label class="field analog-only">Wave 1
           <select id="chord-wave">
             <option value="sawtooth">Saw</option>
             <option value="square">Square</option>
@@ -296,7 +299,7 @@
             <option value="sine">Sine</option>
           </select>
         </label>
-        <label class="field">Wave 2
+        <label class="field analog-only">Wave 2
           <select id="chord-wave2">
             <option value="sawtooth">Saw</option>
             <option value="square">Square</option>
@@ -304,10 +307,10 @@
             <option value="sine">Sine</option>
           </select>
         </label>
-        <label class="field slider">Blend <output id="chord-blend-val"></output>
+        <label class="field slider analog-only">Blend <output id="chord-blend-val"></output>
           <input id="chord-blend" type="range" min="0" max="100" title="Wave 1 (left) to Wave 2 (right)" />
         </label>
-        <label class="field slider">Detune 2 <output id="chord-detune2-val"></output>
+        <label class="field slider analog-only">Detune 2 <output id="chord-detune2-val"></output>
           <input id="chord-detune2" type="range" min="-50" max="50" />
         </label>
         <label class="field">Sub
@@ -321,7 +324,20 @@
           <input id="chord-sub-level" type="range" min="0" max="100" />
         </label>
       </div>
-      <div class="row">
+      <div class="row" id="fm-row" hidden>
+        <span class="row-label">FM</span>
+        <label class="field slider" title="Modulation index: how much the modulators colour the sound (DX7 operator levels)">Brightness <output id="fm-bright-val"></output>
+          <input id="fm-bright" type="range" min="0" max="100" />
+        </label>
+        <label class="field slider ep-only" title="The 14:1 tine operator: the metallic 'ding' at the start of each note">Tine <output id="fm-bell-val"></output>
+          <input id="fm-bell" type="range" min="0" max="100" />
+        </label>
+        <label class="field slider ep-only" title="How long a middle-C note rings (lower notes ring longer, higher shorter)">Decay <output id="fm-decay-val"></output>
+          <input id="fm-decay" type="range" min="0" max="1000" step="1" />
+        </label>
+        <span class="status" id="fm-note"></span>
+      </div>
+      <div class="row analog-row">
         <span class="row-label">PWM</span>
         <label class="field slider">Width <output id="chord-width-val"></output>
           <input id="chord-width" type="range" min="5" max="95" title="Pulse width of the Square wave(s)" />
@@ -335,11 +351,11 @@
         <span class="status" id="pwm-note"></span>
       </div>
       <div class="row">
-        <span class="row-label">Filter</span>
-        <label class="field slider">Cutoff <output id="chord-cutoff-val"></output>
+        <span class="row-label analog-only">Filter</span>
+        <label class="field slider analog-only">Cutoff <output id="chord-cutoff-val"></output>
           <input id="chord-cutoff" type="range" min="0" max="1000" step="1" />
         </label>
-        <label class="field slider">Resonance <output id="chord-res-val"></output>
+        <label class="field slider analog-only">Resonance <output id="chord-res-val"></output>
           <input id="chord-res" type="range" min="0.5" max="15" step="0.1" />
         </label>
         <span class="row-label">Chorus</span>
@@ -638,6 +654,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=63"></script>
+  <script type="module" src="src/app.js?v=66"></script>
 </body>
 </html>
