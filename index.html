@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=68" />
-  <link rel="stylesheet" href="mac.css?v=68" />
+  <link rel="stylesheet" href="styles.css?v=69" />
+  <link rel="stylesheet" href="mac.css?v=69" />
 </head>
 <body>
   <main class="device">
@@ -106,6 +106,7 @@
     <section class="panel arp" aria-label="Arpeggiator">
       <h2>Arpeggiator</h2>
       <div class="row">
+        <button id="arp-on" aria-pressed="true" title="Play the arpeggiator. When off, it keeps stepping silently, so the sequencer still moves and chords set to follow it still do.">On</button>
         <label class="field">Mode <select id="mode"></select></label>
         <label class="field">Rate <select id="rate"></select></label>
         <label class="field">Octaves
@@ -670,6 +671,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=68"></script>
+  <script type="module" src="src/app.js?v=69"></script>
 </body>
 </html>

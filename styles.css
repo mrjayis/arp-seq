@@ -432,6 +432,7 @@ input[type="range"]::-moz-range-thumb {
 
 /* ---------- chord rhythm ---------- */
 .rhythm.off .row > :not(#chord-on):not(.gate-arp) { opacity: 0.45; }
+.arp.off .row > :not(#arp-on) { opacity: 0.45; }
 .pattern-field { flex: 1; min-width: 200px; }
 .euclid {
   display: flex;

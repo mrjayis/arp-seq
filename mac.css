@@ -280,6 +280,7 @@
 :root[data-theme="mac"] .step.disabled,
 :root[data-theme="mac"] .slot.disabled,
 :root[data-theme="mac"] .rhythm.off .row > :not(#chord-on):not(.gate-arp),
+:root[data-theme="mac"] .arp.off .row > :not(#arp-on),
 :root[data-theme="mac"] .osc2.off .row:not(.mod-row) > :not(#osc2-on),
 :root[data-theme="mac"] .prog.off .prog-slots,
 :root[data-theme="mac"] .drums.off .drum-grid { opacity: 0.4; }

@@ -5,23 +5,23 @@ import {
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=68';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=68';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=68';
-import { Midi } from './midi.js?v=68';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=68';
+} from './core.js?v=69';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=69';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=69';
+import { Midi } from './midi.js?v=69';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=69';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=68';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=68';
+} from './percussion.js?v=69';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=69';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
-} from './breaks.js?v=68';
-import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=68';
+} from './breaks.js?v=69';
+import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=69';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=68';
+} from './mono.js?v=69';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -72,6 +72,7 @@ const settings = {
   osc2Resonance: 1.5,
   osc2Mod: 'off', // oscillator 2 → oscillator 1: 'off' | 'am' | 'fm'
   osc2ModDepth: 30,
+  arpOn: true, // off: the arp and sequencer keep stepping (chords can follow) but play nothing
   chordOn: true,
   chordRate: '1/8',
   chordSteps: 8,
@@ -337,6 +338,11 @@ function gateLength(step, gatePct) {
 function playArp(step) {
   const ev = engine.next();
   if (!ev) return;
+  if (!settings.arpOn) {
+    // Silent: still step, so the sequencer display and following chords keep moving.
+    uiEvents.push({ kind: 'arp', time: step.time, off: step.time, ...ev, note2: null, silent: true });
+    return;
+  }
   const gateLen = gateLength(step, settings.gate);
   if (ev.rest) {
     // Step switched off: strike nothing, but slide whatever tail is still ringing
@@ -931,6 +937,18 @@ function showRhythmPos(pos) {
   lastRhythmDot = rhythmDots[pos] || null;
   lastRhythmDot?.classList.add('now');
 }
+
+function renderArpOn() {
+  $('arp-on').setAttribute('aria-pressed', String(settings.arpOn));
+  $('arp-on').textContent = settings.arpOn ? 'On' : 'Off';
+  $('arp-on').closest('.panel').classList.toggle('off', !settings.arpOn);
+}
+$('arp-on').addEventListener('click', () => {
+  settings.arpOn = !settings.arpOn;
+  renderArpOn();
+  save();
+});
+renderArpOn();
 
 $('chord-on').addEventListener('click', () => {
   settings.chordOn = !settings.chordOn;
@@ -2946,13 +2964,13 @@ function frame() {
     lastStepEl = stepEls[ev.stepIndex];
     lastStepEl.classList.add('current');
     $('out-src').textContent = noteName(ev.sourceNote);
-    $('out-note').textContent = ev.rest
+    $('out-note').textContent = ev.silent ? '(arp off)' : ev.rest
       ? `tail → ${noteName(ev.note)}`
       : ev.velocity ? noteName(ev.note) : '(muted)';
-    $('out-vel').textContent = ev.velocity ? `vel ${ev.velocity}` : '';
+    $('out-vel').textContent = ev.velocity && !ev.silent ? `vel ${ev.velocity}` : '';
     $('out-osc2-wrap').hidden = ev.note2 === null;
     if (ev.note2 !== null) $('out-osc2').textContent = ev.velocity ? noteName(ev.note2) : '(muted)';
-    if (ev.velocity) {
+    if (ev.velocity && !ev.silent) {
       for (const n of [ev.note, ev.note2]) {
         const key = keyEls.get(n);
         if (!key) continue;
