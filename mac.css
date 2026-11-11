@@ -391,6 +391,15 @@
   font: 12px var(--chicago);
 }
 :root[data-theme="mac"] .fold-all button:active { background: #000; color: #fff; }
+:root[data-theme="mac"] .help-toggle {
+  min-height: 22px;
+  padding: 0 10px;
+  border: 1px solid #000;
+  border-radius: 6px;
+  background: #fff;
+  font: 12px var(--chicago);
+}
+:root[data-theme="mac"] .help-toggle[aria-pressed="true"] { background: #000; color: #fff; }
 
 /* ---------- sticky transport + jump bar ---------- */
 :root[data-theme="mac"] .dock {

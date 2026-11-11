@@ -883,3 +883,7 @@ h2.collapsible { cursor: pointer; user-select: none; }
 .scene-list .scene-title { font-weight: 600; flex: 1 1 10em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .scene-list .scene-when { color: var(--ink-3); font-size: 12px; font-style: italic; }
 .scene-list button { min-height: 26px; padding: 1px 9px; font-size: 13px; }
+
+/* ---------- help: the explanations only show when Help is on ---------- */
+:root:not(.show-help) .hint { display: none !important; }
+.help-toggle { min-height: 28px; padding: 2px 12px; font-size: 13px; }
