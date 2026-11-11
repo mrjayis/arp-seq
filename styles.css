@@ -38,6 +38,7 @@
 .voice      { --mod: #19798b; }
 .osc2       { --mod: #5f8a2e; }
 .io         { --mod: #6a645b; }
+.scenes     { --mod: #7a5c2e; }
 .fx         { --mod: #9a3b5c; }
 .mono       { --mod: #2a6fb0; }
 .song       { --mod: #4b5d23; }
@@ -200,7 +201,7 @@ h2::after {
 .status { color: var(--ink-2); font-size: 13px; font-style: italic; padding-bottom: 6px; }
 
 /* ---------- controls ---------- */
-select, input[type="number"], button {
+select, input[type="number"], input[type="text"], button {
   font: inherit;
   font-size: 14px;
   color: var(--ink);
@@ -864,3 +865,21 @@ h2.collapsible { cursor: pointer; user-select: none; }
   -webkit-tap-highlight-color: transparent;
 }
 .keys-panel select, .keys-panel input { -webkit-user-select: auto; user-select: auto; }
+
+/* ---------- scenes ---------- */
+#scene-name { min-width: 0; width: 14em; max-width: 100%; }
+.scene-list { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 6px; }
+.scene-list:empty { display: none; }
+.scene-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  padding: 6px 8px;
+  border: 1.5px solid var(--line);
+  border-radius: 3px;
+}
+.scene-list li.current { border-color: var(--mod); box-shadow: inset 4px 0 0 var(--mod); }
+.scene-list .scene-title { font-weight: 600; flex: 1 1 10em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scene-list .scene-when { color: var(--ink-3); font-size: 12px; font-style: italic; }
+.scene-list button { min-height: 26px; padding: 1px 9px; font-size: 13px; }

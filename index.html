@@ -17,8 +17,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=66" />
-  <link rel="stylesheet" href="mac.css?v=66" />
+  <link rel="stylesheet" href="styles.css?v=67" />
+  <link rel="stylesheet" href="mac.css?v=67" />
 </head>
 <body>
   <main class="device">
@@ -66,6 +66,20 @@
         </label>
         <label class="check"><input id="clock-out" type="checkbox" /> Send MIDI clock</label>
       </div>
+    </section>
+
+    <section class="panel scenes" id="scenes-panel" aria-label="Scenes">
+      <h2>Scenes</h2>
+      <div class="row">
+        <input id="scene-name" type="text" maxlength="40" placeholder="Scene name" aria-label="Name for the new scene" />
+        <button id="scene-save" title="Save everything as it is now (sounds, sequences, patterns, progression, song, effects) as a new scene">Save scene</button>
+        <button id="scene-undo" hidden title="Go back to how things were before the last recall">Undo recall</button>
+        <button id="scene-export" title="Download all your scenes as a file (a backup, or to move them to another device)">Export…</button>
+        <button id="scene-import" title="Add scenes from an exported file">Import…</button>
+        <input id="scene-file" type="file" accept=".json,application/json" hidden />
+        <span class="status" id="scene-status"></span>
+      </div>
+      <ol id="scene-list" class="scene-list"></ol>
     </section>
 
     <section class="panel keys-panel" aria-label="Keyboard">
@@ -654,6 +668,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=66"></script>
+  <script type="module" src="src/app.js?v=67"></script>
 </body>
 </html>

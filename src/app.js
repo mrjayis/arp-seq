@@ -5,23 +5,23 @@ import {
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=66';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=66';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=66';
-import { Midi } from './midi.js?v=66';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=66';
+} from './core.js?v=67';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=67';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=67';
+import { Midi } from './midi.js?v=67';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=67';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=66';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=66';
+} from './percussion.js?v=67';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=67';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
-} from './breaks.js?v=66';
-import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=66';
+} from './breaks.js?v=67';
+import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=67';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=66';
+} from './mono.js?v=67';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -163,10 +163,13 @@ try {
 } catch { /* storage unavailable */ }
 
 let saveTimer;
+let recalling = false; // a scene is being loaded: don't overwrite it with the old settings
 /** Save settings, debounced for slider drags; `now` writes immediately. */
 function save(now = false) {
   clearTimeout(saveTimer);
+  if (recalling) return;
   const write = () => {
+    if (recalling) return;
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(settings)); } catch { /* ignore */ }
   };
   if (now) write();
@@ -2972,6 +2975,176 @@ function frame() {
   requestAnimationFrame(frame);
 }
 
+// ---------------------------------------------------------------- UI: scenes
+// A scene is a named snapshot of the settings: every sound, sequence, pattern, slot,
+// progression, song and effect. Things that belong to this device or this view stay
+// put (theme, folded windows, MIDI ports, master volume). Recalling writes the scene
+// into storage and reloads the page, which rebuilds everything from it; the state
+// before the recall is kept so it can be undone.
+const SCENES_KEY = 'arp-seq-scenes-v1';
+const UNDO_KEY = 'arp-seq-scene-undo-v1';
+const CURRENT_SCENE_KEY = 'arp-seq-scene-current-v1';
+const DEVICE_KEYS = ['theme', 'themeV2', 'collapsed', 'midiIn', 'midiInCh', 'midiOut', 'midiOutCh', 'volume', 'synthOn'];
+
+const readJson = (key, fallback) => {
+  try { return JSON.parse(localStorage.getItem(key) || 'null') ?? fallback; } catch { return fallback; }
+};
+let scenes = readJson(SCENES_KEY, []);
+if (!Array.isArray(scenes)) scenes = [];
+const sceneId = () => Math.random().toString(36).slice(2, 10);
+
+function sceneSnapshot() {
+  const copy = JSON.parse(JSON.stringify(settings));
+  for (const k of DEVICE_KEYS) delete copy[k];
+  return copy;
+}
+
+function storeScenes() {
+  try {
+    localStorage.setItem(SCENES_KEY, JSON.stringify(scenes));
+    return true;
+  } catch {
+    sceneStatus('Couldn\'t save: this browser\'s storage is full or blocked.');
+    return false;
+  }
+}
+
+let statusTimer;
+function sceneStatus(text) {
+  $('scene-status').textContent = text;
+  clearTimeout(statusTimer);
+  statusTimer = setTimeout(() => { $('scene-status').textContent = ''; }, 4000);
+}
+
+/** Load a snapshot: keep this device's own settings, store it, rebuild the page from it. */
+function applyScene(data, currentId = null) {
+  const keep = {};
+  for (const k of DEVICE_KEYS) if (k in settings) keep[k] = settings[k];
+  try {
+    localStorage.setItem(UNDO_KEY, JSON.stringify(settings));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...data, ...keep }));
+    if (currentId) localStorage.setItem(CURRENT_SCENE_KEY, currentId);
+    else localStorage.removeItem(CURRENT_SCENE_KEY);
+  } catch {
+    sceneStatus('Couldn\'t load the scene: storage is blocked.');
+    return;
+  }
+  recalling = true;
+  clearTimeout(saveTimer);
+  location.reload();
+}
+
+const formatWhen = (iso) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+};
+
+function renderScenes() {
+  const list = $('scene-list');
+  list.replaceChildren();
+  const current = localStorage.getItem(CURRENT_SCENE_KEY);
+  scenes.forEach((scene, i) => {
+    const li = document.createElement('li');
+    li.classList.toggle('current', scene.id === current);
+    const title = document.createElement('span');
+    title.className = 'scene-title';
+    title.textContent = scene.name;
+    title.title = scene.name;
+    const when = document.createElement('span');
+    when.className = 'scene-when';
+    when.textContent = formatWhen(scene.saved);
+    const btn = (text, tip, fn) => {
+      const b = document.createElement('button');
+      b.textContent = text;
+      b.title = tip;
+      b.addEventListener('click', fn);
+      return b;
+    };
+    li.append(
+      title, when,
+      btn('Recall', 'Load this scene (the page reloads; playback stops)', () => applyScene(scene.settings, scene.id)),
+      btn('Update', 'Replace this scene with everything as it is now', () => {
+        if (!confirm(`Overwrite "${scene.name}" with the current settings?`)) return;
+        scenes[i] = { ...scene, saved: new Date().toISOString(), settings: sceneSnapshot() };
+        if (storeScenes()) {
+          try { localStorage.setItem(CURRENT_SCENE_KEY, scene.id); } catch { /* ignore */ }
+          renderScenes();
+          sceneStatus(`Updated "${scene.name}".`);
+        }
+      }),
+      btn('Rename', 'Give this scene a new name', () => {
+        const name = prompt('Scene name', scene.name)?.trim();
+        if (!name) return;
+        scenes[i] = { ...scene, name: name.slice(0, 40) };
+        if (storeScenes()) renderScenes();
+      }),
+      btn('Delete', 'Delete this scene', () => {
+        if (!confirm(`Delete "${scene.name}"?`)) return;
+        scenes.splice(i, 1);
+        if (storeScenes()) renderScenes();
+      }),
+    );
+    list.append(li);
+  });
+}
+
+$('scene-save').addEventListener('click', () => {
+  const name = ($('scene-name').value.trim() || `Scene ${scenes.length + 1}`).slice(0, 40);
+  const scene = { id: sceneId(), name, saved: new Date().toISOString(), settings: sceneSnapshot() };
+  scenes.push(scene);
+  if (!storeScenes()) { scenes.pop(); return; }
+  try { localStorage.setItem(CURRENT_SCENE_KEY, scene.id); } catch { /* ignore */ }
+  $('scene-name').value = '';
+  renderScenes();
+  sceneStatus(`Saved "${name}".`);
+});
+$('scene-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('scene-save').click(); });
+
+$('scene-undo').hidden = !localStorage.getItem(UNDO_KEY);
+$('scene-undo').addEventListener('click', () => {
+  const before = readJson(UNDO_KEY, null);
+  if (!before) return;
+  applyScene(before);
+  try { localStorage.removeItem(UNDO_KEY); } catch { /* ignore */ }
+});
+
+$('scene-export').addEventListener('click', () => {
+  if (!scenes.length) { sceneStatus('No scenes to export yet.'); return; }
+  const blob = new Blob([JSON.stringify({ app: 'arp-seq', version: 1, scenes }, null, 1)], { type: 'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `arp-seq-scenes-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+});
+$('scene-import').addEventListener('click', () => $('scene-file').click());
+$('scene-file').addEventListener('change', async () => {
+  const file = $('scene-file').files[0];
+  $('scene-file').value = '';
+  if (!file) return;
+  try {
+    const data = JSON.parse(await file.text());
+    const incoming = (Array.isArray(data) ? data : data?.scenes || []).filter(
+      (s) => s && typeof s.name === 'string' && s.settings && typeof s.settings === 'object',
+    );
+    if (!incoming.length) throw new Error('none');
+    const ids = new Set(scenes.map((s) => s.id));
+    for (const s of incoming) {
+      scenes.push({
+        id: ids.has(s.id) || !s.id ? sceneId() : String(s.id),
+        name: s.name.slice(0, 40), saved: s.saved || new Date().toISOString(), settings: s.settings,
+      });
+    }
+    if (storeScenes()) {
+      renderScenes();
+      sceneStatus(`Imported ${incoming.length} scene${incoming.length > 1 ? 's' : ''}.`);
+    }
+  } catch {
+    sceneStatus('That file has no arp·seq scenes in it.');
+  }
+});
+renderScenes();
+
 // ---------------------------------------------------------------- UI: collapsible windows
 // Each panel folds down to its header (the title, plus its header row of controls
 // where it has one). The title, a toggle button, or in System 7 the close box,
@@ -3051,7 +3224,7 @@ document.querySelectorAll('main > .panel').forEach((panel) => {
 // Jump bar: one chip per window, in page order, grouped by what they do. A dot
 // shows which modules are switched on; clicking opens the window and scrolls to it.
 const DOCK_NAMES = {
-  Transport: 'Clock', Keyboard: 'Keys', Arpeggiator: 'Arp', Sequencer: 'Seq', 'Arp voice, oscillator 1': 'Osc 1',
+  Transport: 'Clock', Scenes: 'Scenes', Keyboard: 'Keys', Arpeggiator: 'Arp', Sequencer: 'Seq', 'Arp voice, oscillator 1': 'Osc 1',
   'Oscillator 2': 'Osc 2', 'Chord progression': 'Prog', 'Chord rhythm': 'Chords', 'Mono synth': 'Mono',
   Percussion: 'Drums', 'Breakbeat slicer': 'Break', Song: 'Song', Effects: 'FX', 'Sound and MIDI': 'MIDI',
 };
