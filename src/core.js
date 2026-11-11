@@ -16,10 +16,12 @@ export const MODE_LABELS = {
 // Clock pulses (24 PPQN, the MIDI clock standard) per arpeggiator step.
 export const PPQN = 24;
 export const RATES = {
+  '1/4D': 36, // dotted quarter
   '1/4': 24,
   '1/8D': 18, // dotted 8th
   '1/8': 12,
   '1/8T': 8,
+  '1/16D': 9, // dotted 16th
   '1/16': 6,
   '1/16T': 4,
   '1/32': 3,

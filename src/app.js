@@ -5,23 +5,23 @@ import {
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=69';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=69';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=69';
-import { Midi } from './midi.js?v=69';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=69';
+} from './core.js?v=70';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=70';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=70';
+import { Midi } from './midi.js?v=70';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=70';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=69';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=69';
+} from './percussion.js?v=70';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=70';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
-} from './breaks.js?v=69';
-import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=69';
+} from './breaks.js?v=70';
+import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=70';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=69';
+} from './mono.js?v=70';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';

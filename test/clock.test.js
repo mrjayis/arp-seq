@@ -59,3 +59,16 @@ test('dotted 8th steps are 3/4 of a beat and repeat the bar every 3 beats', () =
   assert.deepEqual(steps.slice(0, 6).map((s) => Math.round(s.time / pd)), [0, 18, 36, 54, 72, 90]);
   assert.equal(steps.length, 16); // 16 dotted 8ths = 3 bars of 4/4
 });
+
+test('dotted quarter and dotted 16th rates land on the pulse grid', () => {
+  assert.equal(RATES['1/4D'], 36);
+  assert.equal(RATES['1/16D'], 9);
+  const pd = 60 / (120 * 24);
+  const steps = [];
+  for (let p = 0; p < 96; p++) {
+    const s = pulseToStep(p, p * pd, pd, RATES['1/16D'], 0);
+    if (s) steps.push(s.stepNumber);
+  }
+  assert.deepEqual(steps, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]); // 96 / 9 → 11 steps in a bar
+  assert.ok(Math.abs(pulseToStep(36, 36 * pd, pd, RATES['1/4D'], 0).duration - 0.75) < 1e-9); // 1.5 beats at 120 BPM
+});
