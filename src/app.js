@@ -5,23 +5,23 @@ import {
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=63';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=63';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=63';
-import { Midi } from './midi.js?v=63';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=63';
+} from './core.js?v=66';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=66';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=66';
+import { Midi } from './midi.js?v=66';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=66';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=63';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=63';
+} from './percussion.js?v=66';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=66';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
-} from './breaks.js?v=63';
-import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=63';
+} from './breaks.js?v=66';
+import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=66';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=63';
+} from './mono.js?v=66';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -90,6 +90,10 @@ const settings = {
   padAttack: 600, // ms
   padRelease: 1500, // ms
   padGlide: 40, // ms: how a following pad slides between sequencer steps
+  chordSound: 'analog', // 'analog' | 'ep' (DX7-style FM electric piano) | 'fmpad' (DX7-style FM pad)
+  fmBright: 50, // %: FM modulation index
+  fmBell: 50, // %: EP tine operator
+  fmDecay: 2500, // ms: EP ring at middle C
   delayTime: '1/8D',
   delayFeedback: 35,
   delayTone: 4500,
@@ -366,6 +370,17 @@ function chordLayers() {
   ];
 }
 
+/** The FM chord sound's options (E.Piano or Pad), from the FM row. */
+function fmOptions() {
+  return {
+    kind: settings.chordSound === 'ep' ? 'ep' : 'pad',
+    level: settings.chordLevel / 100,
+    bright: settings.fmBright / 100,
+    bell: settings.fmBell / 100,
+    decay: settings.fmDecay / 1000,
+  };
+}
+
 function releasePads(time) {
   for (const v of padVoices.values()) v.release(time);
   padVoices.clear();
@@ -378,7 +393,7 @@ function updatePad(time) {
   }
   // Notes are keyed by the chord as held; following the sequencer slides them (padFollow).
   const notes = chordVoicing(engine.notes, { octave: settings.chordOctave });
-  const want = new Map(notes.map((n) => [`n:${n.note}`, n]));
+  const want = new Map(notes.map((n) => [`n:${settings.chordSound}:${n.note}`, n]));
   if (settings.chordSub !== 'off' && notes.length && notes[0].note >= 12) {
     want.set(`sub:${notes[0].note - 12}`, { note: notes[0].note - 12, velocity: notes[0].velocity, sub: true });
   }
@@ -396,9 +411,13 @@ function updatePad(time) {
         ...common, wave: settings.chordSub, out: buses.chords,
         level: (settings.chordLevel / 100) * (settings.chordSubLevel / 100) * 1.4,
       })
-      : synth.padVoice(n.note, n.velocity, time, {
-        ...common, layers: chordLayers(), level: settings.chordLevel / 100, out: chorus.input,
-      });
+      : settings.chordSound !== 'analog'
+        ? synth.fmVoice(n.note, n.velocity, time, {
+          ...fmOptions(), attack: common.attack, release: common.release, out: chorus.input,
+        })
+        : synth.padVoice(n.note, n.velocity, time, {
+          ...common, layers: chordLayers(), level: settings.chordLevel / 100, out: chorus.input,
+        });
     // A note joining mid-sequence starts where the others are.
     const [semis, scale] = padStepState();
     voice.follow(semis, scale, time, 0);
@@ -447,7 +466,13 @@ function playChord(step) {
     midi.noteOff(note, off, settings.chordMidiCh);
   };
   for (const { note, velocity } of notes) {
-    if (sound) {
+    if (sound && settings.chordSound !== 'analog') {
+      // FM: struck at the hit, damped at the end of the gate (the pad swells in faster here).
+      const fm = fmOptions();
+      synth.fmVoice(note, velocity, step.time, {
+        ...fm, out: chorus.input, ...(fm.kind === 'pad' ? { attack: Math.min(0.15, gateLen / 2), release: 0.5 } : {}),
+      }).release(step.time + gateLen);
+    } else if (sound) {
       synth.play(note, velocity, step.time, gateLen, {
         ...filterOpts, layers, level: settings.chordLevel / 100, out: chorus.input,
       });
@@ -934,6 +959,25 @@ function showPwm() {
   ['chord-width', 'chord-pwm-depth', 'chord-pwm-rate'].forEach((id) => { $(id).disabled = off; });
   $('pwm-note').textContent = off ? 'Set Wave 1 or Wave 2 to Square to use PWM.' : '';
 }
+bindSelect('chord-sound', 'chordSound', [['analog', 'Analog'], ['ep', 'FM E.Piano'], ['fmpad', 'FM Pad']], () => {
+  renderChordSound();
+  if (ctx && padVoices.size) updatePad(ctx.currentTime); // swap a held pad over to the new sound
+});
+bindRange('fm-bright', 'fmBright', (v) => `${v}%`);
+bindRange('fm-bell', 'fmBell', (v) => `${v}%`);
+bindLog('fm-decay', 'fmDecay', 200, 10000, (v) => (v < 1000 ? `${v} ms` : `${(v / 1000).toFixed(2)} s`));
+/** FM sounds show their own row and grey out the analog voice, PWM and filter. */
+function renderChordSound() {
+  const fm = settings.chordSound !== 'analog';
+  $('chord-panel').classList.toggle('fm', fm);
+  $('chord-panel').classList.toggle('fm-pad', settings.chordSound === 'fmpad');
+  $('fm-row').hidden = !fm;
+  const pad = settings.chordMode === 'pad';
+  $('fm-note').textContent = settings.chordSound === 'ep'
+    ? (pad ? 'Each new chord note is struck and rings out; Release sets the damping.' : 'Tip: a Gate near 100% lets the piano ring.')
+    : fm ? (pad ? 'The swell follows Attack and Release.' : 'Pad mode suits it best: the swell then follows Attack and Release.') : '';
+}
+renderChordSound();
 $('chord-wave').addEventListener('change', showPwm);
 $('chord-wave2').addEventListener('change', showPwm);
 showPwm();
@@ -958,6 +1002,7 @@ function renderChordMode() {
   }
   $('chord-pattern').closest('.field').classList.add('rhythm-only');
   $('pad-row').hidden = !pad;
+  if (typeof renderChordSound === 'function' && $('fm-note')) renderChordSound();
   $('pad-glide').closest('label').classList.toggle('dim', !settings.chordFollowSeq);
 }
 renderChordMode();

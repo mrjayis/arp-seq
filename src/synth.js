@@ -507,6 +507,121 @@ export class Synth {
     return true;
   }
 
+  /**
+   * DX7-style FM voice: sine carriers each frequency-modulated by a sine at a ratio
+   * of the note (deviation = index × modulator Hz), no filter.
+   * kind 'ep': electric piano. A 1:1 "body" pair whose index falls as the note rings,
+   *   plus a 1:14 "tine" pair that gives the metallic strike and dies in a few ms.
+   *   It decays on its own (shorter up the keyboard) and is damped at release.
+   * kind 'pad': three detuned pairs (1:1, 2:1 an octave up, 1:3 shimmer) whose index
+   *   swells in with the attack, with a gentle delayed vibrato. Holds until released.
+   * opts: {level, out, bright 0..1, bell 0..1 (EP tine), decay s (EP), attack s, release s}
+   * Returns {release(t), follow(semitones, scale, t, glide)} like padVoice.
+   */
+  fmVoice(note, velocity, time, {
+    kind = 'ep', level = 1, out = this.master, bright = 0.5, bell = 0.5, decay = 2.5,
+    attack = kind === 'pad' ? 0.6 : 0.002, release = kind === 'pad' ? 1.5 : 0.25,
+  } = {}) {
+    const ctx = this.ctx;
+    const t0 = Math.max(time, ctx.currentTime);
+    const f = mtof(note);
+    const vel = velocity / 127;
+    const nyq = ctx.sampleRate * 0.45;
+    const amp = ctx.createGain();
+    const trim = ctx.createGain();
+    amp.connect(trim).connect(out);
+    const bend = ctx.createConstantSource(); // follow: cents added to every oscillator
+    bend.offset.value = 0;
+    const sources = [bend];
+    const osc = (hz, detune = 0) => {
+      const o = ctx.createOscillator();
+      o.frequency.value = Math.min(nyq, hz);
+      o.detune.value = detune;
+      bend.connect(o.detune);
+      sources.push(o);
+      return o;
+    };
+    /** One modulator → carrier pair into `amp`; returns the index and output gains. */
+    const pair = (carrierRatio, modRatio, gain, detune = 0) => {
+      const car = osc(f * carrierRatio, detune);
+      const mod = osc(f * modRatio, detune);
+      const index = ctx.createGain(); // Hz of deviation
+      const out = ctx.createGain();
+      out.gain.value = gain;
+      mod.connect(index).connect(car.frequency);
+      car.connect(out).connect(amp);
+      return { index, out, modHz: Math.min(nyq, f * modRatio) };
+    };
+    let peak;
+    if (kind === 'ep') {
+      // Lower notes ring longer, like a real tine piano (and the DX7's rate scaling).
+      const ring = Math.max(0.2, decay * Math.pow(2, -(note - 60) / 24));
+      peak = Math.pow(vel, 1.2) * 0.32 * level;
+      const body = pair(1, 1, 1);
+      const bodyIndex = (0.5 + 1.6 * bright) * (0.4 + 0.6 * vel);
+      body.index.gain.setValueAtTime(bodyIndex * body.modHz, t0);
+      body.index.gain.setTargetAtTime(bodyIndex * 0.25 * body.modHz, t0, ring / 5);
+      const tine = pair(1, 14, 0.55, 3);
+      const tineIndex = bell * (1 + 3 * bright) * (0.3 + 0.7 * vel);
+      tine.index.gain.setValueAtTime(tineIndex * tine.modHz, t0);
+      tine.index.gain.setTargetAtTime(0, t0, 0.012 + 0.02 * (1 - bright));
+      tine.out.gain.setValueAtTime(0.55, t0);
+      tine.out.gain.setTargetAtTime(0, t0, ring / 8);
+      amp.gain.setValueAtTime(0, t0);
+      amp.gain.linearRampToValueAtTime(peak, t0 + 0.002);
+      amp.gain.setTargetAtTime(0, t0 + 0.002, ring / 3);
+    } else {
+      peak = Math.pow(vel, 1.5) * 0.22 * level;
+      const swell = Math.max(0.05, attack);
+      const pairs = [
+        [pair(1, 1, 1, -6), 0.4 + 1.6 * bright],
+        [pair(2, 1, 0.3, 7), 0.2 + 0.8 * bright],
+        [pair(1, 3, 0.35, 4), 0.1 + 0.9 * bright],
+      ];
+      for (const [p, idx] of pairs) {
+        p.index.gain.setValueAtTime(idx * 0.15 * p.modHz, t0);
+        p.index.gain.linearRampToValueAtTime(idx * p.modHz, t0 + swell * 1.5);
+        p.index.gain.setTargetAtTime(idx * 0.7 * p.modHz, t0 + swell * 1.5, 1.5);
+      }
+      // Vibrato that eases in after the swell.
+      const lfo = ctx.createOscillator();
+      lfo.frequency.value = 4.8;
+      const vib = ctx.createGain();
+      vib.gain.setValueAtTime(0, t0);
+      vib.gain.linearRampToValueAtTime(5, t0 + swell + 1);
+      lfo.connect(vib);
+      for (const o of sources) if (o.detune) vib.connect(o.detune);
+      sources.push(lfo);
+      amp.gain.setValueAtTime(0, t0);
+      amp.gain.linearRampToValueAtTime(peak, t0 + swell);
+    }
+    // Every source is a voice, so panic stops them all (modulators and LFO included).
+    for (const src of sources) {
+      src.start(t0);
+      const voice = { osc: src, amp };
+      this.voices.add(voice);
+      src.onended = () => { this.voices.delete(voice); if (src === sources[0]) amp.disconnect(); };
+    }
+    let released = false;
+    return {
+      release: (t) => {
+        if (released) return;
+        released = true;
+        const at = Math.max(t, ctx.currentTime);
+        amp.gain.cancelAndHoldAtTime(at);
+        amp.gain.setTargetAtTime(0, at, Math.max(0.01, release / 4));
+        for (const src of sources) { try { src.stop(at + Math.max(0.05, release) * 1.6); } catch { /* stopped */ } }
+      },
+      follow: (semitones, scale, t, glide = 0.03) => {
+        if (released) return;
+        const at = Math.max(t, ctx.currentTime);
+        const tau = Math.max(0.002, glide / 3);
+        bend.offset.setTargetAtTime(semitones * 100, at, tau);
+        trim.gain.setTargetAtTime(scale, at, Math.max(0.004, tau));
+      },
+    };
+  }
+
   /** Quickly fade and kill every sounding or scheduled voice. */
   panic() {
     const now = this.ctx.currentTime;

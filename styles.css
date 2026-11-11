@@ -601,6 +601,8 @@ input[type="range"]::-moz-range-thumb {
 /* ---------- chord pad mode ---------- */
 .rhythm.pad .rhythm-only { opacity: 0.4; }
 #pad-row .dim { opacity: 0.4; }
+.rhythm.fm .analog-only, .rhythm.fm .analog-row { opacity: 0.4; }
+.rhythm.fm-pad .ep-only { opacity: 0.4; }
 
 /* ---------- mono synth ---------- */
 .mono.off .mono-steps { opacity: 0.6; }
