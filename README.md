@@ -18,6 +18,12 @@ held notes ──► ARPEGGIATOR ──► note ──► SEQUENCER step n ─�
              clock (internal or MIDI clock in)
 ```
 
+### Scenes
+- **Save scene** stores everything as it is now under a name: all the sounds, the arp sequence, mono sequence, progression, drum and break patterns in every slot, the song chain, mixer levels and effects. **Recall** brings it all back. **Update** overwrites a scene with the current state, and **Rename** and **Delete** do what they say. The scene you last saved or recalled is outlined.
+- Recall reloads the page so every window is rebuilt from the scene, so playback stops: press Play again. **Undo recall** goes back to how things were just before.
+- Not part of a scene: the look (theme), which windows are folded, MIDI ports, master volume and the built-in synth switch, since those belong to the device. Your drum samples and loaded break are stored once in the browser rather than in each scene, so a scene uses whichever ones are loaded.
+- Scenes live in this browser. **Export…** downloads them all as a file, as a backup or to move them to another device. **Import…** adds the scenes from such a file to the ones you have.
+
 ### Song mode
 Make the drums and break move through sections instead of looping one bar.
 - **Pattern slots A–D** (in the Percussion and Breakbeat windows): you edit the selected slot. A new slot starts as a copy of the one you were on, ready to vary, and **Copy to…** duplicates the current slot. Each drum kit keeps its own slots.

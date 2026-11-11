@@ -207,7 +207,8 @@
   padding: 1px 22px 1px 6px;
   background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='6' shape-rendering='crispEdges'%3E%3Cpath d='M0 0h11L5.5 6z'/%3E%3C/svg%3E") no-repeat right 6px center;
 }
-:root[data-theme="mac"] input[type="number"] {
+:root[data-theme="mac"] input[type="number"],
+:root[data-theme="mac"] input[type="text"] {
   font: 12px var(--chicago);
   border: 1px solid #000;
   border-radius: 0;
@@ -404,3 +405,6 @@
 :root[data-theme="mac"] .dock-nav button { border-radius: 4px; min-height: 20px; padding: 1px 8px; }
 :root[data-theme="mac"] .dock-nav button.on { padding-right: 18px; }
 :root[data-theme="mac"] .dock-nav button.on::after { background: #000; }
+
+:root[data-theme="mac"] .scene-list li { border: 1px solid #000; border-radius: 0; }
+:root[data-theme="mac"] .scene-list li.current { box-shadow: inset 4px 0 0 #000; }
