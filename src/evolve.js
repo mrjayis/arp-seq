@@ -58,11 +58,25 @@ export function evolveDrums(rows, amount, rng, conds = {}) {
 export function evolveBreakRow(row, amount, rng, slices) {
   if (amount <= 0 || !row) return row;
   const r = rng();
+  // `slices`: a count, or the list of slices it may use (switched-off ones left out).
+  const pick = () => {
+    const list = Array.isArray(slices) ? slices : null;
+    const n = list ? list.length : slices;
+    if (!n) return null;
+    const k = Math.floor(rng() * n);
+    return list ? list[k] : k;
+  };
   if (row.slice === null || row.slice === undefined) {
-    if (row.fx !== 'cut' && r < amount * 0.08) return { ...row, slice: Math.floor(rng() * slices), vol: Math.min(row.vol, 80) };
+    if (row.fx !== 'cut' && r < amount * 0.08) {
+      const slice = pick();
+      return slice === null ? row : { ...row, slice, vol: Math.min(row.vol, 80) };
+    }
     return row;
   }
-  if (r < amount * 0.25) return { ...row, slice: Math.floor(rng() * slices) };
+  if (r < amount * 0.25) {
+    const slice = pick();
+    return slice === null ? row : { ...row, slice };
+  }
   if (r < amount * 0.35) return { ...row, roll: Math.max(row.roll || 0, 2 + Math.floor(rng() * 2)), rollType: 'R' };
   if (r < amount * 0.4) return { ...row, fx: row.fx === 'rev' ? '' : 'rev' };
   return row;

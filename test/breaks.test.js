@@ -180,3 +180,20 @@ test('roll 1 = 16th notes: one retrigger per step, carried through the empty row
   assert.ok(parts.every((tr) => tr.length === 1 && tr[0].at === 0 && tr[0].slice === 2));
   assert.deepEqual(parts.map((tr) => tr[0].gain), [1, 0.75, 0.5, 0.25]);
 });
+
+import { pickSlice, usableSlices } from '../src/breaks.js';
+import { evolveBreakRow } from '../src/evolve.js';
+
+test('switched-off slices are never picked by Randomize or Evolve', () => {
+  assert.deepEqual(usableSlices(5, [1, 3]), [0, 2, 4]);
+  assert.equal(pickSlice([], Math.random), null);
+  for (let i = 0; i < 300; i++) assert.ok([0, 2, 4].includes(pickSlice([0, 2, 4])));
+  const pat = randomize(64, [2, 5]);
+  assert.ok(pat.every((r) => r.slice === null || r.slice === 2 || r.slice === 5));
+  assert.equal(pat[0].slice, 2);
+  const row = { slice: 2, vol: 100, pitch: 0, chance: 100, roll: 0, rollType: 'R', fx: '' };
+  for (let i = 0; i < 300; i++) {
+    const r = evolveBreakRow(row, 1, Math.random, [2, 5]);
+    assert.ok([2, 5].includes(r.slice));
+  }
+});
