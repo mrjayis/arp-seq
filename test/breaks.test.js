@@ -173,3 +173,10 @@ test('rolls hold until the next filled row and ramp over the whole run', () => {
   // A plain hit (no roll) doesn't carry on.
   assert.deepEqual(rowTriggers({ ...row, roll: 0 }, 0.1, Math.random, { span: 3, part: 1 }), []);
 });
+
+test('roll 1 = 16th notes: one retrigger per step, carried through the empty rows', () => {
+  const row = { slice: 2, vol: 100, pitch: 0, chance: 100, roll: 1, rollType: 'Rv', fx: '' };
+  const parts = [0, 1, 2, 3].map((part) => rowTriggers(row, 0.125, Math.random, { span: 4, part }));
+  assert.ok(parts.every((tr) => tr.length === 1 && tr[0].at === 0 && tr[0].slice === 2));
+  assert.deepEqual(parts.map((tr) => tr[0].gain), [1, 0.75, 0.5, 0.25]);
+});

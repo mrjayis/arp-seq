@@ -8,24 +8,24 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=91';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=91';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=91';
-import { Midi } from './midi.js?v=91';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=91';
+} from './core.js?v=92';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=92';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=92';
+import { Midi } from './midi.js?v=92';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=92';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=91';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=91';
+} from './percussion.js?v=92';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=92';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan,
-} from './breaks.js?v=91';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=91';
+} from './breaks.js?v=92';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=92';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=91';
+} from './mono.js?v=92';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -2283,7 +2283,7 @@ function buildBreakRows() {
   head.className = 'trow thead';
   head.innerHTML = '<span>Step</span><span>Slice</span><span>Vol</span><span>Pitch</span>'
     + '<span title="Chance: 0–100% that the step plays">C %</span>'
-    + '<span title="Roll: divide the step into 0–16 retriggers">R</span><span>Roll type</span><span>FX</span>';
+    + '<span title="Roll: retriggers per 16th step. 1 = 16ths, 2 = 32nds, 4 = 64ths (0 = off). With Roll until next it carries on through the empty rows.">R</span><span>Roll type</span><span>FX</span>';
   wrap.append(head);
   const count = sliceCount();
   const number = (value, min, max, step, label, onChange) => {
