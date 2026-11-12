@@ -8,24 +8,24 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, chordCents, isDimChord,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=102';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=102';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=102';
-import { Midi } from './midi.js?v=102';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=102';
+} from './core.js?v=103';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=103';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=103';
+import { Midi } from './midi.js?v=103';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=103';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=102';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=102';
+} from './percussion.js?v=103';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=103';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices,
-} from './breaks.js?v=102';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=102';
+} from './breaks.js?v=103';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=103';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=102';
+} from './mono.js?v=103';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -78,6 +78,7 @@ const settings = {
   osc2ModDepth: 30,
   chordSyncopate: false, // a chord hit in the last 8th before the progression moves on plays the next chord
   chordTie: false, // a syncopated chord holds over the bar line instead of being struck again on the downbeat
+  tuningKey: 'auto', // the key's tonic for Just tuning: 'auto' (the progression's first chord) or 0–11
   tuningPure: true, // with Just tuning: no deliberate detuning, vibrato or chorus wobble
   tuning: 'equal', // 'equal' | 'just' | 'just7': adaptive just intonation to the chord now playing
   humanize: 0, // 0–100: random timing and level variation for every section
@@ -347,8 +348,14 @@ function modSpec(modNote) {
 // (the progression's first chord), so neighbouring chords keep their shared notes.
 // The tonic stays on its equal-tempered pitch, so nothing drifts.
 
-/** The key's tonic for tuning: the progression's first chord (moved by any modulation). */
+/**
+ * The key's tonic for tuning: the Key setting (moved along by any modulation), or on
+ * Auto the progression's first chord. null = no key (each root stays equal-tempered).
+ */
 function tonicPc() {
+  if (settings.tuningKey !== 'auto' && Number.isInteger(Number(settings.tuningKey))) {
+    return (((Number(settings.tuningKey) + (settings.progOn ? progShift : 0)) % 12) + 12) % 12;
+  }
   if (!settings.progOn) return null;
   const first = settings.progression.slice(0, settings.progLength).find((s) => s.type !== 'rest');
   return first ? (((first.root + progShift) % 12) + 12) % 12 : null;
@@ -401,6 +408,7 @@ function applyPure() {
 function renderPure() {
   $('tuning-pure').checked = settings.tuningPure;
   $('tuning-pure').disabled = settings.tuning === 'equal';
+  $('tuning-key').disabled = settings.tuning === 'equal';
 }
 
 function playVoice(note, note2, velocity, time, gateLen, modNote) {
@@ -1219,6 +1227,9 @@ $('tuning-pure').addEventListener('change', () => {
   applyPure();
   save();
 });
+bindSelect('tuning-key', 'tuningKey',
+  [['auto', 'Auto'], ...['C', 'C♯', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'A♭', 'A', 'B♭', 'B'].map((n, i) => [String(i), n])],
+  () => { renderPure(); if (ctx) padFollow(ctx.currentTime, 0.05); monoRoot = undefined; if (arpTail) arpTail.root = undefined; });
 renderPure(); // the audio side is applied when audio starts (ensureAudio)
 onRecall(applyPure);
 bindRange('humanize', 'humanize', (v) => (v ? `${v}%` : 'off'));
