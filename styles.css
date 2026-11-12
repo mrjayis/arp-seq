@@ -888,3 +888,9 @@ h2.collapsible { cursor: pointer; user-select: none; }
 /* ---------- help: the explanations only show when Help is on ---------- */
 :root:not(.show-help) .hint { display: none !important; }
 .help-toggle { min-height: 28px; padding: 2px 12px; font-size: 13px; }
+
+/* ---------- no double-tap zoom ----------
+   "manipulation" keeps scrolling and pinch-zoom but drops double-tap-to-zoom, so quick
+   taps (Tap tempo, step nudges, drum cells) register as taps. The keyboard and pads
+   keep their own touch-action: none (a class selector outranks this). */
+html, body, * { touch-action: manipulation; }
