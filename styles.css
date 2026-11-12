@@ -881,6 +881,8 @@ h2.collapsible { cursor: pointer; user-select: none; }
   border-radius: 3px;
 }
 .scene-list li.current { border-color: var(--mod); box-shadow: inset 4px 0 0 var(--mod); }
+.scene-list li.pending { border-style: dashed; border-color: var(--mod); animation: scene-wait 0.5s steps(2) infinite; }
+@keyframes scene-wait { 50% { box-shadow: inset 4px 0 0 var(--mod); } }
 .scene-list .scene-title { font-weight: 600; flex: 1 1 10em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .scene-list .scene-when { color: var(--ink-3); font-size: 12px; font-style: italic; }
 .scene-list button { min-height: 26px; padding: 1px 9px; font-size: 13px; }
