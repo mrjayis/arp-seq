@@ -7,23 +7,23 @@ import {
   progressionChord, anticipatedSlot, chordTie, SLOT_OCTAVES, humanizeOffset, humanizeLevel,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=79';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=79';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=79';
-import { Midi } from './midi.js?v=79';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=79';
+} from './core.js?v=80';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=80';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=80';
+import { Midi } from './midi.js?v=80';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=80';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=79';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=79';
+} from './percussion.js?v=80';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=80';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
-} from './breaks.js?v=79';
-import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=79';
+} from './breaks.js?v=80';
+import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=80';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=79';
+} from './mono.js?v=80';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -77,6 +77,7 @@ const settings = {
   chordSyncopate: false, // a chord hit in the last 8th before the progression moves on plays the next chord
   chordTie: false, // a syncopated chord holds over the bar line instead of being struck again on the downbeat
   humanize: 0, // 0–100: random timing and level variation for every section
+  arpLevel: 100, // %: overall level of the arp (both voices)
   arpOn: true, // off: the arp and sequencer keep stepping (chords can follow) but play nothing
   chordOn: true,
   chordRate: '1/8',
@@ -299,7 +300,7 @@ function westVoice(n) {
       lpg: settings.osc2Lpg,
       resonance: settings.osc2Resonance,
       detune: settings.osc2Detune,
-      level: settings.osc2Level / 100,
+      level: (settings.osc2Level / 100) * (settings.arpLevel / 100),
       attack: settings.arpAttack / 1000,
       release: settings.arpRelease / 1000,
     };
@@ -314,6 +315,7 @@ function westVoice(n) {
     timbre: settings.arpTimbre / 100,
     lpg: settings.lpgMode,
     resonance: settings.arpResonance,
+    level: settings.arpLevel / 100,
   };
 }
 
@@ -1058,6 +1060,7 @@ function showPwm() {
   ['chord-width', 'chord-pwm-depth', 'chord-pwm-rate'].forEach((id) => { $(id).disabled = off; });
   $('pwm-note').textContent = off ? 'Set Wave 1 or Wave 2 to Square to use PWM.' : '';
 }
+bindRange('arp-level', 'arpLevel', (v) => `${v}%`);
 bindRange('humanize', 'humanize', (v) => (v ? `${v}%` : 'off'));
 bindSelect('chord-sound', 'chordSound', [['analog', 'Analog'], ['ep', 'FM E.Piano'], ['fmpad', 'FM Pad']], () => {
   renderChordSound();

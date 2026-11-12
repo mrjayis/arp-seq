@@ -30,6 +30,7 @@ Make the drums and break move through sections instead of looping one bar.
 - **Song** window: a chain of bars, one slot per bar (e.g. A A B A C C B D), built with **+A … +D**. Click a bar to change its slot, × to remove it. With Song on, each bar plays its slot in both windows and the chain loops, with the playing bar lit. With Song off you hear the slot you're editing.
 
 ### Arpeggiator
+- **Level:** the overall level of the arpeggiator, both voices together (Oscillator 2 keeps its own level on top). It doesn't change the MIDI it sends.
 - **On / Off:** switches the arp's sound (both voices, and its MIDI out). While off, the arp and sequencer keep stepping silently in time, so the sequencer display moves and chords or a pad set to Follow sequencer still follow it. The readout shows "(arp off)".
 - **Modes:** Up, Down, Up/Down, Down/Up, Random (never the same note twice in a row), As Played
 - **Rate:** 1/4D (dotted quarter), 1/4, 1/8D (dotted 8th), 1/8, 1/8T, 1/16D (dotted 16th), 1/16, 1/16T, 1/32, placed on a 24 PPQN grid so rate changes stay in time
