@@ -894,3 +894,6 @@ h2.collapsible { cursor: pointer; user-select: none; }
    taps (Tap tempo, step nudges, drum cells) register as taps. The keyboard and pads
    keep their own touch-action: none (a class selector outranks this). */
 html, body, * { touch-action: manipulation; }
+
+/* A button waiting for its confirming second click. */
+button.armed { background: var(--brick, #c4502f); border-color: var(--brick, #c4502f); color: #fff; }
