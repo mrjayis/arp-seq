@@ -335,6 +335,34 @@ export function anticipatedSlot(pulse, slots, eighth = PPQN / 2) {
   const next = progressionAt(pulse + eighth, slots);
   return next !== now ? next : -1;
 }
+
+/**
+ * Tie-over for syncopated chords, for chord-rhythm step `n` (steps of `pps` pulses;
+ * `isHit(step)` says whether the rhythm hits there):
+ *  - 'start': the first pushed hit before a change whose downbeat (first step at or
+ *    after the change) is also a hit. It holds through to that downbeat; `until` is it.
+ *  - 'held': a later pushed hit, or that downbeat: it isn't struck again.
+ *  - 'none': play as usual (no push, or no downbeat hit to tie into).
+ */
+export function chordTie(n, pps, slots, isHit) {
+  const slotAt = (s) => progressionAt(s * pps, slots);
+  const pushed = (s) => s >= 0 && anticipatedSlot(s * pps, slots) >= 0;
+  /** An earlier pushed hit in the same run up to the change? */
+  const hitBefore = (from, slot) => {
+    for (let k = from; pushed(k) && slotAt(k) === slot; k--) if (isHit(k)) return true;
+    return false;
+  };
+  if (pushed(n)) {
+    let d = n + 1;
+    while (slotAt(d) === slotAt(n) && d < n + 64) d++;
+    if (!isHit(d)) return { role: 'none' };
+    return hitBefore(n - 1, slotAt(n)) ? { role: 'held' } : { role: 'start', until: d };
+  }
+  // The downbeat just after a run of pushed steps.
+  const prev = n - 1;
+  if (pushed(prev) && slotAt(prev) !== slotAt(n) && isHit(n) && hitBefore(prev, slotAt(prev))) return { role: 'held' };
+  return { role: 'none' };
+}
 export const PROG_VOICINGS = { set: 'As set', smooth: 'Smooth (inversions)', nearest: 'Nearest tones' };
 export const PROGRESSION_BEATS = [1, 2, 3, 4, 6, 8];
 
