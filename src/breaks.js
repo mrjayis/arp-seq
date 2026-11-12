@@ -137,8 +137,9 @@ export function rowTriggers(row, stepDur, rng = Math.random, { span = 1, part = 
   if (part === 0 && r.chance < 100 && rng() * 100 >= r.chance) return [];
   if (r.fx === 'cut') return part === 0 ? [{ at: 0, cut: true }] : [];
   if (r.slice === null || r.slice === undefined) return [];
+  // Roll R = retriggers per 16th step: 1 = 16ths, 2 = 32nds, 4 = 64ths. 0 = no roll.
   const n = r.roll > 0 ? r.roll : 1;
-  if (n === 1 && part > 0) return []; // no roll: nothing to carry on
+  if (!(r.roll > 0) && part > 0) return []; // no roll: nothing to carry on
   const gain = Math.max(0, Math.min(100, r.vol)) / 100;
   // A roll held over `span` steps ramps across all of them: this is step `part` of it.
   const total = n * Math.max(1, span);
