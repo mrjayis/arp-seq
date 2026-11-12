@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=79" />
-  <link rel="stylesheet" href="mac.css?v=79" />
+  <link rel="stylesheet" href="styles.css?v=80" />
+  <link rel="stylesheet" href="mac.css?v=80" />
 </head>
 <body>
   <main class="device">
@@ -122,6 +122,9 @@
         </label>
         <label class="field slider">Swing <output id="swing-val">0%</output>
           <input id="swing" type="range" min="0" max="75" value="0" />
+        </label>
+        <label class="field slider" title="Overall level of the arpeggiator: both voices (Oscillator 2 keeps its own level on top). MIDI out isn't affected.">Level <output id="arp-level-val"></output>
+          <input id="arp-level" type="range" min="0" max="100" value="100" />
         </label>
         <button id="latch" aria-pressed="false" title="Hold notes after release">Latch</button>
       </div>
@@ -678,6 +681,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=79"></script>
+  <script type="module" src="src/app.js?v=80"></script>
 </body>
 </html>
