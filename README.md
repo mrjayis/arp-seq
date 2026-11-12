@@ -39,6 +39,7 @@ Make the drums and break move through sections instead of looping one bar.
 - **Tempo:** 20–300 BPM, with tap tempo
 
 ### Mono synth (101-style)
+- **Little keyboard:** two octaves under the steps for writing the sequence directly. Tap a key and it goes in at the cursor, with no need to arm Write. Legato, Rest, Tie and Back work with it as usual. **−** and **+** move it by an octave (C0 to C8). While the sequence plays, the key of the note now sounding is marked.
 A monophonic bass/lead voice with its own step sequencer, playing in time with everything else.
 - **Voice:**
   - **Oscillator:** Saw, Pulse (Width, plus PWM from the LFO), Sub (−1 oct square, −2 oct square or −2 oct narrow pulse) and Noise, each with its own level.

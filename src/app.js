@@ -8,23 +8,23 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=82';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=82';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=82';
-import { Midi } from './midi.js?v=82';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=82';
+} from './core.js?v=83';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=83';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=83';
+import { Midi } from './midi.js?v=83';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=83';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=82';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=82';
+} from './percussion.js?v=83';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=83';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
-} from './breaks.js?v=82';
-import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=82';
+} from './breaks.js?v=83';
+import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=83';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=82';
+} from './mono.js?v=83';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -78,6 +78,7 @@ const settings = {
   chordSyncopate: false, // a chord hit in the last 8th before the progression moves on plays the next chord
   chordTie: false, // a syncopated chord holds over the bar line instead of being struck again on the downbeat
   humanize: 0, // 0–100: random timing and level variation for every section
+  monoKbOctave: 2, // the mono panel's little keyboard starts at C of this octave
   arpLevel: 100, // %: overall level of the arp (both voices)
   arpOn: true, // off: the arp and sequencer keep stepping (chords can follow) but play nothing
   chordOn: true,
@@ -172,7 +173,7 @@ const DEFAULTS = structuredClone(settings);
 // Settings that belong to this device or this moment, not to a scene.
 const DEVICE_KEYS = [
   'theme', 'themeV2', 'collapsed', 'showHelp', 'midiIn', 'midiInCh', 'midiOut', 'midiOutCh', 'volume', 'synthOn',
-  'sync', 'baseOctave', 'chordRoot',
+  'sync', 'baseOctave', 'chordRoot', 'monoKbOctave',
 ];
 // Live scene recall: each part of the page registers how to re-read its settings,
 // in page order (repairs first, then controls, then drawing). See recallLive().
@@ -2587,7 +2588,71 @@ function showMonoStep(i) {
   monoStepEls.forEach((el) => el.classList.remove('now'));
   monoNowStep = i;
   if (i >= 0) monoStepEls[i]?.classList.add('now');
+  // Light the little keyboard's key for the note now sounding (ties keep the last one).
+  if (i < 0) { monoKbShow(null); return; }
+  const step = settings.monoSeq[i];
+  if (step && step.n !== null && !step.hold) monoKbShow(step.n);
+  else if (step && step.n === null && !step.t) monoKbShow(null);
 }
+
+// ---- the little keyboard: two octaves for writing the mono sequence directly.
+const monoKbKeys = new Map();
+let monoKbLit = null;
+
+function buildMonoKb() {
+  const kb = $('mono-kb');
+  kb.replaceChildren();
+  monoKbKeys.clear();
+  const base = (settings.monoKbOctave + 1) * 12;
+  const span = 25; // C to C, two octaves
+  const isBlack = (n) => [1, 3, 6, 8, 10].includes(n % 12);
+  const whites = [];
+  for (let n = base; n < base + span; n++) if (!isBlack(n)) whites.push(n);
+  const whiteW = 100 / whites.length;
+  for (let n = base; n < base + span; n++) {
+    const k = document.createElement('div');
+    k.className = `key${isBlack(n) ? ' black' : ''}`;
+    k.dataset.note = n;
+    k.title = noteName(n);
+    if (isBlack(n)) {
+      const leftWhites = whites.filter((w) => w < n).length;
+      k.style.left = `calc(${leftWhites * whiteW}% - ${whiteW * 0.3}%)`;
+      k.style.width = `${whiteW * 0.6}%`;
+    } else if (n % 12 === 0) {
+      k.dataset.label = noteName(n); // C labels to find your place
+    }
+    kb.append(k);
+    monoKbKeys.set(n, k);
+  }
+  $('mono-kb-oct').textContent = `${noteName(base)}–${noteName(base + span - 1)}`;
+  monoKbLit = null;
+}
+
+function monoKbShow(note) {
+  if (monoKbLit === note) return;
+  if (monoKbLit !== null) monoKbKeys.get(monoKbLit)?.classList.remove('sounding');
+  monoKbLit = note;
+  if (note !== null) monoKbKeys.get(note)?.classList.add('sounding');
+}
+
+$('mono-kb').addEventListener('pointerdown', (e) => {
+  const key = e.target.closest('.key');
+  if (!key) return;
+  e.preventDefault();
+  ensureAudio();
+  monoWrite(Number(key.dataset.note));
+  key.classList.add('held');
+  setTimeout(() => key.classList.remove('held'), 150);
+});
+$('mono-kb').addEventListener('contextmenu', (e) => e.preventDefault());
+for (const [id, d] of [['mono-kb-down', -1], ['mono-kb-up', 1]]) {
+  $(id).addEventListener('click', () => {
+    settings.monoKbOctave = Math.min(6, Math.max(0, settings.monoKbOctave + d));
+    buildMonoKb();
+    save();
+  });
+}
+buildMonoKb();
 
 function renderMonoPanel() {
   for (const [id, on] of [['mono-on', settings.monoOn], ['mono-write', settings.monoArmed], ['mono-legato', settings.monoLegato]]) {
