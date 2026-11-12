@@ -168,15 +168,19 @@ export class ArpSeqEngine {
 
   /** Notes the arp plays: held/latched notes plus the current progression chord. */
   get notes() {
-    if (!this.progression.length) return [...this.active.values()];
-    return [...this.active.values(), ...this.progression.filter((n) => !this.active.has(n.note))];
+    return this.notesWith(this.progression);
+  }
+
+  /** Held notes plus a progression chord (as made by progressionChord), held keys winning. */
+  notesWith(progression) {
+    if (!progression.length) return [...this.active.values()];
+    return [...this.active.values(), ...progression.filter((n) => !this.active.has(n.note))];
   }
 
   /** Set the progression chord (MIDI note numbers); [] for none. */
   setProgressionNotes(notes) {
     if (notes.length && this.notes.length === 0) this.reset();
-    // Negative order: in As Played mode the progression chord comes first, root up.
-    this.progression = notes.map((note, i) => ({ note, vel: 100, order: i - notes.length }));
+    this.progression = progressionChord(notes);
   }
 
   get pattern() {
@@ -313,6 +317,24 @@ export function patternAt(pulse, pulsesPerStep, hits, steps, rotate = 0) {
 
 // ---- chord progression sequencer
 export const MAX_PROGRESSION = 8;
+
+/** A progression chord as note objects. Negative order: in As Played mode it comes first, root up. */
+export function progressionChord(notes) {
+  return notes.map((note, i) => ({ note, vel: 100, order: i - notes.length }));
+}
+
+/**
+ * Syncopation: a chord hit at `pulse` in the last 8th note before the progression
+ * moves on (the hit, or any part of the final 8th, is on or after it) anticipates
+ * the next chord. Returns that next slot's index, or -1 when the hit is not in the
+ * last 8th or the chord doesn't change.
+ */
+export function anticipatedSlot(pulse, slots, eighth = PPQN / 2) {
+  const now = progressionAt(pulse, slots);
+  if (now < 0) return -1;
+  const next = progressionAt(pulse + eighth, slots);
+  return next !== now ? next : -1;
+}
 export const PROG_VOICINGS = { set: 'As set', smooth: 'Smooth (inversions)', nearest: 'Nearest tones' };
 export const PROGRESSION_BEATS = [1, 2, 3, 4, 6, 8];
 
