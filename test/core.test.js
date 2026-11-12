@@ -340,3 +340,16 @@ test('chordTie: the first pushed hit holds through the downbeat; later hits are 
   assert.deepEqual(chordTie(30, pps, slots, isHit), { role: 'start', until: 32 });
   assert.equal(chordTie(32, pps, slots, isHit).role, 'held');
 });
+
+test('each progression slot can be shifted up or down two octaves', () => {
+  assert.deepEqual(slotNotes({ root: 0, type: 'maj', oct: 1 }, 3), [60, 64, 67]);
+  assert.deepEqual(slotNotes({ root: 0, type: 'maj', oct: -2 }, 3), [24, 28, 31]);
+  assert.deepEqual(slotNotes({ root: 0, type: 'maj', oct: 9 }, 3), [72, 76, 79]); // clamped to +2
+  const slots = [{ root: 0, type: 'maj', beats: 4 }, { root: 5, type: 'maj', beats: 4, oct: 1 }];
+  assert.deepEqual(progressionVoicings(slots, 3, 'set')[1].notes, [65, 69, 72]);
+  // With voice leading, the slot is voiced as usual and then moved by its shift.
+  for (const mode of ['smooth', 'nearest']) {
+    const plain = progressionVoicings(slots.map((sl) => ({ ...sl, oct: 0 })), 3, mode)[1].notes;
+    assert.deepEqual(progressionVoicings(slots, 3, mode)[1].notes, plain.map((n) => n + 12), mode);
+  }
+});

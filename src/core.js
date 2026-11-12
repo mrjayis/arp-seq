@@ -394,7 +394,15 @@ export function invertChord(notes, k) {
  */
 export function slotNotes(slot, octave) {
   if (!slot || slot.type === 'rest') return [];
-  return invertChord(chordNotes((octave + 1) * 12 + slot.root, slot.type), slot.inv || 0);
+  return invertChord(chordNotes(slotBase(slot, octave), slot.type), slot.inv || 0);
+}
+
+/** Register shift per slot, in octaves. */
+export const SLOT_OCTAVES = [-2, -1, 0, 1, 2];
+
+/** The slot's root note: the progression octave plus the slot's own register shift. */
+export function slotBase(slot, octave) {
+  return (octave + 1 + clamp(Math.round(slot.oct) || 0, -2, 2)) * 12 + slot.root;
 }
 
 /** How far a hand moves between two voicings: each note to the nearest note of the other. */
@@ -448,21 +456,29 @@ export function nearestVoicing(prev, pitchClasses, low, high) {
  * @returns {{notes: number[], inv: number}[]}
  */
 export function progressionVoicings(slots, octave, mode = 'set') {
+  // Voice leading runs in the progression's own register; each slot's register
+  // shift (`oct`) is applied afterwards, so the chord moves by exactly that much.
+  const lift = (notes, slot) => {
+    const by = 12 * clamp(Math.round(slot.oct) || 0, -2, 2);
+    return notes.map((n) => n + by).filter((n) => n >= 0 && n <= 127);
+  };
   let prev = null;
   return slots.map((slot, i) => {
-    const notes = slotNotes(slot, octave);
+    const flat = { ...slot, oct: 0 };
+    const notes = slotNotes(flat, octave);
     if (!notes.length || mode === 'set' || prev === null || i === 0) {
       if (notes.length) prev = notes;
-      return { notes, inv: notes.length ? clamp(slot.inv || 0, 0, notes.length - 1) : 0 };
+      return { notes: lift(notes, slot), inv: notes.length ? clamp(slot.inv || 0, 0, notes.length - 1) : 0 };
     }
-    const root = chordNotes((octave + 1) * 12 + slot.root, slot.type);
+    const root = chordNotes(slotBase(flat, octave), slot.type);
     if (mode === 'nearest') {
-      const low = Math.max(0, (octave + 1) * 12 - 7);
-      const high = Math.min(127, (octave + 1) * 12 + 26);
+      const base = (octave + 1) * 12;
+      const low = Math.max(0, base - 7);
+      const high = Math.min(127, base + 26);
       const voiced = nearestVoicing(prev, root.map((n) => n % 12), low, high) || notes;
       prev = voiced;
       const bassPc = voiced[0] % 12;
-      return { notes: voiced, inv: Math.max(0, root.findIndex((n) => n % 12 === bassPc)) };
+      return { notes: lift(voiced, slot), inv: Math.max(0, root.findIndex((n) => n % 12 === bassPc)) };
     }
     let best = null;
     for (let k = 0; k < root.length; k++) {
@@ -475,7 +491,7 @@ export function progressionVoicings(slots, octave, mode = 'set') {
       }
     }
     prev = best.notes;
-    return { notes: best.notes, inv: best.inv };
+    return { notes: lift(best.notes, slot), inv: best.inv };
   });
 }
 
