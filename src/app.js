@@ -3,26 +3,26 @@ import {
   MIN_SEQ_LENGTH, MAX_SEQ_LENGTH, noteName, defaultSteps, CHORDS, chordNotes,
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
-  progressionChord, anticipatedSlot, chordTie,
+  progressionChord, anticipatedSlot, chordTie, SLOT_OCTAVES,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=73';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=73';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=73';
-import { Midi } from './midi.js?v=73';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=73';
+} from './core.js?v=75';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=75';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=75';
+import { Midi } from './midi.js?v=75';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=75';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=73';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=73';
+} from './percussion.js?v=75';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=75';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
-} from './breaks.js?v=73';
-import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=73';
+} from './breaks.js?v=75';
+import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=75';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=73';
+} from './mono.js?v=75';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -203,6 +203,7 @@ applyEngineSettings();
       type: s.type === 'rest' || CHORDS[s.type] ? s.type : def.type,
       beats: PROGRESSION_BEATS.includes(s.beats) ? s.beats : def.beats,
       inv: Number.isInteger(s.inv) && s.inv >= 0 && s.inv < INVERSIONS.length ? s.inv : 0,
+      oct: SLOT_OCTAVES.includes(s.oct) ? s.oct : 0,
     };
   });
 }
@@ -1120,12 +1121,15 @@ function buildProgression() {
       <select class="root" aria-label="Slot ${i + 1} root"></select>
       <select class="type" aria-label="Slot ${i + 1} chord"></select>
       <select class="inv" aria-label="Slot ${i + 1} inversion"></select>
+      <select class="oct" aria-label="Slot ${i + 1} register" title="Register: move this chord up or down an octave or two"></select>
       <select class="beats" aria-label="Slot ${i + 1} length"></select>`;
     const root = el.querySelector('.root');
     const type = el.querySelector('.type');
     const beats = el.querySelector('.beats');
     const inv = el.querySelector('.inv');
     INVERSIONS.forEach((label, v) => inv.add(new Option(label, String(v))));
+    const oct = el.querySelector('.oct');
+    for (const o of SLOT_OCTAVES) oct.add(new Option(o === 0 ? 'Oct 0' : `Oct ${o > 0 ? '+' : '−'}${Math.abs(o)}`, String(o)));
     NOTE_CLASSES.forEach((n, v) => root.add(new Option(n, String(v))));
     for (const [t, { label }] of Object.entries(CHORDS)) type.add(new Option(label, t));
     type.add(new Option('Rest', 'rest'));
@@ -1133,10 +1137,11 @@ function buildProgression() {
     const update = () => {
       settings.progression[i] = {
         root: Number(root.value), type: type.value, beats: Number(beats.value), inv: Number(inv.value),
+        oct: Number(oct.value),
       };
       progEdited();
     };
-    [root, type, inv, beats].forEach((s) => s.addEventListener('change', update));
+    [root, type, inv, oct, beats].forEach((s) => s.addEventListener('change', update));
     wrap.append(el);
     slotEls.push(el);
   }
@@ -1165,7 +1170,7 @@ function buildProgression() {
     const chords = PROGRESSION_PRESETS[preset.value];
     preset.value = '';
     if (!chords) return;
-    chords.forEach(([root, type], i) => { settings.progression[i] = { root, type, beats: 4, inv: 0 }; });
+    chords.forEach(([root, type], i) => { settings.progression[i] = { root, type, beats: 4, inv: 0, oct: 0 }; });
     settings.progLength = chords.length;
     renderProgression();
     progEdited();
@@ -1196,6 +1201,8 @@ function renderSlot(i, voicing) {
   el.querySelector('.root').value = String(slot.root);
   el.querySelector('.type').value = slot.type;
   el.querySelector('.beats').value = String(slot.beats);
+  el.querySelector('.oct').value = String(slot.oct || 0);
+  el.querySelector('.oct').disabled = rest || off;
   el.querySelector('.root').disabled = rest || off;
   // Smooth voicing picks every inversion after the first chord's.
   const auto = settings.progVoicing !== 'set' && i > 0;
