@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=105" />
-  <link rel="stylesheet" href="mac.css?v=105" />
+  <link rel="stylesheet" href="styles.css?v=107" />
+  <link rel="stylesheet" href="mac.css?v=107" />
 </head>
 <body>
   <main class="device">
@@ -75,7 +75,7 @@
         <label class="field" title="Equal: ordinary tuning. Just: every pitched synth is retuned, chord by chord, to pure ratios above the root of the chord playing (the progression's chord, else the keys you hold): sweeter thirds, beatless fifths. The root stays put, so it never drifts. 7-limit also uses the 'barbershop' 7th (7/4). MIDI out stays in equal temperament.">Tuning <select id="tuning"></select></label>
         <label class="check" title="With Just tuning: take out the deliberate detuning (Detune 2, Osc 2 detune, the FM sounds' detuned layers), vibrato and the chorus's pitch wobble, so pure intervals ring without beating">
           <input id="tuning-pure" type="checkbox" /> Pure</label>
-        <label class="field" title="The key's home note for Just tuning: chord roots are tuned to pure ratios above it, so chords in the key share their common notes exactly. Auto uses the progression's first chord. A set key also works with the progression off (for chords you hold), and moves along with Modulate.">Key <select id="tuning-key"></select></label>
+        <label class="field" title="The key's home note for Just tuning: chord roots are tuned to pure ratios above it, so chords in the key share their common notes exactly. Auto works out the key from the whole progression. A set key also works with the progression off (for chords you hold), and moves along with Modulate.">Key <select id="tuning-key"></select></label>
         <label class="field slider" title="Loosen the timing and level of every section a little, like a player. At 100% notes land within ±20 ms (never more than a fifth of a step) and levels vary by up to ±25%. Each section and each drum hit varies on its own.">Humanize <output id="humanize-val"></output>
           <input id="humanize" type="range" min="0" max="100" value="0" />
         </label>
@@ -717,6 +717,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=105"></script>
+  <script type="module" src="src/app.js?v=107"></script>
 </body>
 </html>

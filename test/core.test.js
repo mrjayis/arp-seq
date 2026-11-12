@@ -452,3 +452,38 @@ test('key-anchored just intonation keeps shared notes still between chords', () 
   assert.equal(+(300 + raw(65) - raw(62)).toFixed(1), 315.6); // D–F: 6/5
   assert.equal(cents(64, 0, 0, false, 'equal'), 0);
 });
+
+import { sweeten, beatCost } from '../src/core.js';
+
+test('sweeten picks, for each note, the just ratio that beats least against the rest', () => {
+  const r = (m, pc) => +m.get(pc).toFixed(1) + 0;
+  // C major: the textbook 4:5:6.
+  const cmaj = sweeten([0, 4, 7], 0, 'just');
+  assert.deepEqual([r(cmaj, 0), r(cmaj, 4), r(cmaj, 7)], [0, -13.7, 2]);
+  // C E G D (add9): D a pure fifth above G → 9/8.
+  assert.equal(r(sweeten([0, 4, 7, 2], 0, 'just'), 2), 3.9);
+  // C F A D (F/C with D): D a pure minor third below F and fifth below A → 10/9.
+  assert.equal(r(sweeten([0, 5, 9, 2], 0, 'just'), 2), -17.6);
+  // B diminished: both minor thirds pure → F at 36/25 above B.
+  const bdim = sweeten([11, 2, 5], 11, 'just');
+  assert.equal(+(300 + bdim.get(5) - bdim.get(2)).toFixed(1), 315.6);
+  // 7-limit G7 (relative to G): the 7th takes 7/4.
+  assert.equal(r(sweeten([7, 11, 2, 5], 7, 'just7'), 5), -31.2);
+  // Notes already sounding are kept.
+  const keep = sweeten([0, 4, 7], 0, 'just', new Map([[4, 0]]));
+  assert.equal(r(keep, 4), 0);
+  // A pure fifth doesn't beat; a tempered one does a little.
+  const t = [{ cents: 701.955, weight: 1 / Math.sqrt(6) }];
+  assert.ok(beatCost(701.955, t) < 1e-6 && beatCost(700, t) > 0.5);
+});
+
+import { autoTonic } from '../src/core.js';
+
+test('autoTonic finds the key from the whole progression', () => {
+  const p = (...cs) => cs.map(([root, type]) => ({ root, type, beats: 4 }));
+  assert.equal(autoTonic(p([2, 'min7'], [7, 'dom7'], [0, 'maj7'], [0, 'maj7'])), 0); // ii–V–I in C
+  assert.equal(autoTonic(p([9, 'min'], [5, 'maj'], [0, 'maj'], [7, 'maj'])), 9); // i–VI–III–VII in Am
+  assert.equal(autoTonic(p([0, 'maj'], [7, 'maj'], [9, 'min'], [5, 'maj'])), 0); // I–V–vi–IV
+  assert.equal(autoTonic(p([9, 'min7'], [2, 'min7'], [4, 'min7'], [9, 'min7'])), 9); // i–iv–v–i in Am
+  assert.equal(autoTonic([]), null);
+});

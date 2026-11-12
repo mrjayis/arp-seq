@@ -5,27 +5,27 @@ import {
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   progressionChord, anticipatedSlot, chordTie, SLOT_OCTAVES, humanizeOffset, humanizeLevel,
-  MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, chordCents, isDimChord,
+  MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=105';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=105';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=105';
-import { Midi } from './midi.js?v=105';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=105';
+} from './core.js?v=107';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=107';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=107';
+import { Midi } from './midi.js?v=107';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=107';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=105';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=105';
+} from './percussion.js?v=107';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=107';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices,
-} from './breaks.js?v=105';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=105';
+} from './breaks.js?v=107';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=107';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=105';
+} from './mono.js?v=107';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -350,45 +350,91 @@ function modSpec(modNote) {
 
 /**
  * The key's tonic for tuning: the Key setting (moved along by any modulation), or on
- * Auto the progression's first chord. null = no key (each root stays equal-tempered).
+ * Auto the key the progression is in (autoTonic). null = no key (each root stays equal-tempered).
  */
 function tonicPc() {
   if (settings.tuningKey !== 'auto' && Number.isInteger(Number(settings.tuningKey))) {
     return (((Number(settings.tuningKey) + (settings.progOn ? progShift : 0)) % 12) + 12) % 12;
   }
   if (!settings.progOn) return null;
-  const first = settings.progression.slice(0, settings.progLength).find((s) => s.type !== 'rest');
-  return first ? (((first.root + progShift) % 12) + 12) % 12 : null;
+  const tonic = autoTonic(settings.progression.slice(0, settings.progLength));
+  return tonic === null ? null : (((tonic + progShift) % 12) + 12) % 12;
 }
 
 /**
- * The chord the tuning follows now, as a key "tonic|root|dim" (comparable with ===):
- * the progression's chord, else the held notes; null when there's no chord.
+ * The chord the tuning follows now, as an id "tonic|root|dim|pitch classes" (comparable
+ * with ===): the progression's chord plus held keys, else the held keys; null for none.
  */
 function chordRoot() {
+  const notes = engine.notes.map((n) => n.note);
   if (settings.progOn && progIndex >= 0) {
     const slot = settings.progression[progIndex];
     if (slot && slot.type !== 'rest') {
       const root = (((slot.root + progShift) % 12) + 12) % 12;
-      return `${tonicPc()}|${root}|${slot.type === 'dim' ? 1 : 0}`;
+      return tuningId(root, notes, slot.type === 'dim');
     }
   }
-  return tuningKeyFor(engine.notes.map((n) => n.note));
+  return tuningKeyFor(notes);
 }
 
-/** A tuning key for a chord given as MIDI notes (held keys, or an early syncopated chord). */
+/** A tuning id for a chord given as MIDI notes (held keys, or an early syncopated chord). */
 function tuningKeyFor(notes) {
   const root = chordRootPc(notes);
   if (root === null) return null;
   const pcs = new Set(notes.map((n) => ((n % 12) + 12) % 12));
-  return `${tonicPc()}|${root}|${isDimChord(pcs, root) ? 1 : 0}`;
+  return tuningId(root, notes, isDimChord(pcs, root));
 }
 
-/** Cents to nudge `note` by, in the chord given by a tuning key. */
-function tuningCents(note, key = chordRoot()) {
-  if (!key || settings.tuning === 'equal') return 0;
-  const [t, r, d] = key.split('|');
-  return chordCents(note, { tonic: t === 'null' ? null : Number(t), root: Number(r), dim: d === '1' }, settings.tuning);
+function tuningId(root, notes, dim) {
+  const pcs = [...new Set(notes.map((n) => ((n % 12) + 12) % 12))].sort((a, b) => a - b);
+  if (!pcs.includes(root)) pcs.push(root);
+  return `${tonicPc()}|${root}|${dim ? 1 : 0}|${pcs.join('.')}`;
+}
+
+// Sweetened tunings, one per chord id: pitch class → cents from equal temperament
+// (relative to the chord's root), chosen together for the fewest beats.
+const sweetCache = new Map();
+function clearSweet() { sweetCache.clear(); }
+
+/** Pitch classes sounding now outside the chord (the mono note, a ringing arp note), to sweeten with it. */
+function soundingPcs() {
+  const out = [];
+  if (monoGateOpen && monoMidiNote !== null) out.push(monoMidiNote % 12);
+  if (arpTail) {
+    out.push(arpTail.note % 12);
+    if (arpTail.note2 !== null) out.push(arpTail.note2 % 12);
+  }
+  return out;
+}
+
+function sweetFor(id) {
+  let ctxT = sweetCache.get(id);
+  if (!ctxT) {
+    const [t, r, , sig] = id.split('|');
+    const root = Number(r);
+    const pcs = [...sig.split('.').map(Number), ...soundingPcs()];
+    ctxT = {
+      root,
+      rootShift: t === 'null' ? 0 : justCents(root, Number(t), 'just'), // the root in tune with the key
+      map: sweeten(pcs, root, settings.tuning),
+    };
+    sweetCache.set(id, ctxT);
+    if (sweetCache.size > 16) sweetCache.delete(sweetCache.keys().next().value);
+  }
+  return ctxT;
+}
+
+/** Cents to nudge `note` by, in the chord with tuning id `id`. */
+function tuningCents(note, id = chordRoot()) {
+  if (!id || settings.tuning === 'equal') return 0;
+  const ctxT = sweetFor(id);
+  const pc = ((Math.round(note) % 12) + 12) % 12;
+  if (!ctxT.map.has(pc)) {
+    // A note outside the chord (arp, mono, a passing key): the tuning that beats least
+    // against everything already settled for this chord.
+    ctxT.map = sweeten([pc], ctxT.root, settings.tuning, ctxT.map);
+  }
+  return ctxT.rootShift + ctxT.map.get(pc);
 }
 
 /** A note as the synths should play it: a fractional MIDI note, nudged to just intonation. */
@@ -1217,6 +1263,7 @@ function showPwm() {
 }
 bindRange('arp-level', 'arpLevel', (v) => `${v}%`);
 bindSelect('tuning', 'tuning', Object.entries(TUNINGS), () => {
+  clearSweet();
   applyPure();
   if (ctx) padFollow(ctx.currentTime, 0.05);
   monoRoot = undefined; // retune a held mono note on the next 16th
@@ -1229,7 +1276,7 @@ $('tuning-pure').addEventListener('change', () => {
 });
 bindSelect('tuning-key', 'tuningKey',
   [['auto', 'Auto'], ...['C', 'C♯', 'D', 'E♭', 'E', 'F', 'F♯', 'G', 'A♭', 'A', 'B♭', 'B'].map((n, i) => [String(i), n])],
-  () => { renderPure(); if (ctx) padFollow(ctx.currentTime, 0.05); monoRoot = undefined; if (arpTail) arpTail.root = undefined; });
+  () => { clearSweet(); renderPure(); if (ctx) padFollow(ctx.currentTime, 0.05); monoRoot = undefined; if (arpTail) arpTail.root = undefined; });
 renderPure(); // the audio side is applied when audio starts (ensureAudio)
 onRecall(applyPure);
 bindRange('humanize', 'humanize', (v) => (v ? `${v}%` : 'off'));
