@@ -5,25 +5,26 @@ import {
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   progressionChord, anticipatedSlot, chordTie, SLOT_OCTAVES, humanizeOffset, humanizeLevel,
+  MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=80';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=80';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=80';
-import { Midi } from './midi.js?v=80';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=80';
+} from './core.js?v=82';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=82';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=82';
+import { Midi } from './midi.js?v=82';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=82';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=80';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=80';
+} from './percussion.js?v=82';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=82';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
-} from './breaks.js?v=80';
-import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=80';
+} from './breaks.js?v=82';
+import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=82';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=80';
+} from './mono.js?v=82';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -129,6 +130,8 @@ const settings = {
   progOn: false,
   progLength: 4,
   progOctave: 3,
+  progModEvery: 0, // modulate every N rounds of the progression (0 = off)
+  progModBy: 2, // semitones per modulation
   progVoicing: 'set', // 'set': each chord's own inversion; 'smooth': nearest inversion to the last chord
   progression: defaultProgression(),
   drumOn: false,
@@ -478,7 +481,9 @@ function chordSource(step) {
   const slots = settings.progression.slice(0, settings.progLength);
   const next = anticipatedSlot(pulse, slots);
   if (next < 0) return engine.notes;
-  return engine.notesWith(progressionChord(progVoicings()[next]?.notes || []));
+  // The pushed chord is in the key of the round it belongs to (it may be the next one).
+  const shift = progShiftAt(pulse + PPQN / 2);
+  return engine.notesWith(progressionChord(shifted(progVoicings()[next]?.notes || [], shift)));
 }
 
 function playChord(step) {
@@ -560,19 +565,33 @@ function playChord(step) {
 // ---- chord progression: swaps the chord the arp and chord layer play, on the clock.
 let progIndex = -1;
 
+let progShift = 0; // semitones the progression is modulated by right now
+
+/** Semitones of modulation at clock `pulse`. */
+function progShiftAt(pulse) {
+  const slots = settings.progression.slice(0, settings.progLength);
+  return modulationShift(progressionRound(pulse, slots), settings.progModEvery, settings.progModBy);
+}
+
+/** A slot's notes, modulated by `shift` semitones (kept within MIDI range). */
+const shifted = (notes, shift) => notes.map((n) => n + shift).filter((n) => n >= 0 && n <= 127);
+
 function stepProgression(time, pulse) {
   if (!settings.progOn) return;
   const slots = settings.progression.slice(0, settings.progLength);
   const i = progressionAt(pulse, slots);
-  if (i === progIndex) return;
+  const shift = progShiftAt(pulse);
+  if (i === progIndex && shift === progShift) return;
   progIndex = i;
-  engine.setProgressionNotes(progVoicings()[i]?.notes || []);
-  uiEvents.push({ kind: 'prog', time, index: i });
+  progShift = shift;
+  engine.setProgressionNotes(shifted(progVoicings()[i]?.notes || [], shift));
+  uiEvents.push({ kind: 'prog', time, index: i, shift });
 }
 
 /** Stop the progression feeding notes; it restarts from the current clock position. */
 function resetProgression() {
   progIndex = -1;
+  progShift = 0;
   engine.setProgressionNotes([]);
 }
 
@@ -1215,6 +1234,12 @@ function buildProgression() {
   for (let o = 1; o <= 6; o++) $('prog-octave').add(new Option(`C${o}`, String(o)));
   bindSelect('prog-octave', 'progOctave', null, () => progEdited());
   bindSelect('prog-voicing', 'progVoicing', Object.entries(PROG_VOICINGS), () => progEdited());
+  bindSelect('prog-mod-every', 'progModEvery',
+    MOD_EVERY.map((n) => [String(n), n === 0 ? 'Off' : `every ${n === 1 ? 'round' : `${n} rounds`}`]), () => { renderModBy(); progEdited(); });
+  bindSelect('prog-mod-by', 'progModBy',
+    Object.entries(MOD_INTERVALS).sort((a, b) => (Number(a[0]) < 0) - (Number(b[0]) < 0) || Math.abs(a[0]) - Math.abs(b[0])),
+    () => progEdited());
+  renderModBy();
 
   const preset = $('prog-preset');
   for (const name of Object.keys(PROGRESSION_PRESETS)) preset.add(new Option(name, name));
@@ -1279,6 +1304,7 @@ function renderProgression() {
   $('prog-on').setAttribute('aria-pressed', String(settings.progOn));
   $('prog-on').textContent = settings.progOn ? 'On' : 'Off';
   $('prog-panel').classList.toggle('off', !settings.progOn);
+  showProgKey(progShift);
   $('prog-length').querySelectorAll('button').forEach((b) => {
     b.setAttribute('aria-pressed', String(Number(b.dataset.n) === settings.progLength));
   });
@@ -1290,6 +1316,21 @@ function renderProgression() {
     // Slots past the length still show their own inversion as a slash chord.
     renderSlot(i, voicings[i] || { notes: slotNotes(settings.progression[i], settings.progOctave), inv: settings.progression[i].inv || 0 });
   });
+}
+
+/** The modulation interval only matters when modulation is on. */
+function renderModBy() {
+  $('prog-mod-by').disabled = !settings.progModEvery;
+}
+onRecall(renderModBy);
+
+/** Show which key the progression is in now (relative to how it's written). */
+function showProgKey(shift = 0) {
+  const el = $('prog-key');
+  if (!settings.progModEvery || !settings.progOn) { el.textContent = ''; return; }
+  const first = settings.progression[0];
+  const key = first && first.type !== 'rest' ? ` (${NOTE_CLASSES[(first.root + shift + 12) % 12]})` : '';
+  el.textContent = `Key ${shift > 0 ? '+' : shift < 0 ? '−' : '±'}${Math.abs(shift)}${key}`;
 }
 
 let lastSlotEl = null;
@@ -3122,6 +3163,7 @@ function frame() {
     }
     if (ev.kind === 'prog') {
       showProgSlot(ev.index);
+      showProgKey(ev.shift);
       renderKeyState();
       continue;
     }
