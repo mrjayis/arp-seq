@@ -20,8 +20,8 @@ held notes ──► ARPEGGIATOR ──► note ──► SEQUENCER step n ─�
 
 ### Scenes
 - **Save scene** stores everything as it is now under a name: all the sounds, the arp sequence, mono sequence, progression, drum and break patterns in every slot, the song chain, mixer levels and effects. **Recall** brings it all back. **Update** overwrites a scene with the current state, and **Rename** and **Delete** do what they say. The scene you last saved or recalled is outlined.
-- Recall reloads the page so every window is rebuilt from the scene, so playback stops: press Play again. **Undo recall** goes back to how things were just before.
-- Not part of a scene: the look (theme), which windows are folded, MIDI ports, master volume and the built-in synth switch, since those belong to the device. Your drum samples and loaded break are stored once in the browser rather than in each scene, so a scene uses whichever ones are loaded.
+- **Recall is live:** while playing, the scene comes in on the next bar's downbeat without stopping (its row blinks while it waits). When stopped it applies at once. **Undo recall** switches back the same way.
+- Not part of a scene: the look (theme), which windows are folded, MIDI ports and clock source, master volume, the built-in synth switch and the keyboard octave and chord root, since those belong to the device or the moment. Your drum samples and loaded break are stored once in the browser rather than in each scene, so a scene uses whichever ones are loaded.
 - Scenes live in this browser. **Export…** downloads them all as a file, as a backup or to move them to another device. **Import…** adds the scenes from such a file to the ones you have.
 
 ### Song mode

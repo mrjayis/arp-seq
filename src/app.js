@@ -1,4 +1,5 @@
 import {
+  PPQN,
   ArpSeqEngine, MODES, MODE_LABELS, RATES, PITCH_RANGE,
   MIN_SEQ_LENGTH, MAX_SEQ_LENGTH, noteName, defaultSteps, CHORDS, chordNotes,
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
@@ -6,23 +7,23 @@ import {
   progressionChord, anticipatedSlot, chordTie, SLOT_OCTAVES, humanizeOffset, humanizeLevel,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=78';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=78';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=78';
-import { Midi } from './midi.js?v=78';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=78';
+} from './core.js?v=79';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=79';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=79';
+import { Midi } from './midi.js?v=79';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=79';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=78';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=78';
+} from './percussion.js?v=79';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=79';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
-} from './breaks.js?v=78';
-import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=78';
+} from './breaks.js?v=79';
+import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=79';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=78';
+} from './mono.js?v=79';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -162,19 +163,29 @@ const settings = {
   chordMidiCh: -1,
 };
 
+// What every setting starts as, for scenes saved before a setting existed.
+const DEFAULTS = structuredClone(settings);
+// Settings that belong to this device or this moment, not to a scene.
+const DEVICE_KEYS = [
+  'theme', 'themeV2', 'collapsed', 'showHelp', 'midiIn', 'midiInCh', 'midiOut', 'midiOutCh', 'volume', 'synthOn',
+  'sync', 'baseOctave', 'chordRoot',
+];
+// Live scene recall: each part of the page registers how to re-read its settings,
+// in page order (repairs first, then controls, then drawing). See recallLive().
+const recallHooks = [];
+const onRecall = (fn) => { recallHooks.push(fn); return fn; };
+let pendingScene = null; // a recalled scene waiting for the next bar: {data, currentId, name}
+
 try {
   const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
   if (saved && typeof saved === 'object') Object.assign(settings, saved);
 } catch { /* storage unavailable */ }
 
 let saveTimer;
-let recalling = false; // a scene is being loaded: don't overwrite it with the old settings
 /** Save settings, debounced for slider drags; `now` writes immediately. */
 function save(now = false) {
   clearTimeout(saveTimer);
-  if (recalling) return;
   const write = () => {
-    if (recalling) return;
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(settings)); } catch { /* ignore */ }
   };
   if (now) write();
@@ -192,9 +203,11 @@ function applyEngineSettings() {
   settings.steps = engine.steps.map((s) => ({ ...s }));
 }
 applyEngineSettings();
+onRecall(applyEngineSettings);
 
 // Repair a stored progression (older saves have none, or a different shape).
-{
+onRecall(repairProgression)();
+function repairProgression() {
   const fallback = defaultProgression();
   const saved = Array.isArray(settings.progression) ? settings.progression : [];
   settings.progression = fallback.map((def, i) => {
@@ -573,6 +586,8 @@ function human(step) {
 const humanLevel = (v, max) => humanizeLevel(v, settings.humanize / 100, Math.random, max);
 
 function onPulse(time, pulse, pulseDuration) {
+  // A recalled scene takes over on a bar's downbeat, before anything on it is scheduled.
+  if (pendingScene && pulse % (PPQN * 4) === 0) applyPendingScene();
   if (settings.clockOut && settings.sync === 'internal') midi.clock(toPerfMs(time));
   stepProgression(time, pulse);
   const swing = settings.swing / 100;
@@ -696,6 +711,7 @@ function setPlaying(on, { fromClock = false } = {}) {
     if (on) { ensureAudio(); externalClock.continue(); } else externalClock.running = false;
   }
   if (!on) {
+    if (pendingScene) queueMicrotask(applyPendingScene); // stopped before the bar came: switch now
     synth?.panic();
     padVoices.clear(); // panic already silenced them
     breakPlayer?.stop(ctx ? ctx.currentTime : 0);
@@ -816,6 +832,9 @@ function bindSelect(id, key, options, onChange) {
   const el = $(id);
   if (options) for (const [value, label] of options) el.add(new Option(label, value));
   el.value = String(settings[key]);
+  if (!DEVICE_KEYS.includes(key)) {
+    onRecall(() => { el.value = String(settings[key]); onChange?.(settings[key]); });
+  }
   el.addEventListener('change', () => {
     const v = el.value;
     settings[key] = typeof settings[key] === 'number' ? Number(v) : v;
@@ -830,6 +849,9 @@ function bindRange(id, key, format, onChange) {
   el.value = settings[key];
   const show = () => { if (out) out.textContent = format(Number(el.value)); };
   show();
+  if (!DEVICE_KEYS.includes(key)) {
+    onRecall(() => { el.value = settings[key]; show(); onChange?.(settings[key]); });
+  }
   el.addEventListener('input', () => {
     settings[key] = Number(el.value);
     show();
@@ -850,6 +872,7 @@ function bindLog(id, key, min, max, format, onChange) {
   el.value = freqToSlider(settings[key], min, max);
   const show = () => { out.textContent = format(settings[key]); };
   show();
+  onRecall(() => { el.value = freqToSlider(settings[key], min, max); show(); onChange?.(settings[key]); });
   el.addEventListener('input', () => {
     settings[key] = sliderToFreq(Number(el.value), min, max);
     show();
@@ -878,6 +901,7 @@ function setBpm(bpm) {
 $('play').addEventListener('click', () => setPlaying(!playing));
 $('bpm').value = settings.bpm;
 $('bpm').addEventListener('change', () => setBpm(Number($('bpm').value)));
+onRecall(() => { if (settings.sync === 'internal') setBpm(settings.bpm); });
 
 let taps = [];
 $('tap').addEventListener('click', () => {
@@ -898,6 +922,8 @@ bindSelect('sync', 'sync', null, (mode) => {
 $('bpm').disabled = $('tap').disabled = settings.sync === 'external';
 
 $('clock-out').checked = settings.clockOut;
+onRecall(() => { $('clock-out').checked = settings.clockOut; });
+onRecall(() => setLatch(!!settings.latch));
 $('clock-out').addEventListener('change', () => { settings.clockOut = $('clock-out').checked; save(); });
 
 bindSelect('mode', 'mode', MODES.map((m) => [m, MODE_LABELS[m]]), (m) => engine.setMode(m));
@@ -1000,7 +1026,7 @@ $('arp-on').addEventListener('click', () => {
   renderArpOn();
   save();
 });
-renderArpOn();
+onRecall(renderArpOn)();
 
 $('chord-on').addEventListener('click', () => {
   settings.chordOn = !settings.chordOn;
@@ -1051,11 +1077,11 @@ function renderChordSound() {
     ? (pad ? 'Each new chord note is struck and rings out; Release sets the damping.' : 'Tip: a Gate near 100% lets the piano ring.')
     : fm ? (pad ? 'The swell follows Attack and Release.' : 'Pad mode suits it best: the swell then follows Attack and Release.') : '';
 }
-renderChordSound();
+onRecall(renderChordSound)();
 $('chord-wave').addEventListener('change', showPwm);
 $('chord-wave2').addEventListener('change', showPwm);
-showPwm();
-$('chord-sub-level').disabled = settings.chordSub === 'off';
+onRecall(showPwm)();
+onRecall(() => { $('chord-sub-level').disabled = settings.chordSub === 'off'; })();
 for (let o = -2; o <= 2; o++) $('chord-octave').add(new Option(o > 0 ? `+${o}` : String(o), String(o)));
 bindSelect('chord-octave', 'chordOctave');
 bindRange('chord-gate', 'chordGate', (v) => `${v}%`);
@@ -1079,7 +1105,7 @@ function renderChordMode() {
   if (typeof renderChordSound === 'function' && $('fm-note')) renderChordSound();
   $('pad-glide').closest('label').classList.toggle('dim', !settings.chordFollowSeq);
 }
-renderChordMode();
+onRecall(renderChordMode)();
 bindCutoff('chord-cutoff', 'chordCutoff');
 bindRange('chord-res', 'chordResonance', (v) => v.toFixed(1));
 bindRange('chorus-mix', 'chordChorusMix', (v) => `${v}%`, (v) => chorus?.setMix(v / 100));
@@ -1094,6 +1120,12 @@ $('chord-syncopate').addEventListener('change', () => {
 $('chord-tie').checked = settings.chordTie;
 $('chord-tie').disabled = !settings.chordSyncopate;
 $('chord-tie').addEventListener('change', () => { settings.chordTie = $('chord-tie').checked; save(); });
+onRecall(() => {
+  for (const [id, key] of [['chord-syncopate', 'chordSyncopate'], ['chord-tie', 'chordTie'], ['chord-gate-arp', 'chordGateArp'], ['chord-follow', 'chordFollowSeq']]) {
+    $(id).checked = !!settings[key];
+  }
+  $('chord-tie').disabled = !settings.chordSyncopate;
+});
 $('chord-gate-arp').checked = settings.chordGateArp;
 $('chord-gate-arp').addEventListener('change', () => { settings.chordGateArp = $('chord-gate-arp').checked; save(); });
 $('chord-follow').checked = settings.chordFollowSeq;
@@ -1265,7 +1297,7 @@ function showProgSlot(i) {
 }
 
 buildProgression();
-renderProgression();
+onRecall(() => { progIndex = -1; renderProgression(); })();
 
 // ---------------------------------------------------------------- UI: percussion
 // The current kit's pattern, preset and mutes live in settings.drumRows / drumPreset /
@@ -1791,6 +1823,22 @@ buildDrums();
 $('sample-tools').hidden = settings.drumKit !== 'user';
 renderDrumMix();
 renderDrumGrid();
+onRecall(() => {
+  loadKitState();
+  if (!settings.drumKitStore || typeof settings.drumKitStore !== 'object') settings.drumKitStore = {};
+  for (const k of ['drumMix', 'sampleLevels', 'sampleTunes']) {
+    if (!settings[k] || typeof settings[k] !== 'object') settings[k] = {};
+  }
+  for (const k of Object.keys(drumSlotCache)) delete drumSlotCache[k];
+  evolveCache = { bar: -1, rows: null, src: null, amount: -1 };
+  $('drum-kit').value = settings.drumKit;
+  $('sample-tools').hidden = settings.drumKit !== 'user';
+  $('drum-cond').disabled = settings.drumTapMode !== 'cond';
+  buildDrumGrid();
+  fillDrumPresets();
+  renderDrumMix();
+  renderDrumGrid();
+});
 loadSamples().then(async (stored) => {
   // Once: re-sort samples loaded under the old keyword matching with the
   // first-three-letters rule (it could put e.g. a clap on the hi-hat row).
@@ -1831,10 +1879,17 @@ if (!SLICE_COUNTS.includes(settings.breakSlices)) settings.breakSlices = 16;
 if (!BREAK_STEPS.includes(settings.breakSteps)) settings.breakSteps = 32;
 if (!BREAK_BARS.includes(settings.breakBars)) settings.breakBars = 2;
 if (!['equal', 'transient'].includes(settings.breakSliceMode)) settings.breakSliceMode = 'equal';
-if (typeof settings.breakPatternAuto !== 'boolean') settings.breakPatternAuto = !Array.isArray(settings.breakPattern);
-settings.breakPattern = Array.isArray(settings.breakPattern) && settings.breakPattern.length
-  ? resizePattern(settings.breakPattern, settings.breakSteps)
-  : inOrder(settings.breakSteps, equalPoints(settings.breakSlices, 1), 1, settings.breakBars * 16);
+onRecall(repairBreak)();
+function repairBreak() {
+  if (!SLICE_COUNTS.includes(settings.breakSlices)) settings.breakSlices = 16;
+  if (!BREAK_STEPS.includes(settings.breakSteps)) settings.breakSteps = 32;
+  if (!BREAK_BARS.includes(settings.breakBars)) settings.breakBars = 2;
+  if (!['equal', 'transient'].includes(settings.breakSliceMode)) settings.breakSliceMode = 'equal';
+  if (typeof settings.breakPatternAuto !== 'boolean') settings.breakPatternAuto = !Array.isArray(settings.breakPattern);
+  settings.breakPattern = Array.isArray(settings.breakPattern) && settings.breakPattern.length
+    ? resizePattern(settings.breakPattern, settings.breakSteps)
+    : inOrder(settings.breakSteps, equalPoints(settings.breakSlices, 1), 1, settings.breakBars * 16);
+}
 
 const sliceCount = () => breakPoints.length;
 
@@ -2187,6 +2242,14 @@ $('break-sensitivity').disabled = settings.breakSliceMode !== 'transient';
 $('break-slices').disabled = settings.breakSliceMode === 'transient';
 buildBreakRows();
 renderBreakPanel();
+onRecall(() => {
+  $('break-fit').checked = settings.breakFit;
+  $('break-sensitivity').disabled = settings.breakSliceMode !== 'transient';
+  $('break-slices').disabled = settings.breakSliceMode === 'transient';
+  if (breakBuffer) computeBreakPoints();
+  else buildBreakRows();
+  renderBreakPanel();
+});
 // Your saved break, decoded without needing an audio context yet; else the demo.
 loadBreak().then(async (stored) => {
   if (stored?.data) {
@@ -2296,10 +2359,14 @@ function showSongBar(bar) {
   renderSlotButtons();
 }
 
-if (!SLOTS.includes(settings.breakSlot)) settings.breakSlot = 'A';
-if (!settings.breakSlots || typeof settings.breakSlots !== 'object') settings.breakSlots = {};
-if (!Array.isArray(settings.songChain)) settings.songChain = ['A', 'A', 'B', 'A'];
-settings.songChain = settings.songChain.filter((s) => SLOTS.includes(s));
+onRecall(repairSong)();
+function repairSong() {
+  if (!SLOTS.includes(settings.breakSlot)) settings.breakSlot = 'A';
+  if (!settings.breakSlots || typeof settings.breakSlots !== 'object') settings.breakSlots = {};
+  for (const k of Object.keys(breakSlotCache)) delete breakSlotCache[k];
+  if (!Array.isArray(settings.songChain)) settings.songChain = ['A', 'A', 'B', 'A'];
+  settings.songChain = settings.songChain.filter((s) => SLOTS.includes(s));
+}
 
 for (const kind of ['drum', 'break']) {
   for (const s of SLOTS) {
@@ -2326,8 +2393,7 @@ document.querySelectorAll('[data-add-bar]').forEach((b) => b.addEventListener('c
   save();
 }));
 $('song-clear').addEventListener('click', () => { settings.songChain = []; renderSong(); save(); });
-renderSong();
-renderSlotButtons();
+onRecall(() => { renderSong(); renderSlotButtons(); })();
 
 // ---------------------------------------------------------------- UI: mono synth (101-style)
 let monoSynth = null;
@@ -2367,12 +2433,15 @@ const DEMO_MONO = [
   noteStep(36), noteStep(48, true), noteStep(36), restStep(), noteStep(39), holdStep(), noteStep(41, true), noteStep(43),
   noteStep(36), noteStep(48), restStep(), noteStep(46, true), noteStep(43), holdStep(), noteStep(39), noteStep(41),
 ];
-if (!Array.isArray(settings.monoSeq)) settings.monoSeq = DEMO_MONO.map((s) => ({ ...s }));
-settings.monoSeq = settings.monoSeq
-  .filter((s) => s && (s.n === null || (Number.isInteger(s.n) && s.n >= 0 && s.n < 128)))
-  .slice(0, MAX_MONO_STEPS)
-  .map((s) => ({ n: s.n, t: !!s.t }));
-monoCursor = settings.monoSeq.length;
+onRecall(repairMono)();
+function repairMono() {
+  if (!Array.isArray(settings.monoSeq)) settings.monoSeq = DEMO_MONO.map((s) => ({ ...s }));
+  settings.monoSeq = settings.monoSeq
+    .filter((s) => s && (s.n === null || (Number.isInteger(s.n) && s.n >= 0 && s.n < 128)))
+    .slice(0, MAX_MONO_STEPS)
+    .map((s) => ({ n: s.n, t: !!s.t }));
+  monoCursor = settings.monoSeq.length;
+}
 
 /** Close the mono voice's gate now (sequence cleared, Mono switched off): no drone, no stuck MIDI note. */
 function monoAllOff() {
@@ -2571,6 +2640,14 @@ bindRange('mono-level', 'monoLevel', pct, applyMono);
 
 renderMonoPanel();
 renderMonoSteps();
+onRecall(() => {
+  $('mono-keys').checked = settings.monoKeys;
+  if (!settings.monoKeys) monoKeyTranspose = 0;
+  if (!settings.monoOn) monoAllOff();
+  applyMono();
+  renderMonoPanel();
+  renderMonoSteps();
+});
 
 // ---------------------------------------------------------------- UI: effects
 let lastDelayBpm = 0;
@@ -2605,6 +2682,7 @@ bindSelect('delay-time', 'delayTime', DELAY_TIMES.map((d) => [d, d]), applyFx);
 bindRange('delay-feedback', 'delayFeedback', (v) => `${v}%`, applyFx);
 bindLog('delay-tone', 'delayTone', 300, 12000, formatHz, applyFx);
 $('delay-pingpong').checked = settings.delayPingPong;
+onRecall(() => { $('delay-pingpong').checked = settings.delayPingPong; applyFx(); updateDelayTime(); });
 $('delay-pingpong').addEventListener('change', () => { settings.delayPingPong = $('delay-pingpong').checked; applyFx(); save(); });
 bindLog('reverb-size', 'reverbSize', 300, 8000, (ms) => `${(ms / 1000).toFixed(1)} s`, applyFx);
 bindRange('reverb-pre', 'reverbPre', (v) => `${v} ms`, applyFx);
@@ -2672,6 +2750,7 @@ function showModDepth() {
 }
 showModDepth();
 $('osc2-sync').checked = settings.osc2SyncCutoff;
+onRecall(() => { $('osc2-sync').checked = settings.osc2SyncCutoff; showModDepth(); showOsc2Cutoff(); });
 $('osc2-sync').addEventListener('change', () => {
   settings.osc2SyncCutoff = $('osc2-sync').checked;
   showOsc2Cutoff();
@@ -3088,14 +3167,14 @@ function frame() {
 
 // ---------------------------------------------------------------- UI: scenes
 // A scene is a named snapshot of the settings: every sound, sequence, pattern, slot,
-// progression, song and effect. Things that belong to this device or this view stay
-// put (theme, folded windows, MIDI ports, master volume). Recalling writes the scene
-// into storage and reloads the page, which rebuilds everything from it; the state
-// before the recall is kept so it can be undone.
+// progression, song and effect. Things that belong to this device or this moment stay
+// put (DEVICE_KEYS: theme, folded windows, MIDI, volume, clock source, keyboard octave).
+// Recall is live: while playing, the scene takes over on the next bar's downbeat and
+// every window re-reads its settings (recallHooks); stopped, it applies at once.
+// The state before the recall is kept so it can be undone.
 const SCENES_KEY = 'arp-seq-scenes-v1';
 const UNDO_KEY = 'arp-seq-scene-undo-v1';
 const CURRENT_SCENE_KEY = 'arp-seq-scene-current-v1';
-const DEVICE_KEYS = ['theme', 'themeV2', 'collapsed', 'showHelp', 'midiIn', 'midiInCh', 'midiOut', 'midiOutCh', 'volume', 'synthOn'];
 
 const readJson = (key, fallback) => {
   try { return JSON.parse(localStorage.getItem(key) || 'null') ?? fallback; } catch { return fallback; }
@@ -3127,22 +3206,38 @@ function sceneStatus(text) {
   statusTimer = setTimeout(() => { $('scene-status').textContent = ''; }, 4000);
 }
 
-/** Load a snapshot: keep this device's own settings, store it, rebuild the page from it. */
-function applyScene(data, currentId = null) {
+/** Recall a snapshot: on the next bar while playing, otherwise straight away. */
+function applyScene(data, currentId = null, name = '') {
+  pendingScene = { data, currentId, name };
+  if (playing) {
+    sceneStatus(name ? `"${name}" comes in on the next bar…` : 'Going back on the next bar…');
+    renderScenes();
+  } else applyPendingScene();
+}
+
+/** Swap the settings for the pending scene and have every window re-read them. */
+function applyPendingScene() {
+  if (!pendingScene) return;
+  const { data, currentId, name } = pendingScene;
+  pendingScene = null;
+  const undo = sceneSnapshot();
   const keep = {};
   for (const k of DEVICE_KEYS) if (k in settings) keep[k] = settings[k];
+  for (const k of Object.keys(settings)) delete settings[k];
+  Object.assign(settings, structuredClone(DEFAULTS), structuredClone(data), keep);
+  uiEvents.length = 0; // queued display updates refer to the old patterns
+  for (const fn of recallHooks) {
+    try { fn(); } catch (err) { console.error('scene recall:', err); }
+  }
   try {
-    localStorage.setItem(UNDO_KEY, JSON.stringify(settings));
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...data, ...keep }));
+    localStorage.setItem(UNDO_KEY, JSON.stringify(undo));
     if (currentId) localStorage.setItem(CURRENT_SCENE_KEY, currentId);
     else localStorage.removeItem(CURRENT_SCENE_KEY);
-  } catch {
-    sceneStatus('Couldn\'t load the scene: storage is blocked.');
-    return;
-  }
-  recalling = true;
-  clearTimeout(saveTimer);
-  location.reload();
+  } catch { /* storage blocked: the recall still works */ }
+  save(true);
+  $('scene-undo').hidden = false;
+  renderScenes();
+  sceneStatus(name ? `Recalled "${name}".` : 'Back to how it was before the recall.');
 }
 
 const formatWhen = (iso) => {
@@ -3157,6 +3252,7 @@ function renderScenes() {
   scenes.forEach((scene, i) => {
     const li = document.createElement('li');
     li.classList.toggle('current', scene.id === current);
+    li.classList.toggle('pending', pendingScene?.currentId === scene.id);
     const title = document.createElement('span');
     title.className = 'scene-title';
     title.textContent = scene.name;
@@ -3174,7 +3270,7 @@ function renderScenes() {
     };
     li.append(
       title, when,
-      btn('Recall', 'Load this scene (the page reloads; playback stops)', () => applyScene(scene.settings, scene.id)),
+      btn('Recall', 'Switch to this scene: on the next bar while playing, at once when stopped', () => applyScene(scene.settings, scene.id, scene.name)),
       btn('Update', 'Replace this scene with everything as it is now (click twice)', () => {
         scenes[i] = { ...scene, saved: new Date().toISOString(), settings: sceneSnapshot() };
         if (storeScenes()) {
@@ -3236,9 +3332,7 @@ $('scene-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('s
 $('scene-undo').hidden = !localStorage.getItem(UNDO_KEY);
 $('scene-undo').addEventListener('click', () => {
   const before = readJson(UNDO_KEY, null);
-  if (!before) return;
-  applyScene(before);
-  try { localStorage.removeItem(UNDO_KEY); } catch { /* ignore */ }
+  if (before) applyScene(before);
 });
 
 $('scene-export').addEventListener('click', () => {
@@ -3409,6 +3503,14 @@ for (const [id, collapse] of [['collapse-all', true], ['expand-all', false]]) {
 buildSteps();
 renderLengthButtons();
 renderOsc2(); // also renders the steps
+onRecall(() => {
+  renderLengthButtons();
+  renderOsc2();
+  if (synth) { synth.wave = settings.wave; synth.cutoff = settings.cutoff; }
+  drums?.setLevel(settings.drumLevel / 100);
+  breakPlayer?.setLevel(settings.breakLevel / 100);
+  renderKeyState();
+});
 buildChordPads();
 buildKeyboard();
 requestAnimationFrame(frame);
