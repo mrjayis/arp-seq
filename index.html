@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=90" />
-  <link rel="stylesheet" href="mac.css?v=90" />
+  <link rel="stylesheet" href="styles.css?v=91" />
+  <link rel="stylesheet" href="mac.css?v=91" />
 </head>
 <body>
   <main class="device">
@@ -575,6 +575,8 @@
         <label class="field inline">Steps <select id="break-steps"></select></label>
         <label class="field inline">Break is <select id="break-bars" title="How long the loaded break is, so it can be fitted to the tempo"></select></label>
         <label class="check"><input id="break-fit" type="checkbox" /> Fit to tempo</label>
+        <label class="check" title="On: a roll keeps retriggering through the empty rows after it until the next filled row (like the Polyend Tracker), ramping over the whole run. Off: a roll fills only its own step.">
+          <input id="break-roll-hold" type="checkbox" /> Roll until next</label>
         <label class="field inline slider">Pitch <output id="break-pitch-val"></output>
           <input id="break-pitch" type="range" min="-12" max="12" step="0.1" />
         </label>
@@ -706,6 +708,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=90"></script>
+  <script type="module" src="src/app.js?v=91"></script>
 </body>
 </html>

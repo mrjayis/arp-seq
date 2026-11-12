@@ -130,26 +130,45 @@ export function detectTransients(data, rate, { sensitivity = 0.5, minGap = 0.06,
  * step into n triggers, shaped by its type; Chance may skip the row (then the
  * previous slice keeps playing). [{cut: true}] for Cut; [] for an empty row.
  */
-export function rowTriggers(row, stepDur, rng = Math.random) {
+export function rowTriggers(row, stepDur, rng = Math.random, { span = 1, part = 0 } = {}) {
   if (!row) return [];
   const r = migrateRow(row);
-  if (r.chance < 100 && rng() * 100 >= r.chance) return [];
-  if (r.fx === 'cut') return [{ at: 0, cut: true }];
+  // Chance is decided once, where the row is; a roll carrying on doesn't roll the dice again.
+  if (part === 0 && r.chance < 100 && rng() * 100 >= r.chance) return [];
+  if (r.fx === 'cut') return part === 0 ? [{ at: 0, cut: true }] : [];
   if (r.slice === null || r.slice === undefined) return [];
   const n = r.roll > 0 ? r.roll : 1;
+  if (n === 1 && part > 0) return []; // no roll: nothing to carry on
   const gain = Math.max(0, Math.min(100, r.vol)) / 100;
-  return Array.from({ length: n }, (_, i) => {
+  // A roll held over `span` steps ramps across all of them: this is step `part` of it.
+  const total = n * Math.max(1, span);
+  return Array.from({ length: n }, (_, j) => {
+    const i = part * n + j;
     let g = gain;
     let pitch = r.pitch;
-    if (n > 1) {
-      if (r.rollType === 'Rv') g = gain * ((n - i) / n);
-      if (r.rollType === 'RV') g = gain * ((i + 1) / n);
+    if (total > 1) {
+      if (r.rollType === 'Rv') g = gain * ((total - i) / total);
+      if (r.rollType === 'RV') g = gain * ((i + 1) / total);
       if (r.rollType === 'Rn') pitch -= i;
       if (r.rollType === 'RN') pitch += i;
       if (r.rollType === 'RR' && i > 0) pitch += Math.round(rng() * 24) - 12;
     }
-    return { at: (i * stepDur) / n, slice: r.slice, reverse: r.fx === 'rev', pitch, gain: g };
+    pitch = Math.max(-24, Math.min(24, pitch));
+    return { at: (j * stepDur) / n, slice: r.slice, reverse: r.fx === 'rev', pitch, gain: g };
   });
+}
+
+/** A row with something on it: a slice, or a Cut. */
+export const isFilled = (row) => !!row && ((row.slice !== null && row.slice !== undefined) || row.fx === 'cut');
+
+/**
+ * How many steps a roll at `idx` lasts when it holds until the next filled row
+ * (wrapping round the pattern): 1 if the next row is filled, up to the pattern length.
+ */
+export function rollSpan(pattern, idx) {
+  const n = pattern.length;
+  for (let k = 1; k < n; k++) if (isFilled(pattern[(idx + k) % n])) return k;
+  return n;
 }
 
 /**

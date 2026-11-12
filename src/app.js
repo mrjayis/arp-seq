@@ -8,24 +8,24 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=90';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=90';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=90';
-import { Midi } from './midi.js?v=90';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=90';
+} from './core.js?v=91';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=91';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=91';
+import { Midi } from './midi.js?v=91';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=91';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=90';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=90';
+} from './percussion.js?v=91';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=91';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
-  trimSamples, fadeEdges,
-} from './breaks.js?v=90';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=90';
+  trimSamples, fadeEdges, isFilled, rollSpan,
+} from './breaks.js?v=91';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=91';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=90';
+} from './mono.js?v=91';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -80,6 +80,7 @@ const settings = {
   chordTie: false, // a syncopated chord holds over the bar line instead of being struck again on the downbeat
   humanize: 0, // 0–100: random timing and level variation for every section
   monoKbOctave: 2, // the mono panel's little keyboard starts at C of this octave
+  breakRollHold: true, // a roll keeps going until the next filled row (Polyend style); off = one step
   breakTrim: { start: 0, end: 1 }, // the part of the loaded break that's used (fractions of the file)
   arpLevel: 100, // %: overall level of the arp (both voices)
   arpOn: true, // off: the arp and sequencer keep stepping (chords can follow) but play nothing
@@ -754,6 +755,7 @@ function setPlaying(on, { fromClock = false } = {}) {
     showMonoStep(-1);
     midi.allNotesOff();
     uiEvents.length = 0;
+    breakRoll = null;
     // Back to showing the patterns as written.
     drumOverlayShown = false;
     showDrumOverlay(null);
@@ -1988,12 +1990,28 @@ function orderedPattern() {
   return inOrder(settings.breakSteps, breakPoints, breakBuffer ? breakBuffer.duration : 1, settings.breakBars * 16);
 }
 
+let breakRoll = null; // a roll carrying on through empty rows: {row, span, part}
+
 function playBreakStep(step) {
   const idx = step.stepNumber % settings.breakSteps;
   const pattern = breakPatternFor(songSlot(step.stepNumber) || settings.breakSlot);
   const row = evolveBreakRow(pattern[idx], settings.breakEvolve / 100,
     barRng(runSeed, Math.floor(step.stepNumber / settings.breakSteps), idx + 101), sliceCount());
-  const triggers = rowTriggers(row, step.duration);
+  let triggers;
+  let rolling = false;
+  if (isFilled(row)) {
+    // A new row stops any roll; a roll here holds until the next filled row (Roll hold).
+    const span = settings.breakRollHold && row.roll > 0 && row.fx !== 'cut' ? rollSpan(pattern, idx) : 1;
+    triggers = rowTriggers(row, step.duration, Math.random, { span, part: 0 });
+    breakRoll = span > 1 && triggers.length ? { row, span, part: 0 } : null;
+  } else if (breakRoll && breakRoll.part + 1 < breakRoll.span) {
+    breakRoll.part += 1;
+    triggers = rowTriggers(breakRoll.row, step.duration, Math.random, { span: breakRoll.span, part: breakRoll.part });
+    rolling = true;
+  } else {
+    breakRoll = null;
+    triggers = [];
+  }
   let shown = null;
   if (breakPlayer && breakBuffer) {
     const rate = fitRate(breakBuffer.duration, settings.breakBars, currentBpm(), settings.breakPitch, settings.breakFit);
@@ -2009,7 +2027,7 @@ function playBreakStep(step) {
       });
     }
   }
-  uiEvents.push({ kind: 'break', time: step.time, step: idx, slice: shown, change: breakRowChange(pattern[idx], row) });
+  uiEvents.push({ kind: 'break', time: step.time, step: idx, slice: shown, change: rolling ? 'roll…' : breakRowChange(pattern[idx], row) });
 }
 
 /**
@@ -2422,6 +2440,9 @@ bindSelect('break-bars', 'breakBars', null, () => {
 });
 $('break-fit').checked = settings.breakFit;
 $('break-fit').addEventListener('change', () => { settings.breakFit = $('break-fit').checked; save(); });
+$('break-roll-hold').checked = settings.breakRollHold;
+$('break-roll-hold').addEventListener('change', () => { settings.breakRollHold = $('break-roll-hold').checked; save(); });
+onRecall(() => { $('break-roll-hold').checked = settings.breakRollHold; });
 bindRange('break-pitch', 'breakPitch', (v) => `${v > 0 ? '+' : ''}${v.toFixed(1)} st`);
 bindRange('break-level', 'breakLevel', (v) => `${v}%`, (v) => breakPlayer?.setLevel(v / 100));
 bindRange('break-evolve', 'breakEvolve', (v) => (v ? `${v}%` : 'off'));
