@@ -899,3 +899,22 @@ html, body, * { touch-action: manipulation; }
 
 /* A button waiting for its confirming second click. */
 button.armed { background: var(--brick, #c4502f); border-color: var(--brick, #c4502f); color: #fff; }
+
+/* ---------- the mono panel's little keyboard ---------- */
+.mono-kb-wrap { margin: 2px 0 12px; }
+.mono-kb-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
+.mono-kb-head button { min-width: 28px; min-height: 26px; padding: 0 8px; }
+.mono-kb-head .oct { min-width: 4.5em; text-align: center; font-variant-numeric: tabular-nums; }
+.mono-kb-head .hint { padding: 0; }
+.keyboard.mini-kb { height: 78px; margin-top: 0; max-width: 560px; }
+.mini-kb .key[data-label]::before {
+  content: attr(data-label);
+  position: absolute;
+  bottom: 4px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 10px;
+  color: var(--ink-3);
+  pointer-events: none;
+}

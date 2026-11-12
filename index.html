@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=82" />
-  <link rel="stylesheet" href="mac.css?v=82" />
+  <link rel="stylesheet" href="styles.css?v=83" />
+  <link rel="stylesheet" href="mac.css?v=83" />
 </head>
 <body>
   <main class="device">
@@ -430,6 +430,15 @@
         <span class="status" id="mono-status"></span>
       </div>
       <div id="mono-steps" class="mono-steps"></div>
+      <div class="mono-kb-wrap">
+        <div class="mono-kb-head">
+          <button id="mono-kb-down" aria-label="Mono keyboard octave down">−</button>
+          <span id="mono-kb-oct" class="oct"></span>
+          <button id="mono-kb-up" aria-label="Mono keyboard octave up">+</button>
+          <span class="status hint">Tap a key to write it at the cursor (no need to arm Write).</span>
+        </div>
+        <div id="mono-kb" class="keyboard mini-kb" role="group" aria-label="Mono sequence keyboard"></div>
+      </div>
       <div class="row">
         <span class="row-label">Source</span>
         <label class="field slider">Saw <output id="mono-saw-val"></output>
@@ -684,6 +693,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=82"></script>
+  <script type="module" src="src/app.js?v=83"></script>
 </body>
 </html>
