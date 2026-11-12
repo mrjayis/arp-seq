@@ -80,3 +80,33 @@ export async function loadBreak() {
     return null;
   }
 }
+
+// ---- Score player: MIDI files you've loaded, {id: {name, data}}, in their own database.
+const SCORE_DB = 'arp-seq-scores';
+
+export function saveScore(id, entry) {
+  return run('readwrite', (store) => store.put(entry, id), SCORE_DB);
+}
+
+export function deleteScore(id) {
+  return run('readwrite', (store) => store.delete(id), SCORE_DB);
+}
+
+export async function loadScores() {
+  try {
+    const db = await openDb(SCORE_DB);
+    return await new Promise((resolve, reject) => {
+      const out = {};
+      const tx = db.transaction(STORE, 'readonly');
+      const req = tx.objectStore(STORE).openCursor();
+      req.onsuccess = () => {
+        const cursor = req.result;
+        if (cursor) { out[cursor.key] = cursor.value; cursor.continue(); }
+      };
+      tx.oncomplete = () => { db.close(); resolve(out); };
+      tx.onerror = () => { db.close(); reject(tx.error); };
+    });
+  } catch {
+    return {};
+  }
+}

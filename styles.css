@@ -41,6 +41,7 @@
 .scenes     { --mod: #7a5c2e; }
 .fx         { --mod: #9a3b5c; }
 .mono       { --mod: #2a6fb0; }
+.score      { --mod: #8a5a2b; }
 .song       { --mod: #4b5d23; }
 .brk        { --mod: #b25a22; }
 .keys-panel { --mod: var(--ink); --mod-ink: var(--plate); }
@@ -954,3 +955,11 @@ button.armed { background: var(--brick, #c4502f); border-color: var(--brick, #c4
 /* A tracker row whose slice is switched off: shown, but not played. */
 .trow.slice-off > :not(button) { opacity: 0.4; text-decoration: line-through; }
 .break-wave { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+
+/* ---------- score player ---------- */
+.score-parts { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 4px 0 6px; }
+.score-part { display: flex; align-items: center; gap: 8px; }
+.score-part .part-name { font-weight: 600; max-width: 14em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.score-part .part-info { color: var(--ink-3); font-size: 12px; font-style: italic; }
+.score.off .score-parts { opacity: 0.6; }
+#score-panel.dragover { outline: 2px dashed var(--mod); outline-offset: -4px; }

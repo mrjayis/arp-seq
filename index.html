@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=107" />
-  <link rel="stylesheet" href="mac.css?v=107" />
+  <link rel="stylesheet" href="styles.css?v=108" />
+  <link rel="stylesheet" href="mac.css?v=108" />
 </head>
 <body>
   <main class="device">
@@ -521,6 +521,26 @@
       </div>
     </section>
 
+    <section class="panel score" id="score-panel" aria-label="Score player">
+      <div class="seq-head">
+        <h2>Score Player</h2>
+        <button id="score-on" aria-pressed="false" title="Play the chosen piece in time with everything else">Off</button>
+        <label class="field inline">Piece <select id="score-pick"></select></label>
+        <button id="score-load" title="Add MIDI files (.mid): they stay in this browser">Load MIDI…</button>
+        <input id="score-file" type="file" multiple accept=".mid,.midi,audio/midi,audio/x-midi" hidden />
+        <button id="score-remove" title="Remove this piece from the list">Remove</button>
+        <label class="field inline">Transpose <select id="score-transpose"></select></label>
+        <label class="field inline">Speed <select id="score-speed" title="Play at this many times the tempo: ½ for practice, 2× to race"></select></label>
+        <label class="check"><input id="score-loop" type="checkbox" /> Loop</label>
+        <button id="score-tempo" title="Set the tempo to the one written in the file">Use its tempo</button>
+      </div>
+      <p class="hint">Load any Standard MIDI File (Bach's two-part Inventions, chorales, rags…; public-domain MIDI
+        is at mutopiaproject.org) and choose a synth for each part. It plays in time with the clock, starts on
+        the next bar, and with Just tuning it's sweetened like everything else. Drop .mid files onto this window too.</p>
+      <div id="score-parts" class="score-parts"></div>
+      <span class="status" id="score-status"></span>
+    </section>
+
     <section class="panel drums" id="drum-panel" aria-label="Percussion">
       <div class="seq-head">
         <h2>Percussion</h2>
@@ -717,6 +737,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=107"></script>
+  <script type="module" src="src/app.js?v=108"></script>
 </body>
 </html>
