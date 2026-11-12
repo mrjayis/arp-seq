@@ -8,24 +8,24 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=92';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=92';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=92';
-import { Midi } from './midi.js?v=92';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=92';
+} from './core.js?v=93';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=93';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=93';
+import { Midi } from './midi.js?v=93';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=93';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=92';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=92';
+} from './percussion.js?v=93';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=93';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
-  trimSamples, fadeEdges, isFilled, rollSpan,
-} from './breaks.js?v=92';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=92';
+  trimSamples, fadeEdges, isFilled, rollSpan, usableSlices,
+} from './breaks.js?v=93';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=93';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=92';
+} from './mono.js?v=93';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -80,6 +80,7 @@ const settings = {
   chordTie: false, // a syncopated chord holds over the bar line instead of being struck again on the downbeat
   humanize: 0, // 0–100: random timing and level variation for every section
   monoKbOctave: 2, // the mono panel's little keyboard starts at C of this octave
+  breakOff: [], // slices switched off (shift-click): not played, not picked by Evolve/Randomize
   breakRollHold: true, // a roll keeps going until the next filled row (Polyend style); off = one step
   breakTrim: { start: 0, end: 1 }, // the part of the loaded break that's used (fractions of the file)
   arpLevel: 100, // %: overall level of the arp (both voices)
@@ -1976,9 +1977,14 @@ const sliceCount = () => breakPoints.length;
 /** Recompute slice starts for the current break and slicing mode; refresh the pattern if it's auto. */
 function computeBreakPoints() {
   if (!breakBuffer) return;
+  const before = breakPoints.length;
   breakPoints = settings.breakSliceMode === 'transient'
     ? detectTransients(breakBuffer.getChannelData(0), breakBuffer.sampleRate, { sensitivity: settings.breakSensitivity / 100 })
     : equalPoints(settings.breakSlices, breakBuffer.duration);
+  // Switched-off slices are numbers: if the slicing changes how many there are, they no longer mean the same.
+  if (!Array.isArray(settings.breakOff)) settings.breakOff = [];
+  if (before && before !== breakPoints.length) settings.breakOff = [];
+  settings.breakOff = settings.breakOff.filter((k) => Number.isInteger(k) && k < breakPoints.length);
   if (settings.breakPatternAuto) settings.breakPattern = orderedPattern();
   $('break-slices').disabled = settings.breakSliceMode === 'transient';
   $('break-sensitivity').disabled = settings.breakSliceMode !== 'transient';
@@ -1995,8 +2001,12 @@ let breakRoll = null; // a roll carrying on through empty rows: {row, span, part
 function playBreakStep(step) {
   const idx = step.stepNumber % settings.breakSteps;
   const pattern = breakPatternFor(songSlot(step.stepNumber) || settings.breakSlot);
-  const row = evolveBreakRow(pattern[idx], settings.breakEvolve / 100,
-    barRng(runSeed, Math.floor(step.stepNumber / settings.breakSteps), idx + 101), sliceCount());
+  const off = settings.breakOff || [];
+  const evolved = evolveBreakRow(pattern[idx], settings.breakEvolve / 100,
+    barRng(runSeed, Math.floor(step.stepNumber / settings.breakSteps), idx + 101),
+    off.length ? usableSlices(sliceCount(), off) : sliceCount());
+  // A row on a switched-off slice counts as empty: whatever was playing carries on.
+  const row = evolved && off.includes(evolved.slice) && evolved.fx !== 'cut' ? { ...evolved, slice: null } : evolved;
   let triggers;
   let rolling = false;
   if (isFilled(row)) {
@@ -2242,6 +2252,20 @@ function drawBreak() {
     g.fillRect(x0, 0, x1 - x0, h);
     g.globalAlpha = 1;
   }
+  // Switched-off slices: hatched.
+  for (const k of settings.breakOff || []) {
+    if (k >= breakPoints.length) continue;
+    const [x0, x1] = span(k);
+    g.save();
+    g.beginPath();
+    g.rect(x0, 0, x1 - x0, h);
+    g.clip();
+    g.strokeStyle = ink;
+    g.globalAlpha = 0.35;
+    g.lineWidth = 1;
+    for (let x = x0 - h; x < x1; x += 6) { g.beginPath(); g.moveTo(x, h); g.lineTo(x + h, 0); g.stroke(); }
+    g.restore();
+  }
   g.fillStyle = ink;
   const cols = Math.floor(w);
   // Scanning the whole break is the slow part: do it once per break and width.
@@ -2333,6 +2357,16 @@ function buildBreakRows() {
     breakRowEls.push(el);
   });
   selectBreakRow(Math.min(breakSelected, settings.breakSteps - 1));
+  markOffRows();
+}
+
+/** Dim tracker rows whose slice is switched off. */
+function markOffRows() {
+  const off = settings.breakOff || [];
+  breakRowEls.forEach((el, i) => {
+    const s = settings.breakPattern[i]?.slice;
+    el.classList.toggle('slice-off', s !== null && s !== undefined && off.includes(s));
+  });
 }
 
 function editBreakRow(i, patch) {
@@ -2341,6 +2375,7 @@ function editBreakRow(i, patch) {
   const r = settings.breakPattern[i];
   const el = breakRowEls[i];
   el.classList.toggle('filled', r.slice !== null || r.fx === 'cut');
+  el.classList.toggle('slice-off', r.slice !== null && (settings.breakOff || []).includes(r.slice));
   el.classList.toggle('maybe', r.chance < 100);
   el.classList.toggle('rolled', r.roll > 1);
   drawBreak();
@@ -2390,6 +2425,16 @@ $('break-wave').addEventListener('click', (e) => {
   if (!breakBuffer) return;
   const rect = $('break-wave').getBoundingClientRect();
   const slice = sliceAt(((e.clientX - rect.left) / rect.width) * breakBuffer.duration, breakPoints);
+  if (e.shiftKey) {
+    // Shift-click: switch the slice off (or back on). Off slices don't play and Evolve/Randomize skip them.
+    const off = new Set(settings.breakOff || []);
+    if (off.has(slice)) off.delete(slice); else off.add(slice);
+    settings.breakOff = [...off].sort((a, b) => a - b);
+    markOffRows();
+    drawBreak();
+    save();
+    return;
+  }
   ensureAudio();
   breakPlayer?.trigger(ctx.currentTime + 0.01, {
     offset: breakPoints[slice],
@@ -2451,7 +2496,7 @@ document.querySelectorAll('[data-gen]').forEach((b) => b.addEventListener('click
   settings.breakPattern = {
     order: () => orderedPattern(),
     chop: () => chop(orderedPattern()),
-    random: () => randomize(steps, sliceCount()),
+    random: () => randomize(steps, (settings.breakOff || []).length ? usableSlices(sliceCount(), settings.breakOff) : sliceCount()),
     clear: () => resizePattern([], steps),
   }[b.dataset.gen]();
   settings.breakPatternAuto = b.dataset.gen === 'order';

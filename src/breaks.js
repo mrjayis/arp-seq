@@ -210,13 +210,31 @@ export function chop(base) {
 }
 
 /** Random slices on the beat grid (with a seedable rng), with occasional rolls and reverses. */
+/**
+ * A random slice: `slices` is a count (any of 0..n−1) or a list of the slices that
+ * may be used (switched-off ones left out). null when there's nothing to pick.
+ */
+export function pickSlice(slices, rng = Math.random) {
+  const list = Array.isArray(slices) ? slices : null;
+  const n = list ? list.length : slices;
+  if (!n) return null;
+  const k = Math.floor(rng() * n);
+  return list ? list[k] : k;
+}
+
+/** The slices that can be used: 0..count−1 minus those switched off. */
+export const usableSlices = (count, off = []) => Array.from({ length: count }, (_, k) => k).filter((k) => !off.includes(k));
+
 export function randomize(steps, slices, rng = Math.random) {
+  const first = Array.isArray(slices) ? (slices[0] ?? null) : 0;
   return Array.from({ length: steps }, (_, i) => {
     if (i % 2 !== 0 && rng() > 0.2) return emptyRow();
     const r = rng();
+    const slice = i === 0 ? first : pickSlice(slices, rng);
+    if (slice === null) return emptyRow();
     return {
       ...emptyRow(),
-      slice: i === 0 ? 0 : Math.floor(rng() * slices),
+      slice,
       fx: r < 0.08 ? 'rev' : '',
       roll: r > 0.08 && r < 0.18 ? 2 + Math.floor(rng() * 3) : 0,
       rollType: ['R', 'Rv', 'RV', 'Rn', 'RN', 'RR'][Math.floor(rng() * 6)],

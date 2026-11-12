@@ -949,3 +949,6 @@ button.armed { background: var(--brick, #c4502f); border-color: var(--brick, #c4
   color: var(--mod-ink);
   pointer-events: none;
 }
+
+/* A tracker row whose slice is switched off: shown, but not played. */
+.trow.slice-off > :not(button) { opacity: 0.4; text-decoration: line-through; }
