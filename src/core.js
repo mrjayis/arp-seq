@@ -646,3 +646,108 @@ export function chordRootPc(notes) {
   }
   return best;
 }
+
+// ---- sweetening: choose each note's just ratio for the fewest beats against everything else.
+
+// Pure-ratio choices for each semitone above the root (kept within ~35 cents of equal
+// temperament). 7-limit adds the septimal intervals.
+const CHOICES_5 = [[1], [16 / 15], [9 / 8, 10 / 9], [6 / 5], [5 / 4], [4 / 3], [45 / 32, 64 / 45, 36 / 25], [3 / 2], [8 / 5], [5 / 3], [9 / 5, 16 / 9], [15 / 8]];
+const CHOICES_7_EXTRA = { 3: [7 / 6], 6: [7 / 5, 10 / 7], 9: [12 / 7], 10: [7 / 4] };
+// Intervals that ring without beating, weighted by how audible a mistuning is
+// (simpler ratios beat more obviously when they're off).
+const PURE_5 = [[1, 1], [16, 15], [10, 9], [9, 8], [6, 5], [5, 4], [4, 3], [45, 32], [64, 45], [3, 2], [8, 5], [5, 3], [16, 9], [9, 5], [15, 8], [2, 1]];
+const PURE_7 = [[8, 7], [7, 6], [7, 5], [10, 7], [12, 7], [7, 4]];
+const targetsFor = (tuning) => (tuning === 'just7' ? [...PURE_5, ...PURE_7] : PURE_5)
+  .map(([n, d]) => ({ cents: 1200 * Math.log2(n / d), weight: 1 / Math.sqrt(n * d) }));
+
+/** How much two notes `d` cents apart beat: the weighted distance to the nearest pure interval. */
+export function beatCost(d, targets) {
+  const x = ((d % 1200) + 1200) % 1200;
+  let best = Infinity;
+  for (const t of targets) best = Math.min(best, t.weight * Math.abs(x - t.cents));
+  return best;
+}
+
+/** Each pitch class's tuning choices above `rootPc`, in cents away from equal temperament. */
+export function tuningChoices(pc, rootPc, tuning) {
+  const i = (((pc - rootPc) % 12) + 12) % 12;
+  const ratios = [...CHOICES_5[i], ...(tuning === 'just7' ? CHOICES_7_EXTRA[i] || [] : [])];
+  return ratios.map((r) => 1200 * Math.log2(r) - 100 * i);
+}
+
+/**
+ * Sweeten a chord: give every pitch class in `pcs` the just tuning (cents from equal
+ * temperament, relative to the root, which stays at 0) that makes the whole set beat
+ * least. `fixed` (pc → cents) are notes already sounding, which are kept as they are.
+ * Returns a Map pc → cents.
+ */
+export function sweeten(pcs, rootPc, tuning, fixed = new Map()) {
+  const targets = targetsFor(tuning);
+  const out = new Map(fixed);
+  out.set(rootPc, out.get(rootPc) ?? 0);
+  const free = [...new Set(pcs)].filter((pc) => !out.has(pc));
+  const choices = free.map((pc) => tuningChoices(pc, rootPc, tuning));
+  const pitch = (pc, cents) => pc * 100 + cents;
+  const settled = [...out.entries()];
+  // Cost of one complete assignment: every pair, settled notes included.
+  const cost = (picked) => {
+    const all = [...settled.map(([pc, c]) => pitch(pc, c)), ...free.map((pc, k) => pitch(pc, picked[k]))];
+    let sum = 0;
+    for (let a = 0; a < all.length; a++) for (let b = a + 1; b < all.length; b++) sum += beatCost(all[b] - all[a], targets);
+    return sum;
+  };
+  const combos = choices.reduce((n, c) => n * c.length, 1);
+  if (combos <= 4096) {
+    let best = null;
+    const picked = [];
+    const walk = (k) => {
+      if (k === free.length) {
+        const c = cost(picked);
+        if (!best || c < best.c - 1e-9) best = { c, picked: picked.slice() };
+        return;
+      }
+      for (const v of choices[k]) { picked[k] = v; walk(k + 1); }
+    };
+    walk(0);
+    free.forEach((pc, k) => out.set(pc, best.picked[k]));
+  } else {
+    // Very large sets: one note at a time against what's settled.
+    for (const [k, pc] of free.entries()) {
+      let bestV = choices[k][0];
+      let bestC = Infinity;
+      for (const v of choices[k]) {
+        let c = 0;
+        for (const [p2, c2] of out) c += beatCost(pitch(pc, v) - pitch(p2, c2), targets);
+        if (c < bestC) { bestC = c; bestV = v; }
+      }
+      out.set(pc, bestV);
+    }
+  }
+  return out;
+}
+
+/**
+ * The key a progression is in (tonic pitch class), for Key: Auto. Every major and
+ * minor key is scored by how many of the progression's chord tones fit its scale; ties
+ * go to a key whose home chord (I major, or i minor) is in the progression, the first
+ * such chord winning. `slots` = progression slots {root, type}. null for none.
+ */
+export function autoTonic(slots) {
+  const chords = slots.filter((s) => s && s.type !== 'rest' && CHORDS[s.type]);
+  if (!chords.length) return null;
+  const tones = chords.flatMap((s) => CHORDS[s.type].intervals.map((i) => (s.root + i) % 12));
+  const MAJOR = [0, 2, 4, 5, 7, 9, 11];
+  const MINOR = [0, 2, 3, 5, 7, 8, 10];
+  const isMinor = (t) => ['min', 'min7', 'dim'].includes(t);
+  let best = null;
+  for (let tonic = 0; tonic < 12; tonic++) {
+    for (const [scale, minor] of [[MAJOR, false], [MINOR, true]]) {
+      const fit = tones.filter((pc) => scale.includes((pc - tonic + 12) % 12)).length;
+      const home = chords.findIndex((s) => s.root === tonic && isMinor(s.type) === minor);
+      // Fit first; then having the home chord (earlier is better); then the first chord's root.
+      const score = fit * 100 + (home >= 0 ? 50 - home : 0) + (chords[0].root === tonic ? 1 : 0);
+      if (!best || score > best.score) best = { score, tonic };
+    }
+  }
+  return best.tonic;
+}
