@@ -8,24 +8,24 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=97';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=97';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=97';
-import { Midi } from './midi.js?v=97';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=97';
+} from './core.js?v=98';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=98';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=98';
+import { Midi } from './midi.js?v=98';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=98';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=97';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=97';
+} from './percussion.js?v=98';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=98';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices,
-} from './breaks.js?v=97';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=97';
+} from './breaks.js?v=98';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=98';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=97';
+} from './mono.js?v=98';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -685,8 +685,11 @@ function onPulse(time, pulse, pulseDuration) {
   if (settings.songOn && !settings.drumOn && settings.breakOn && pulse % (RATES['1/16'] * DRUM_STEPS) === 0) {
     uiEvents.push({ kind: 'song', time, bar: Math.floor(pulse / (RATES['1/16'] * DRUM_STEPS)) });
   }
-  // Pad: keep the held chord in step with the notes, every 16th.
-  if (pulse % RATES['1/16'] === 0) updatePad(time);
+  // Pad: keep the held chord in step with the notes, every 16th (and a held mono note in tune).
+  if (pulse % RATES['1/16'] === 0) {
+    updatePad(time);
+    retuneMono(time);
+  }
   if (settings.drumOn || settings.breakOn) {
     const dstep = pulseToStep(pulse, time, pulseDuration, RATES['1/16'], swing);
     if (dstep && settings.drumOn) playDrums(dstep);
@@ -1137,7 +1140,10 @@ function showPwm() {
   $('pwm-note').textContent = off ? 'Set Wave 1 or Wave 2 to Square to use PWM.' : '';
 }
 bindRange('arp-level', 'arpLevel', (v) => `${v}%`);
-bindSelect('tuning', 'tuning', Object.entries(TUNINGS), () => { if (ctx) padFollow(ctx.currentTime, 0.05); });
+bindSelect('tuning', 'tuning', Object.entries(TUNINGS), () => {
+  if (ctx) padFollow(ctx.currentTime, 0.05);
+  monoRoot = undefined; // retune a held mono note on the next 16th
+});
 bindRange('humanize', 'humanize', (v) => (v ? `${v}%` : 'off'));
 bindSelect('chord-sound', 'chordSound', [['analog', 'Analog'], ['ep', 'FM E.Piano'], ['fmpad', 'FM Pad']], () => {
   renderChordSound();
@@ -2834,6 +2840,7 @@ function playMonoStep(step) {
     // switched on) has no note to slide from: strike it as a new note.
     const legato = act.type === 'legato' && monoGateOpen;
     if (monoSynth && settings.synthOn) monoSynth.noteOn(tuned(n), t, { legato });
+    monoRoot = chordRoot(); // what the note was tuned to (see retuneMono)
     // MIDI: legato overlaps the old note so a mono synth slides; a new note releases first.
     if (!legato) midiOff(monoMidiNote, t);
     midiOn(n);
@@ -2848,6 +2855,17 @@ function playMonoStep(step) {
     monoGateOpen = false;
   }
   uiEvents.push({ kind: 'mono', time: t, step: idx });
+}
+
+let monoRoot = null; // the chord root the sounding mono note is tuned to
+
+/** Just intonation: a mono note held across a chord change glides to its tuning in the new chord. */
+function retuneMono(time) {
+  if (!monoGateOpen || monoMidiNote === null || !monoSynth || !settings.synthOn) return;
+  const root = chordRoot();
+  if (root === monoRoot) return;
+  monoRoot = root;
+  monoSynth.retune(tuned(monoMidiNote, root), time, 0.03);
 }
 
 /** A key while Write is armed: write it into the sequence (and hear it). */

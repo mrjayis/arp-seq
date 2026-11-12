@@ -2,7 +2,7 @@
 // into a 24 dB resonant low-pass, with ADSR, LFO and portamento, played by its
 // own step sequencer. Sequencer logic is pure and unit-tested.
 
-import { pulseCurve, SAW_RAMP } from './synth.js?v=97';
+import { pulseCurve, SAW_RAMP } from './synth.js?v=98';
 
 export const MAX_MONO_STEPS = 64;
 export const SUB_MODES = { sq1: '−1 oct square', sq2: '−2 oct square', pl2: '−2 oct pulse' };
@@ -248,6 +248,18 @@ export class MonoSynth {
     const p = this.p;
     const f = Math.min(16000, p.cutoff * Math.pow(2, ((note - 48) / 12) * p.keyFollow));
     for (const flt of [this.f1, this.f2]) flt.frequency.setTargetAtTime(f, t, 0.004);
+  }
+
+  /** Nudge the held note to a new (fractional) pitch, e.g. just intonation for a new chord: no retrigger. */
+  retune(note, t, seconds = 0.03) {
+    if (this.note === null) return;
+    const f = mtof(note);
+    const subDiv = this.p.subMode === 'sq1' ? 2 : 4;
+    for (const [o, freq] of [[this.saw, f], [this.pulseSaw, f], [this.sub, f / subDiv]]) {
+      o.frequency.cancelScheduledValues(t);
+      o.frequency.setTargetAtTime(freq, t, Math.max(0.002, seconds / 3));
+    }
+    this.note = note;
   }
 
   setPitch(note, t, glide) {
