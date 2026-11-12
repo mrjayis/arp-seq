@@ -8,24 +8,24 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, chordCents, isDimChord,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=103';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=103';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=103';
-import { Midi } from './midi.js?v=103';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=103';
+} from './core.js?v=105';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=105';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=105';
+import { Midi } from './midi.js?v=105';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=105';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=103';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=103';
+} from './percussion.js?v=105';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=105';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices,
-} from './breaks.js?v=103';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=103';
+} from './breaks.js?v=105';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=105';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=103';
+} from './mono.js?v=105';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -3627,8 +3627,39 @@ window.addEventListener('blur', () => {
 // ---------------------------------------------------------------- UI: animation loop
 let lastStepEl = null;
 const soundingTimers = [];
+// Readout: the tuning, the key it's anchored to, and the chord it's following now
+// (with how far that chord's root is tuned from equal temperament).
+const TUNING_SHORT = { equal: 'Equal', just: 'Just 5-limit', just7: 'Just 7-limit' };
+let tuneReadout = '';
+let tuneReadoutAt = 0;
+function showTuning(nowMs) {
+  if (nowMs - tuneReadoutAt < 120) return; // a few times a second is plenty
+  tuneReadoutAt = nowMs;
+  const tonic = tonicPc();
+  const keyText = tonic === null ? '—' : `${NOTE_CLASSES[tonic]}${settings.tuningKey === 'auto' ? ' (auto)' : ''}`;
+  const key = chordRoot();
+  let chordText = '—';
+  if (key) {
+    const [, r, d] = key.split('|');
+    const root = Number(r);
+    const slot = settings.progOn && progIndex >= 0 ? settings.progression[progIndex] : null;
+    const name = slot && slot.type !== 'rest'
+      ? NOTE_CLASSES[root] + CHORD_SUFFIX[slot.type]
+      : NOTE_CLASSES[root] + (d === '1' ? '°' : '');
+    const cents = settings.tuning === 'equal' ? 0 : tuningCents(60 + root, key);
+    chordText = Math.abs(cents) >= 0.05 ? `${name} ${cents > 0 ? '+' : '−'}${Math.abs(cents).toFixed(1)}¢` : name;
+  }
+  const text = `${TUNING_SHORT[settings.tuning]}|${keyText}|${chordText}`;
+  if (text === tuneReadout) return;
+  tuneReadout = text;
+  $('out-tuning').textContent = TUNING_SHORT[settings.tuning];
+  $('out-key').textContent = keyText;
+  $('out-chord').textContent = chordText;
+}
+
 function frame() {
   const now = audioTime();
+  showTuning(performance.now());
   while (uiEvents.length && uiEvents[0].time <= now) {
     const ev = uiEvents.shift();
     if (ev.kind === 'mono') {
