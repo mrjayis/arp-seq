@@ -6,23 +6,23 @@ import {
   progressionChord, anticipatedSlot, chordTie, SLOT_OCTAVES, humanizeOffset, humanizeLevel,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=77';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=77';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=77';
-import { Midi } from './midi.js?v=77';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=77';
+} from './core.js?v=78';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=78';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=78';
+import { Midi } from './midi.js?v=78';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=78';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=77';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=77';
+} from './percussion.js?v=78';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=78';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
-} from './breaks.js?v=77';
-import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=77';
+} from './breaks.js?v=78';
+import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=78';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=77';
+} from './mono.js?v=78';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -1749,9 +1749,35 @@ $('drum-grid').addEventListener('drop', (e) => {
   e.preventDefault();
   addSampleFiles(e.dataTransfer.files);
 });
-$('sample-clear').addEventListener('click', async () => {
+/**
+ * A button that asks before it acts, without a browser dialog: the first click turns
+ * it into "Sure? …" for a few seconds, a second click does it. (confirm()/prompt()
+ * freeze the page, which stops the clock and the music.) `needed()` false = act at once.
+ */
+function confirmClick(button, action, { ask = `Sure? ${button.textContent}`, needed = () => true } = {}) {
+  let timer = null;
+  const label = button.textContent;
+  const disarm = () => {
+    clearTimeout(timer);
+    timer = null;
+    button.textContent = label;
+    button.classList.remove('armed');
+  };
+  button.addEventListener('click', () => {
+    if (timer || !needed()) {
+      disarm();
+      action();
+      return;
+    }
+    button.textContent = ask;
+    button.classList.add('armed');
+    timer = setTimeout(disarm, 3000);
+  });
+  button.addEventListener('blur', () => { if (timer) disarm(); });
+}
+
+confirmClick($('sample-clear'), async () => {
   if (!Object.keys(sampleStore).length) return;
-  if (!window.confirm('Remove all your samples from this browser?')) return;
   for (const slot of Object.keys(sampleStore)) {
     delete sampleStore[slot];
     drums?.setSample(slot, null);
@@ -2491,14 +2517,13 @@ $('mono-back').addEventListener('click', () => {
   renderMonoSteps();
   save();
 });
-$('mono-clear').addEventListener('click', () => {
-  if (settings.monoSeq.length && !window.confirm('Clear the mono sequence?')) return;
+confirmClick($('mono-clear'), () => {
   settings.monoSeq = [];
   monoAllOff();
   monoCursor = 0;
   renderMonoSteps();
   save();
-});
+}, { ask: 'Sure? Clear', needed: () => settings.monoSeq.length > 0 });
 $('mono-demo').addEventListener('click', () => {
   settings.monoSeq = DEMO_MONO.map((s) => ({ ...s }));
   monoCursor = settings.monoSeq.length;
@@ -3139,36 +3164,58 @@ function renderScenes() {
     const when = document.createElement('span');
     when.className = 'scene-when';
     when.textContent = formatWhen(scene.saved);
-    const btn = (text, tip, fn) => {
+    const btn = (text, tip, fn, ask = null) => {
       const b = document.createElement('button');
       b.textContent = text;
       b.title = tip;
-      b.addEventListener('click', fn);
+      if (ask) confirmClick(b, fn, { ask });
+      else b.addEventListener('click', fn);
       return b;
     };
     li.append(
       title, when,
       btn('Recall', 'Load this scene (the page reloads; playback stops)', () => applyScene(scene.settings, scene.id)),
-      btn('Update', 'Replace this scene with everything as it is now', () => {
-        if (!confirm(`Overwrite "${scene.name}" with the current settings?`)) return;
+      btn('Update', 'Replace this scene with everything as it is now (click twice)', () => {
         scenes[i] = { ...scene, saved: new Date().toISOString(), settings: sceneSnapshot() };
         if (storeScenes()) {
           try { localStorage.setItem(CURRENT_SCENE_KEY, scene.id); } catch { /* ignore */ }
           renderScenes();
           sceneStatus(`Updated "${scene.name}".`);
         }
-      }),
+      }, 'Sure? Update'),
       btn('Rename', 'Give this scene a new name', () => {
-        const name = prompt('Scene name', scene.name)?.trim();
-        if (!name) return;
-        scenes[i] = { ...scene, name: name.slice(0, 40) };
-        if (storeScenes()) renderScenes();
+        // Edit the name in place (Enter saves, Esc cancels): no dialog, so the music keeps going.
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.maxLength = 40;
+        input.value = scene.name;
+        input.className = 'scene-title';
+        input.setAttribute('aria-label', 'Scene name');
+        let done = false;
+        const finish = (keep) => {
+          if (done) return;
+          done = true;
+          const name = input.value.trim();
+          if (keep && name && name !== scene.name) {
+            scenes[i] = { ...scene, name: name.slice(0, 40) };
+            storeScenes();
+          }
+          renderScenes();
+        };
+        input.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') finish(true);
+          if (e.key === 'Escape') finish(false);
+          e.stopPropagation(); // typing a name mustn't play notes or toggle Play
+        });
+        input.addEventListener('blur', () => finish(true));
+        title.replaceWith(input);
+        input.focus();
+        input.select();
       }),
-      btn('Delete', 'Delete this scene', () => {
-        if (!confirm(`Delete "${scene.name}"?`)) return;
+      btn('Delete', 'Delete this scene (click twice)', () => {
         scenes.splice(i, 1);
         if (storeScenes()) renderScenes();
-      }),
+      }, 'Sure? Delete'),
     );
     list.append(li);
   });
