@@ -8,25 +8,25 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=108';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=108';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=108';
-import { Midi } from './midi.js?v=108';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=108';
+} from './core.js?v=109';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=109';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=109';
+import { Midi } from './midi.js?v=109';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=109';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=108';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=108';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores } from './samples.js?v=108';
+} from './percussion.js?v=109';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=109';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=109';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices,
-} from './breaks.js?v=108';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=108';
+} from './breaks.js?v=109';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=109';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=108';
+} from './mono.js?v=109';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -3283,6 +3283,7 @@ function renderScore() {
   for (const id of ids) pick.add(new Option(scoreFiles[id].name.replace(/\.midi?$/i, ''), id));
   pick.value = score ? score.id : '';
   $('score-remove').disabled = !score;
+  $('score-clear').disabled = !ids.length;
   $('score-tempo').disabled = !score;
   const wrap = $('score-parts');
   wrap.replaceChildren();
@@ -3413,6 +3414,14 @@ confirmClick($('score-remove'), async () => {
   try { await deleteScore(id); } catch { /* ignore */ }
   chooseScore(Object.keys(scoreFiles)[0] || '');
 }, { ask: 'Sure? Remove' });
+confirmClick($('score-clear'), async () => {
+  for (const id of Object.keys(scoreFiles)) delete scoreFiles[id];
+  settings.scoreVoices = {};
+  scoreSounding.length = 0;
+  try { await clearScores(); } catch { /* nothing stored */ }
+  chooseScore('');
+  $('score-status').textContent = 'All MIDI files cleared.';
+}, { ask: 'Sure? Clear all', needed: () => Object.keys(scoreFiles).length > 0 });
 $('score-tempo').addEventListener('click', () => { if (score) setBpm(tempoBpm(score.tempo)); });
 for (let t = -24; t <= 24; t++) $('score-transpose').add(new Option(`${t > 0 ? '+' : ''}${t}`, String(t)));
 bindSelect('score-transpose', 'scoreTranspose');

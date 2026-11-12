@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=108" />
-  <link rel="stylesheet" href="mac.css?v=108" />
+  <link rel="stylesheet" href="styles.css?v=109" />
+  <link rel="stylesheet" href="mac.css?v=109" />
 </head>
 <body>
   <main class="device">
@@ -529,6 +529,7 @@
         <button id="score-load" title="Add MIDI files (.mid): they stay in this browser">Load MIDI…</button>
         <input id="score-file" type="file" multiple accept=".mid,.midi,audio/midi,audio/x-midi" hidden />
         <button id="score-remove" title="Remove this piece from the list">Remove</button>
+        <button id="score-clear" title="Remove every MIDI file from this browser">Clear all</button>
         <label class="field inline">Transpose <select id="score-transpose"></select></label>
         <label class="field inline">Speed <select id="score-speed" title="Play at this many times the tempo: ½ for practice, 2× to race"></select></label>
         <label class="check"><input id="score-loop" type="checkbox" /> Loop</label>
@@ -737,6 +738,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=108"></script>
+  <script type="module" src="src/app.js?v=109"></script>
 </body>
 </html>
