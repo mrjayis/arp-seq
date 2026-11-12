@@ -519,7 +519,7 @@ export class Synth {
    * Returns {release(t), follow(semitones, scale, t, glide)} like padVoice.
    */
   fmVoice(note, velocity, time, {
-    kind = 'ep', level = 1, out = this.master, bright = 0.5, bell = 0.5, decay = 2.5,
+    kind = 'ep', level = 1, out = this.master, bright = 0.5, bell = 0.5, decay = 2.5, spread = 1,
     attack = kind === 'pad' ? 0.6 : 0.002, release = kind === 'pad' ? 1.5 : 0.25,
   } = {}) {
     const ctx = this.ctx;
@@ -542,7 +542,9 @@ export class Synth {
       return o;
     };
     /** One modulator → carrier pair into `amp`; returns the index and output gains. */
-    const pair = (carrierRatio, modRatio, gain, detune = 0) => {
+    // `spread` scales the layers' deliberate detuning and the vibrato (0 = pure, beatless).
+    const pair = (carrierRatio, modRatio, gain, detune0 = 0) => {
+      const detune = detune0 * spread;
       const car = osc(f * carrierRatio, detune);
       const mod = osc(f * modRatio, detune);
       const index = ctx.createGain(); // Hz of deviation
@@ -588,7 +590,7 @@ export class Synth {
       lfo.frequency.value = 4.8;
       const vib = ctx.createGain();
       vib.gain.setValueAtTime(0, t0);
-      vib.gain.linearRampToValueAtTime(5, t0 + swell + 1);
+      vib.gain.linearRampToValueAtTime(5 * spread, t0 + swell + 1);
       lfo.connect(vib);
       for (const o of sources) if (o.detune) vib.connect(o.detune);
       sources.push(lfo);

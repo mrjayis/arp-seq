@@ -593,12 +593,33 @@ const RATIOS_7 = [1, 16 / 15, 9 / 8, 6 / 5, 5 / 4, 4 / 3, 7 / 5, 3 / 2, 8 / 5, 5
  * Cents to add to an equal-tempered `note` so it sits at the just ratio above the
  * chord root (pitch class `rootPc`, which stays where it is). 0 for Equal or no root.
  */
-export function justCents(note, rootPc, tuning) {
+export function justCents(note, rootPc, tuning, { dim = false } = {}) {
   if (tuning !== 'just' && tuning !== 'just7') return 0;
   if (rootPc === null || rootPc === undefined) return 0;
   const i = (((Math.round(note) - rootPc) % 12) + 12) % 12;
-  const ratio = (tuning === 'just7' ? RATIOS_7 : RATIOS_5)[i];
+  let ratio = (tuning === 'just7' ? RATIOS_7 : RATIOS_5)[i];
+  // A diminished chord is stacked pure minor thirds: its tritone is 6/5 × 6/5 = 36/25
+  // (7-limit: 7/5, the 5:6:7 chord), so both thirds in it are pure.
+  if (dim && i === 6) ratio = tuning === 'just7' ? 7 / 5 : 36 / 25;
   return 1200 * Math.log2(ratio) - 100 * i;
+}
+
+/**
+ * Cents for `note` in a chord, tuned in the key: the chord's root sits at a pure
+ * 5-limit ratio above the key's tonic (so neighbouring chords share their common
+ * notes), and the note at a pure ratio above that root. ctx = {root, tonic, dim};
+ * a null tonic leaves the root equal-tempered.
+ */
+export function chordCents(note, { root, tonic = null, dim = false }, tuning) {
+  if (root === null || root === undefined) return 0;
+  const rootShift = tonic === null || tonic === undefined ? 0 : justCents(root, tonic, tuning === 'equal' ? 'equal' : 'just');
+  return rootShift + justCents(note, root, tuning, { dim });
+}
+
+/** Does a set of pitch classes form a diminished triad on `root` (minor 3rd + tritone, no 5th)? */
+export function isDimChord(pcs, root) {
+  const has = (i) => pcs.has((root + i) % 12);
+  return has(3) && has(6) && !has(7);
 }
 
 /**
