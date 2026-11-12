@@ -430,3 +430,25 @@ test('chordRootPc finds the root in any inversion', () => {
   assert.equal(chordRootPc([62]), 2); // one note: itself
   assert.equal(chordRootPc([]), null);
 });
+
+import { chordCents, isDimChord } from '../src/core.js';
+
+test('key-anchored just intonation keeps shared notes still between chords', () => {
+  const cents = (note, root, tonic, dim = false, t = 'just') => +chordCents(note, { root, tonic, dim }, t).toFixed(1) + 0;
+  // C major → A minor in C: the shared C and E don't move.
+  assert.equal(cents(60, 0, 0), 0);
+  assert.equal(cents(60, 9, 0), 0); // C is A's minor third; A sits at 5/3 below it in the key
+  assert.equal(cents(64, 0, 0), -13.7);
+  assert.equal(cents(64, 9, 0), -13.7);
+  // F major: F 4/3, A 5/3 (same A as in A minor), C stays.
+  assert.equal(cents(57, 5, 0), cents(57, 9, 0));
+  assert.equal(cents(60, 5, 0), 0);
+  // No tonic: the root stays equal-tempered (as before).
+  assert.equal(cents(57, 9, null), 0);
+  // Diminished: both minor thirds pure (B D F).
+  assert.ok(isDimChord(new Set([11, 2, 5]), 11));
+  const raw = (note) => chordCents(note, { root: 11, tonic: null, dim: true }, 'just');
+  assert.equal(+(300 + raw(62) - raw(59)).toFixed(1), 315.6); // B–D: 6/5
+  assert.equal(+(300 + raw(65) - raw(62)).toFixed(1), 315.6); // D–F: 6/5
+  assert.equal(cents(64, 0, 0, false, 'equal'), 0);
+});

@@ -5,27 +5,27 @@ import {
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   progressionChord, anticipatedSlot, chordTie, SLOT_OCTAVES, humanizeOffset, humanizeLevel,
-  MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc,
+  MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, chordCents, isDimChord,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=99';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=99';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=99';
-import { Midi } from './midi.js?v=99';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=99';
+} from './core.js?v=102';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=102';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=102';
+import { Midi } from './midi.js?v=102';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=102';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=99';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=99';
+} from './percussion.js?v=102';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=102';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices,
-} from './breaks.js?v=99';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=99';
+} from './breaks.js?v=102';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=102';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=99';
+} from './mono.js?v=102';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -78,6 +78,7 @@ const settings = {
   osc2ModDepth: 30,
   chordSyncopate: false, // a chord hit in the last 8th before the progression moves on plays the next chord
   chordTie: false, // a syncopated chord holds over the bar line instead of being struck again on the downbeat
+  tuningPure: true, // with Just tuning: no deliberate detuning, vibrato or chorus wobble
   tuning: 'equal', // 'equal' | 'just' | 'just7': adaptive just intonation to the chord now playing
   humanize: 0, // 0–100: random timing and level variation for every section
   monoKbOctave: 2, // the mono panel's little keyboard starts at C of this octave
@@ -284,7 +285,7 @@ function ensureAudio() {
     if (breakBuffer) breakPlayer.setBuffer(breakBuffer);
     decodeAllSamples();
     chorus = new Chorus(ctx, buses.chords);
-    chorus.setMix(settings.chordChorusMix / 100);
+    applyChorusMix();
     chorus.setRate(settings.chordChorusRate);
     chorus.setDepth(settings.chordChorusDepth / 100);
     synth.setPwmRate(settings.chordPwmRate);
@@ -309,7 +310,7 @@ function westVoice(n) {
       timbre: settings.osc2Timbre / 100,
       lpg: settings.osc2Lpg,
       resonance: settings.osc2Resonance,
-      detune: settings.osc2Detune,
+      detune: pure() ? 0 : settings.osc2Detune,
       level: (settings.osc2Level / 100) * (settings.arpLevel / 100),
       attack: settings.arpAttack / 1000,
       release: settings.arpRelease / 1000,
@@ -336,27 +337,70 @@ function modSpec(modNote) {
     type: settings.osc2Mod,
     depth: settings.osc2ModDepth / 100,
     note: tuned(modNote), // in tune with the carrier, so AM/FM ratios stay pure
-    detune: settings.osc2Detune,
+    detune: pure() ? 0 : settings.osc2Detune,
     wave: settings.osc2Wave,
   };
 }
 
 // ---- adaptive just intonation: every pitched voice is tuned to pure ratios above the
-// root of the chord playing now. The root itself stays on its equal-tempered pitch,
-// so the tuning moves with the harmony without drifting.
+// root of the chord playing now, and that root to a pure ratio above the key's tonic
+// (the progression's first chord), so neighbouring chords keep their shared notes.
+// The tonic stays on its equal-tempered pitch, so nothing drifts.
 
-/** Pitch class of the chord now in force: the progression's chord, else the held notes. */
+/** The key's tonic for tuning: the progression's first chord (moved by any modulation). */
+function tonicPc() {
+  if (!settings.progOn) return null;
+  const first = settings.progression.slice(0, settings.progLength).find((s) => s.type !== 'rest');
+  return first ? (((first.root + progShift) % 12) + 12) % 12 : null;
+}
+
+/**
+ * The chord the tuning follows now, as a key "tonic|root|dim" (comparable with ===):
+ * the progression's chord, else the held notes; null when there's no chord.
+ */
 function chordRoot() {
   if (settings.progOn && progIndex >= 0) {
     const slot = settings.progression[progIndex];
-    if (slot && slot.type !== 'rest') return (((slot.root + progShift) % 12) + 12) % 12;
+    if (slot && slot.type !== 'rest') {
+      const root = (((slot.root + progShift) % 12) + 12) % 12;
+      return `${tonicPc()}|${root}|${slot.type === 'dim' ? 1 : 0}`;
+    }
   }
-  return chordRootPc(engine.notes.map((n) => n.note));
+  return tuningKeyFor(engine.notes.map((n) => n.note));
+}
+
+/** A tuning key for a chord given as MIDI notes (held keys, or an early syncopated chord). */
+function tuningKeyFor(notes) {
+  const root = chordRootPc(notes);
+  if (root === null) return null;
+  const pcs = new Set(notes.map((n) => ((n % 12) + 12) % 12));
+  return `${tonicPc()}|${root}|${isDimChord(pcs, root) ? 1 : 0}`;
+}
+
+/** Cents to nudge `note` by, in the chord given by a tuning key. */
+function tuningCents(note, key = chordRoot()) {
+  if (!key || settings.tuning === 'equal') return 0;
+  const [t, r, d] = key.split('|');
+  return chordCents(note, { tonic: t === 'null' ? null : Number(t), root: Number(r), dim: d === '1' }, settings.tuning);
 }
 
 /** A note as the synths should play it: a fractional MIDI note, nudged to just intonation. */
-function tuned(note, root = chordRoot()) {
-  return note + justCents(note, root, settings.tuning) / 100;
+function tuned(note, key = chordRoot()) {
+  return note + tuningCents(note, key) / 100;
+}
+
+/** Pure: Just tuning with the deliberate detuning, vibrato and chorus wobble taken out. */
+const pure = () => settings.tuning !== 'equal' && settings.tuningPure;
+
+/** Apply Pure to what's set up once rather than per note (the chorus and the mono vibrato). */
+function applyPure() {
+  renderPure();
+  applyChorusMix();
+  applyMono();
+}
+function renderPure() {
+  $('tuning-pure').checked = settings.tuningPure;
+  $('tuning-pure').disabled = settings.tuning === 'equal';
 }
 
 function playVoice(note, note2, velocity, time, gateLen, modNote) {
@@ -445,7 +489,7 @@ function chordLayers() {
   const pulse = pulseOffsets(settings.chordPulseWidth, settings.chordPwmDepth);
   return [
     { wave: settings.chordWave, gain: g1, detune: 0, pulse },
-    { wave: settings.chordWave2, gain: g2, detune: settings.chordDetune2, pulse },
+    { wave: settings.chordWave2, gain: g2, detune: pure() ? 0 : settings.chordDetune2, pulse },
   ];
 }
 
@@ -457,6 +501,7 @@ function fmOptions() {
     bright: settings.fmBright / 100,
     bell: settings.fmBell / 100,
     decay: settings.fmDecay / 1000,
+    spread: pure() ? 0 : 1,
   };
 }
 
@@ -525,7 +570,7 @@ let padRoot = null; // the chord root the held pad is tuned to
 /** Slide one pad voice to the sequencer step's offset and level, in just intonation to the chord. */
 function padTune(v, time, glide) {
   const [semis, scale] = padStepState();
-  const cents = v.note === undefined ? 0 : justCents(v.note, chordRoot(), settings.tuning);
+  const cents = v.note === undefined ? 0 : tuningCents(v.note);
   v.follow(semis + cents / 100, scale, time, glide);
 }
 
@@ -584,7 +629,7 @@ function playChord(step) {
   const pulse = pulseOffsets(settings.chordPulseWidth, settings.chordPwmDepth);
   const layers = [
     { wave: settings.chordWave, gain: g1, detune: 0, pulse },
-    { wave: settings.chordWave2, gain: g2, detune: settings.chordDetune2, pulse },
+    { wave: settings.chordWave2, gain: g2, detune: pure() ? 0 : settings.chordDetune2, pulse },
   ];
   const filterOpts = { cutoff: settings.chordCutoff, resonance: settings.chordResonance };
   const sound = settings.synthOn && synth && settings.chordLevel > 0;
@@ -594,7 +639,7 @@ function playChord(step) {
     midi.noteOff(note, off, settings.chordMidiCh);
   };
   // Just intonation: tuned to this chord's own root (an early, syncopated chord has its own).
-  const root = chordPushed ? chordRootPc(source.map((n) => n.note)) : chordRoot();
+  const root = chordPushed ? tuningKeyFor(source.map((n) => n.note)) : chordRoot();
   for (const { note: n0, velocity: v0 } of notes) {
     const velocity = humanLevel(v0); // each chord note a little different, like fingers
     const note = tuned(n0, root);
@@ -1164,10 +1209,18 @@ function showPwm() {
 }
 bindRange('arp-level', 'arpLevel', (v) => `${v}%`);
 bindSelect('tuning', 'tuning', Object.entries(TUNINGS), () => {
+  applyPure();
   if (ctx) padFollow(ctx.currentTime, 0.05);
   monoRoot = undefined; // retune a held mono note on the next 16th
   if (arpTail) arpTail.root = undefined; // and a ringing arp note
 });
+$('tuning-pure').addEventListener('change', () => {
+  settings.tuningPure = $('tuning-pure').checked;
+  applyPure();
+  save();
+});
+renderPure(); // the audio side is applied when audio starts (ensureAudio)
+onRecall(applyPure);
 bindRange('humanize', 'humanize', (v) => (v ? `${v}%` : 'off'));
 bindSelect('chord-sound', 'chordSound', [['analog', 'Analog'], ['ep', 'FM E.Piano'], ['fmpad', 'FM Pad']], () => {
   renderChordSound();
@@ -1218,7 +1271,9 @@ function renderChordMode() {
 onRecall(renderChordMode)();
 bindCutoff('chord-cutoff', 'chordCutoff');
 bindRange('chord-res', 'chordResonance', (v) => v.toFixed(1));
-bindRange('chorus-mix', 'chordChorusMix', (v) => `${v}%`, (v) => chorus?.setMix(v / 100));
+bindRange('chorus-mix', 'chordChorusMix', (v) => `${v}%`, applyChorusMix);
+/** The chorus's pitch wobble beats against pure intervals, so Pure tuning takes it out. */
+function applyChorusMix() { chorus?.setMix(pure() ? 0 : settings.chordChorusMix / 100); }
 bindRange('chorus-rate', 'chordChorusRate', (v) => `${v.toFixed(2)} Hz`, (v) => chorus?.setRate(v));
 bindRange('chorus-depth', 'chordChorusDepth', (v) => `${v}%`, (v) => chorus?.setDepth(v / 100));
 $('chord-syncopate').checked = settings.chordSyncopate;
@@ -2809,7 +2864,9 @@ const MONO_DEFAULTS = {
 for (const [k, v] of Object.entries(MONO_DEFAULTS)) if (settings[k] === undefined) settings[k] = v;
 
 function monoParams() {
-  return Object.fromEntries(MONO_PARAMS.map(([key, name, conv]) => [name, conv ? conv(settings[key]) : settings[key]]));
+  const p = Object.fromEntries(MONO_PARAMS.map(([key, name, conv]) => [name, conv ? conv(settings[key]) : settings[key]]));
+  if (pure()) p.vibrato = 0; // Pure tuning: a steady pitch
+  return p;
 }
 function applyMono() { monoSynth?.set(monoParams()); }
 
