@@ -8,24 +8,24 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=93';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=93';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=93';
-import { Midi } from './midi.js?v=93';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=93';
+} from './core.js?v=94';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=94';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=94';
+import { Midi } from './midi.js?v=94';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=94';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=93';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=93';
+} from './percussion.js?v=94';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=94';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices,
-} from './breaks.js?v=93';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=93';
+} from './breaks.js?v=94';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=94';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=93';
+} from './mono.js?v=94';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -2421,18 +2421,52 @@ function renderBreakPanel() {
 
 // Clicking the waveform: put that slice on the selected row and move to the next
 // row (tracker step-entry); it also plays the slice so you hear what you picked.
+/** The slice under a pointer on the waveform. */
+function sliceAtPointer(e) {
+  const rect = $('break-wave').getBoundingClientRect();
+  return sliceAt(((e.clientX - rect.left) / rect.width) * breakBuffer.duration, breakPoints);
+}
+
+/** Switch a slice off (or back on). Off slices don't play and Evolve/Randomize skip them. */
+function toggleSliceOff(slice) {
+  const off = new Set(settings.breakOff || []);
+  if (off.has(slice)) off.delete(slice); else off.add(slice);
+  settings.breakOff = [...off].sort((a, b) => a - b);
+  markOffRows();
+  drawBreak();
+  save();
+}
+
+// Long press (for touch screens, where there's no Shift): the same as Shift-click.
+let breakPress = null; // {timer, x, y, done}
+$('break-wave').addEventListener('pointerdown', (e) => {
+  if (!breakBuffer || e.button > 0) return;
+  const slice = sliceAtPointer(e);
+  breakPress = { x: e.clientX, y: e.clientY, done: false };
+  breakPress.timer = setTimeout(() => {
+    breakPress.done = true; // the click that follows mustn't also write the slice
+    toggleSliceOff(slice);
+    navigator.vibrate?.(15);
+  }, 500);
+});
+$('break-wave').addEventListener('pointermove', (e) => {
+  if (breakPress && !breakPress.done && Math.hypot(e.clientX - breakPress.x, e.clientY - breakPress.y) > 10) {
+    clearTimeout(breakPress.timer); // moving (e.g. scrolling): not a press
+    breakPress = null;
+  }
+});
+for (const type of ['pointerup', 'pointercancel', 'pointerleave']) {
+  $('break-wave').addEventListener(type, () => { if (breakPress && !breakPress.done) { clearTimeout(breakPress.timer); breakPress = null; } });
+}
+$('break-wave').addEventListener('contextmenu', (e) => e.preventDefault());
+
 $('break-wave').addEventListener('click', (e) => {
   if (!breakBuffer) return;
-  const rect = $('break-wave').getBoundingClientRect();
-  const slice = sliceAt(((e.clientX - rect.left) / rect.width) * breakBuffer.duration, breakPoints);
+  if (breakPress?.done) { breakPress = null; return; } // that was a long press
+  breakPress = null;
+  const slice = sliceAtPointer(e);
   if (e.shiftKey) {
-    // Shift-click: switch the slice off (or back on). Off slices don't play and Evolve/Randomize skip them.
-    const off = new Set(settings.breakOff || []);
-    if (off.has(slice)) off.delete(slice); else off.add(slice);
-    settings.breakOff = [...off].sort((a, b) => a - b);
-    markOffRows();
-    drawBreak();
-    save();
+    toggleSliceOff(slice);
     return;
   }
   ensureAudio();
