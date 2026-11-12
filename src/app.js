@@ -8,24 +8,24 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=98';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=98';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=98';
-import { Midi } from './midi.js?v=98';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=98';
+} from './core.js?v=99';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=99';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=99';
+import { Midi } from './midi.js?v=99';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=99';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=98';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=98';
+} from './percussion.js?v=99';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=99';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices,
-} from './breaks.js?v=98';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=98';
+} from './breaks.js?v=99';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=99';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=98';
+} from './mono.js?v=99';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -398,8 +398,9 @@ function playArp(step) {
     const modNote = osc2Note(ev, settings.osc2Mode, settings.osc2Transpose);
     const note2 = settings.osc2On ? modNote : null;
     if (settings.synthOn && synth) {
-      synth.retune('osc1', tuned(ev.note), step.time, modNote);
+      synth.retune('osc1', tuned(ev.note), step.time, tuned(modNote));
       if (note2 !== null) synth.retune('osc2', tuned(note2), step.time);
+      arpTail = { note: ev.note, note2, modNote, root: chordRoot() };
     }
     uiEvents.push({ kind: 'arp', time: step.time, off: step.time, ...ev, note2 });
     return;
@@ -408,8 +409,29 @@ function playArp(step) {
   // oscillator 1 even when it's off (a pure modulator).
   const modNote = osc2Note(ev, settings.osc2Mode, settings.osc2Transpose);
   const note2 = settings.osc2On ? modNote : null;
-  if (ev.velocity > 0) playVoice(ev.note, note2, humanLevel(ev.velocity), step.time, gateLen, modNote);
+  if (ev.velocity > 0) {
+    playVoice(ev.note, note2, humanLevel(ev.velocity), step.time, gateLen, modNote);
+    arpTail = { note: ev.note, note2, modNote, root: chordRoot() };
+  }
   uiEvents.push({ kind: 'arp', time: step.time, off: step.time + gateLen, note2, ...ev });
+}
+
+let arpTail = null; // the arp note still ringing: {note, note2, modNote, root it was tuned to}
+
+/**
+ * Just intonation: when the chord changes under a ringing arp note (or a tail sliding
+ * on a muted step), glide it to its tuning in the new chord. Synth.retune ignores a
+ * line that has already finished.
+ */
+function retuneArp(time) {
+  if (!arpTail || !synth || !settings.synthOn) return;
+  const root = chordRoot();
+  if (root === arpTail.root) return;
+  arpTail.root = root;
+  const { note, note2, modNote } = arpTail;
+  const ringing = synth.retune('osc1', tuned(note, root), time, tuned(modNote, root));
+  const ringing2 = note2 !== null && synth.retune('osc2', tuned(note2, root), time);
+  if (!ringing && !ringing2) arpTail = null; // both finished: nothing left to retune
 }
 
 // Chord layer: repeats the held chord on the hits of its own Euclidean rhythm,
@@ -689,6 +711,7 @@ function onPulse(time, pulse, pulseDuration) {
   if (pulse % RATES['1/16'] === 0) {
     updatePad(time);
     retuneMono(time);
+    retuneArp(time);
   }
   if (settings.drumOn || settings.breakOn) {
     const dstep = pulseToStep(pulse, time, pulseDuration, RATES['1/16'], swing);
@@ -1143,6 +1166,7 @@ bindRange('arp-level', 'arpLevel', (v) => `${v}%`);
 bindSelect('tuning', 'tuning', Object.entries(TUNINGS), () => {
   if (ctx) padFollow(ctx.currentTime, 0.05);
   monoRoot = undefined; // retune a held mono note on the next 16th
+  if (arpTail) arpTail.root = undefined; // and a ringing arp note
 });
 bindRange('humanize', 'humanize', (v) => (v ? `${v}%` : 'off'));
 bindSelect('chord-sound', 'chordSound', [['analog', 'Analog'], ['ep', 'FM E.Piano'], ['fmpad', 'FM Pad']], () => {
