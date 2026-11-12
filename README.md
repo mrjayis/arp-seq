@@ -178,6 +178,7 @@ A shared delay and reverb, with a **send** from each source (Arp, Chords, Drums)
   - It uses a locally installed "Chicago" font if you have one (Chrome and Firefox; Safari only exposes system fonts). Otherwise titles fall back to Pixelify Sans. Small text uses the CC BY Geneva 9 recreation; see `fonts/README.md` for credits.
 - **Sticky bar:** Play/Stop, Tempo and Tap stay at the top while you scroll, next to a jump chip for every window. A chip opens its window if folded and scrolls to it; a dot marks modules that are switched on.
 - **Window order:** Clock and Keyboard first, then the arp (Arpeggiator, Sequencer, both voices), chords (Progression, Chord Rhythm), Mono Synth, drums (Percussion, Breakbeat, Song), and Effects and MIDI.
+- **Touch:** double-tapping never zooms the page, so quick taps on buttons and cells register as taps. Pinch-zoom and scrolling still work.
 - **Help:** the explanations in each window are hidden to keep things compact. **Help** (top of the page) shows them all, and **Hide help** hides them again. The choice is remembered on this device. Hovering a control still shows its tooltip.
 - **Collapsible windows:** click a window's title (or the triangle; in System 7, the close box) to fold it down to its header, which keeps its On button and main controls where it has them. **Collapse all / Expand all** are in the menu bar, and folded windows stay folded next visit.
 - Settings are saved in `localStorage`
