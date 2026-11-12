@@ -92,6 +92,7 @@ export class ArpSeqEngine {
     this.active = new Map(); // notes the arp plays (held or latched)
     this.orderCounter = 0;
     this.progression = []; // notes supplied by the chord-progression sequencer
+    this.heldShift = 0; // semitones added to held/latched notes (the progression's modulation)
     this.reset();
   }
 
@@ -173,8 +174,12 @@ export class ArpSeqEngine {
 
   /** Held notes plus a progression chord (as made by progressionChord), held keys winning. */
   notesWith(progression) {
-    if (!progression.length) return [...this.active.values()];
-    return [...this.active.values(), ...progression.filter((n) => !this.active.has(n.note))];
+    const held = this.heldShift
+      ? [...this.active.values()].map((n) => ({ ...n, note: n.note + this.heldShift })).filter((n) => n.note >= 0 && n.note <= 127)
+      : [...this.active.values()];
+    if (!progression.length) return held;
+    const taken = new Set(held.map((n) => n.note));
+    return [...held, ...progression.filter((n) => !taken.has(n.note))];
   }
 
   /** Set the progression chord (MIDI note numbers); [] for none. */

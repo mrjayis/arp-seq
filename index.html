@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=83" />
-  <link rel="stylesheet" href="mac.css?v=83" />
+  <link rel="stylesheet" href="styles.css?v=84" />
+  <link rel="stylesheet" href="mac.css?v=84" />
 </head>
 <body>
   <main class="device">
@@ -257,6 +257,8 @@
         <label class="field inline">Octave <select id="prog-octave"></select></label>
         <label class="field inline" title="Change key every N times round the progression">Modulate <select id="prog-mod-every"></select></label>
         <label class="field inline" title="How far each modulation moves the key. It keeps adding up, folded back within a tritone, so it never drifts out of range.">by <select id="prog-mod-by"></select></label>
+        <label class="check" title="The other synths change key with the progression too: the Mono Synth sequence, and keys you hold or latch for the arp and chords">
+          <input id="prog-mod-all" type="checkbox" /> All synths</label>
         <span class="status" id="prog-key" aria-live="polite"></span>
         <label class="field inline">Voicing <select id="prog-voicing" title="As set: each chord in the inversion you choose. Smooth: each chord after the first takes the inversion closest to the one before, so the voices barely move."></select></label>
         <label class="field inline">Preset
@@ -693,6 +695,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=83"></script>
+  <script type="module" src="src/app.js?v=84"></script>
 </body>
 </html>
