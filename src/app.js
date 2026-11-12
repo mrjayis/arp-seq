@@ -8,24 +8,25 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=107';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=107';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=107';
-import { Midi } from './midi.js?v=107';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=107';
+} from './core.js?v=108';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=108';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=108';
+import { Midi } from './midi.js?v=108';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=108';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=107';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=107';
+} from './percussion.js?v=108';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=108';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores } from './samples.js?v=108';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices,
-} from './breaks.js?v=107';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=107';
+} from './breaks.js?v=108';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=108';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=107';
+} from './mono.js?v=108';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -82,6 +83,12 @@ const settings = {
   tuningPure: true, // with Just tuning: no deliberate detuning, vibrato or chorus wobble
   tuning: 'equal', // 'equal' | 'just' | 'just7': adaptive just intonation to the chord now playing
   humanize: 0, // 0–100: random timing and level variation for every section
+  scoreOn: false,
+  scoreId: '', // the piece chosen in the Score player
+  scoreVoices: {}, // {pieceId: ['arp' | 'chord' | 'mono' | 'off', …]} one per part
+  scoreTranspose: 0,
+  scoreSpeed: 1,
+  scoreLoop: true,
   monoKbOctave: 2, // the mono panel's little keyboard starts at C of this octave
   breakOff: [], // slices switched off (shift-click): not played, not picked by Evolve/Randomize
   breakRollHold: true, // a roll keeps going until the next filled row (Polyend style); off = one step
@@ -366,7 +373,8 @@ function tonicPc() {
  * with ===): the progression's chord plus held keys, else the held keys; null for none.
  */
 function chordRoot() {
-  const notes = engine.notes.map((n) => n.note);
+  let notes = engine.notes.map((n) => n.note);
+  if (!notes.length && scoreSounding.length) notes = scoreSounding.map((s) => s.n); // the score's own harmony
   if (settings.progOn && progIndex >= 0) {
     const slot = settings.progression[progIndex];
     if (slot && slot.type !== 'rest') {
@@ -799,6 +807,7 @@ function onPulse(time, pulse, pulseDuration) {
       uiEvents.push({ kind: 'chord', time: cstep.time, rhythmPos: cstep.stepNumber % settings.chordSteps, notes: [] });
     }
   }
+  if (settings.scoreOn) playScorePulse(time, pulse, pulseDuration);
   if (settings.monoOn) {
     const mstep = pulseToStep(pulse, time, pulseDuration, RATES[settings.monoRate] || RATES['1/16'], swing);
     if (mstep) playMonoStep(human(mstep));
@@ -910,6 +919,8 @@ function setPlaying(on, { fromClock = false } = {}) {
   }
   if (!on) {
     if (pendingScene) queueMicrotask(applyPendingScene); // stopped before the bar came: switch now
+    scoreStart = null;
+    scoreSounding.length = 0;
     synth?.panic();
     padVoices.clear(); // panic already silenced them
     breakPlayer?.stop(ctx ? ctx.currentTime : 0);
@@ -3226,6 +3237,203 @@ onRecall(() => {
   renderMonoSteps();
 });
 
+// ---------------------------------------------------------------- score player
+// MIDI files you load, kept in this browser; the chosen one plays part by part through
+// the synths, locked to the clock (24 pulses per quarter, mapped from the file's ticks).
+const scoreFiles = {}; // id -> {name, data}
+let score = null; // the parsed chosen piece: {ppq, tempo, parts, length, id}
+let scoreStart = null; // clock pulse the piece started on
+const scoreSounding = []; // {n, end}: score notes sounding now (for just intonation)
+const SCORE_VOICES = [['arp', 'Arp voice'], ['chord', 'Chord synth'], ['mono', 'Mono synth'], ['off', 'Off']];
+
+function scoreVoices() {
+  if (!score) return [];
+  const saved = settings.scoreVoices[score.id] || [];
+  // First part on the arp voice, second on the mono synth, any more on the chord synth.
+  return score.parts.map((_, i) => saved[i] || (i === 0 ? 'arp' : i === 1 ? 'mono' : 'chord'));
+}
+
+function chooseScore(id) {
+  settings.scoreId = id;
+  score = null;
+  const file = scoreFiles[id];
+  if (file) {
+    try {
+      const parsed = parseMidi(file.data);
+      score = { ...parsed, id, length: scoreLength(parsed) };
+      // Monophonic voices play each note until the next starts (no overlaps cutting it off).
+      score.monoParts = score.parts.map((p) => monoLengths(p.notes));
+    } catch (err) {
+      $('score-status').textContent = `Couldn't read ${file.name}: ${err.message}`;
+    }
+  }
+  scoreStart = null;
+  renderScore();
+  save();
+}
+
+function renderScore() {
+  $('score-on').setAttribute('aria-pressed', String(settings.scoreOn));
+  $('score-on').textContent = settings.scoreOn ? 'On' : 'Off';
+  $('score-panel').classList.toggle('off', !settings.scoreOn);
+  const pick = $('score-pick');
+  pick.replaceChildren();
+  const ids = Object.keys(scoreFiles).sort((a, b) => scoreFiles[a].name.localeCompare(scoreFiles[b].name));
+  if (!ids.length) pick.add(new Option('— load a MIDI file —', ''));
+  for (const id of ids) pick.add(new Option(scoreFiles[id].name.replace(/\.midi?$/i, ''), id));
+  pick.value = score ? score.id : '';
+  $('score-remove').disabled = !score;
+  $('score-tempo').disabled = !score;
+  const wrap = $('score-parts');
+  wrap.replaceChildren();
+  if (!score) {
+    $('score-status').textContent = ids.length ? '' : 'No pieces yet.';
+    return;
+  }
+  const voices = scoreVoices();
+  score.parts.forEach((part, i) => {
+    const row = document.createElement('label');
+    row.className = 'score-part';
+    const name = document.createElement('span');
+    name.className = 'part-name';
+    name.textContent = part.name;
+    const lo = Math.min(...part.notes.map((n) => n.n));
+    const hi = Math.max(...part.notes.map((n) => n.n));
+    const info = document.createElement('span');
+    info.className = 'part-info';
+    info.textContent = `${part.notes.length} notes · ${noteName(lo)}–${noteName(hi)}`;
+    const sel = document.createElement('select');
+    sel.setAttribute('aria-label', `Synth for ${part.name}`);
+    for (const [v, l] of SCORE_VOICES) sel.add(new Option(l, v));
+    sel.value = voices[i];
+    sel.addEventListener('change', () => {
+      settings.scoreVoices[score.id] = scoreVoices().map((v, k) => (k === i ? sel.value : v));
+      save();
+    });
+    row.append(name, sel, info);
+    wrap.append(row);
+  });
+  const bars = score.length / (score.ppq * 4);
+  $('score-status').textContent = `${score.parts.length} part${score.parts.length === 1 ? '' : 's'} · ${bars} bar${bars === 1 ? '' : 's'} · written at ${tempoBpm(score.tempo)} BPM`;
+}
+
+/** Schedule the score's notes that start within this clock pulse. */
+function playScorePulse(time, pulse, pulseDuration) {
+  if (!score) return;
+  // A piece starts on the next bar line (or straight away at the very start).
+  if (scoreStart === null) scoreStart = pulse === 0 ? 0 : Math.ceil(pulse / (PPQN * 4)) * PPQN * 4;
+  const p = pulse - scoreStart;
+  if (p < 0) return;
+  const speed = settings.scoreSpeed || 1;
+  const tpp = (score.ppq / PPQN) * speed; // file ticks per clock pulse
+  let from = p * tpp;
+  if (from >= score.length) {
+    if (!settings.scoreLoop) return;
+    from %= score.length;
+  }
+  const to = from + tpp;
+  const secPerTick = pulseDuration / tpp;
+  while (scoreSounding.length && scoreSounding[0].end <= time) scoreSounding.shift();
+  const voices = scoreVoices();
+  const starting = [];
+  score.parts.forEach((part, i) => {
+    const voice = voices[i];
+    if (voice === 'off') return;
+    const notes = voice === 'chord' ? part.notes : score.monoParts[i];
+    for (let k = firstAtOrAfter(notes, from); k < notes.length && notes[k].t < to; k++) {
+      const n = notes[k];
+      const note = Math.max(0, Math.min(127, n.n + settings.scoreTranspose));
+      starting.push({ voice, part: i, note, at: time + (n.t - from) * secPerTick, dur: n.d * secPerTick, vel: n.v });
+    }
+  });
+  if (!starting.length) return;
+  // Everything sounding together tunes together (both hands of an invention).
+  for (const s of starting) scoreSounding.push({ n: s.note, end: s.at + s.dur });
+  scoreSounding.sort((a, b) => a.end - b.end);
+  if (!settings.synthOn || !synth) return;
+  for (const s of starting) playScoreNote(s);
+}
+
+function playScoreNote({ voice, part, note, at, dur, vel }) {
+  const velocity = humanLevel(vel);
+  const t = settings.humanize > 0 ? at + humanizeOffset(settings.humanize / 100, dur) : at;
+  if (voice === 'arp') {
+    synth.playWest(tuned(note), velocity, t, dur, { ...westVoice(1), mono: `score${part}`, out: buses.arp });
+  } else if (voice === 'mono') {
+    if (!monoSynth) return;
+    monoSynth.noteOn(tuned(note), t, { velocity: velocity / 127 });
+    monoSynth.noteOff(t + Math.max(0.02, dur));
+  } else if (settings.chordSound !== 'analog') {
+    synth.fmVoice(tuned(note), velocity, t, { ...fmOptions(), out: chorus.input }).release(t + dur);
+  } else {
+    synth.play(tuned(note), velocity, t, dur, {
+      cutoff: settings.chordCutoff, resonance: settings.chordResonance,
+      layers: chordLayers(), level: settings.chordLevel / 100, out: chorus.input,
+    });
+  }
+}
+
+async function addScoreFiles(files) {
+  let added = 0;
+  let last = null;
+  for (const file of files) {
+    const data = await file.arrayBuffer();
+    try { parseMidi(data); } catch (err) { $('score-status').textContent = `${file.name}: ${err.message}`; continue; }
+    const id = `s${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+    scoreFiles[id] = { name: file.name, data };
+    try { await saveScore(id, scoreFiles[id]); } catch { /* storage unavailable: kept for this visit */ }
+    added++;
+    last = id;
+  }
+  if (last) chooseScore(last);
+  if (added) $('score-status').textContent = `Added ${added} piece${added === 1 ? '' : 's'}. ` + $('score-status').textContent;
+}
+
+$('score-on').addEventListener('click', () => {
+  settings.scoreOn = !settings.scoreOn;
+  scoreStart = null;
+  if (settings.scoreOn) {
+    ensureAudio();
+    if (!playing && settings.sync === 'internal') setPlaying(true);
+  }
+  renderScore();
+  save();
+});
+$('score-pick').addEventListener('change', () => chooseScore($('score-pick').value));
+$('score-load').addEventListener('click', () => $('score-file').click());
+$('score-file').addEventListener('change', async () => {
+  await addScoreFiles([...$('score-file').files]);
+  $('score-file').value = '';
+});
+confirmClick($('score-remove'), async () => {
+  if (!score) return;
+  const id = score.id;
+  delete scoreFiles[id];
+  delete settings.scoreVoices[id];
+  try { await deleteScore(id); } catch { /* ignore */ }
+  chooseScore(Object.keys(scoreFiles)[0] || '');
+}, { ask: 'Sure? Remove' });
+$('score-tempo').addEventListener('click', () => { if (score) setBpm(tempoBpm(score.tempo)); });
+for (let t = -24; t <= 24; t++) $('score-transpose').add(new Option(`${t > 0 ? '+' : ''}${t}`, String(t)));
+bindSelect('score-transpose', 'scoreTranspose');
+bindSelect('score-speed', 'scoreSpeed', [['0.5', '½×'], ['0.75', '¾×'], ['1', '1×'], ['1.5', '1½×'], ['2', '2×']]);
+$('score-loop').checked = settings.scoreLoop;
+$('score-loop').addEventListener('change', () => { settings.scoreLoop = $('score-loop').checked; save(); });
+onRecall(() => { $('score-loop').checked = settings.scoreLoop; scoreStart = null; chooseScore(settings.scoreId); });
+// Drop MIDI files onto the window.
+$('score-panel').addEventListener('dragover', (e) => { e.preventDefault(); $('score-panel').classList.add('dragover'); });
+$('score-panel').addEventListener('dragleave', () => $('score-panel').classList.remove('dragover'));
+$('score-panel').addEventListener('drop', (e) => {
+  e.preventDefault();
+  $('score-panel').classList.remove('dragover');
+  addScoreFiles([...e.dataTransfer.files].filter((f) => /\.midi?$/i.test(f.name) || /midi/.test(f.type)));
+});
+renderScore();
+loadScores().then((stored) => {
+  Object.assign(scoreFiles, stored);
+  chooseScore(scoreFiles[settings.scoreId] ? settings.scoreId : Object.keys(scoreFiles)[0] || '');
+});
+
 // ---------------------------------------------------------------- UI: effects
 let lastDelayBpm = 0;
 function currentBpm() {
@@ -4065,7 +4273,7 @@ document.querySelectorAll('main > .panel').forEach((panel) => {
 // shows which modules are switched on; clicking opens the window and scrolls to it.
 const DOCK_NAMES = {
   Transport: 'Clock', Scenes: 'Scenes', Keyboard: 'Keys', Arpeggiator: 'Arp', Sequencer: 'Seq', 'Arp voice, oscillator 1': 'Osc 1',
-  'Oscillator 2': 'Osc 2', 'Chord progression': 'Prog', 'Chord rhythm': 'Chords', 'Mono synth': 'Mono',
+  'Oscillator 2': 'Osc 2', 'Chord progression': 'Prog', 'Chord rhythm': 'Chords', 'Mono synth': 'Mono', 'Score player': 'Score',
   Percussion: 'Drums', 'Breakbeat slicer': 'Break', Song: 'Song', Effects: 'FX', 'Sound and MIDI': 'MIDI',
 };
 const DOCK_GROUP_STARTS = new Set(['Arpeggiator', 'Chord progression', 'Mono synth', 'Percussion', 'Effects']);
