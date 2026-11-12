@@ -92,6 +92,10 @@ export function deleteScore(id) {
   return run('readwrite', (store) => store.delete(id), SCORE_DB);
 }
 
+export function clearScores() {
+  return run('readwrite', (store) => store.clear(), SCORE_DB);
+}
+
 export async function loadScores() {
   try {
     const db = await openDb(SCORE_DB);
