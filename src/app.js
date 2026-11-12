@@ -3,26 +3,26 @@ import {
   MIN_SEQ_LENGTH, MAX_SEQ_LENGTH, noteName, defaultSteps, CHORDS, chordNotes,
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
-  progressionChord, anticipatedSlot, chordTie, SLOT_OCTAVES,
+  progressionChord, anticipatedSlot, chordTie, SLOT_OCTAVES, humanizeOffset, humanizeLevel,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=75';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=75';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=75';
-import { Midi } from './midi.js?v=75';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=75';
+} from './core.js?v=77';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=77';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=77';
+import { Midi } from './midi.js?v=77';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=77';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=75';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=75';
+} from './percussion.js?v=77';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=77';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
-} from './breaks.js?v=75';
-import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=75';
+} from './breaks.js?v=77';
+import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=77';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=75';
+} from './mono.js?v=77';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -75,6 +75,7 @@ const settings = {
   osc2ModDepth: 30,
   chordSyncopate: false, // a chord hit in the last 8th before the progression moves on plays the next chord
   chordTie: false, // a syncopated chord holds over the bar line instead of being struck again on the downbeat
+  humanize: 0, // 0–100: random timing and level variation for every section
   arpOn: true, // off: the arp and sequencer keep stepping (chords can follow) but play nothing
   chordOn: true,
   chordRate: '1/8',
@@ -364,7 +365,7 @@ function playArp(step) {
   // oscillator 1 even when it's off (a pure modulator).
   const modNote = osc2Note(ev, settings.osc2Mode, settings.osc2Transpose);
   const note2 = settings.osc2On ? modNote : null;
-  if (ev.velocity > 0) playVoice(ev.note, note2, ev.velocity, step.time, gateLen, modNote);
+  if (ev.velocity > 0) playVoice(ev.note, note2, humanLevel(ev.velocity), step.time, gateLen, modNote);
   uiEvents.push({ kind: 'arp', time: step.time, off: step.time + gateLen, note2, ...ev });
 }
 
@@ -510,7 +511,8 @@ function playChord(step) {
     midi.noteOn(note, velocity, on, settings.chordMidiCh);
     midi.noteOff(note, off, settings.chordMidiCh);
   };
-  for (const { note, velocity } of notes) {
+  for (const { note, velocity: v0 } of notes) {
+    const velocity = humanLevel(v0); // each chord note a little different, like fingers
     if (sound && settings.chordSound !== 'analog') {
       // FM: struck at the hit, damped at the end of the gate (the pad swells in faster here).
       const fm = fmOptions();
@@ -559,6 +561,17 @@ function resetProgression() {
   engine.setProgressionNotes([]);
 }
 
+/**
+ * Humanize: a copy of a step moved slightly off the grid (each section gets its own
+ * offset, so they don't all drift together). Never earlier than the audio clock allows.
+ */
+function human(step) {
+  const off = humanizeOffset(settings.humanize / 100, step.duration);
+  if (!off) return step;
+  return { ...step, time: Math.max(ctx.currentTime + 0.002, step.time + off) };
+}
+const humanLevel = (v, max) => humanizeLevel(v, settings.humanize / 100, Math.random, max);
+
 function onPulse(time, pulse, pulseDuration) {
   if (settings.clockOut && settings.sync === 'internal') midi.clock(toPerfMs(time));
   stepProgression(time, pulse);
@@ -571,12 +584,13 @@ function onPulse(time, pulse, pulseDuration) {
   const gated = settings.chordGateArp
     && !patternAt(pulse, RATES[settings.chordRate], settings.chordHits, settings.chordSteps, settings.chordRotate).hit;
   if (step && !gated) {
-    playArp(step);
-    if (settings.chordMode === 'pad') padFollow(step.time);
+    const hstep = human(step);
+    playArp(hstep);
+    if (settings.chordMode === 'pad') padFollow(hstep.time);
   }
   const cstep = pulseToStep(pulse, time, pulseDuration, RATES[settings.chordRate], swing);
   if (cstep) {
-    if (settings.chordOn && settings.chordMode !== 'pad') playChord(cstep);
+    if (settings.chordOn && settings.chordMode !== 'pad') playChord(human(cstep));
     else if (settings.chordGateArp && engine.notes.length) {
       // Keep the pattern display moving when only the gate is in use.
       uiEvents.push({ kind: 'chord', time: cstep.time, rhythmPos: cstep.stepNumber % settings.chordSteps, notes: [] });
@@ -584,7 +598,7 @@ function onPulse(time, pulse, pulseDuration) {
   }
   if (settings.monoOn) {
     const mstep = pulseToStep(pulse, time, pulseDuration, RATES[settings.monoRate] || RATES['1/16'], swing);
-    if (mstep) playMonoStep(mstep);
+    if (mstep) playMonoStep(human(mstep));
   }
   if (settings.songOn && !settings.drumOn && settings.breakOn && pulse % (RATES['1/16'] * DRUM_STEPS) === 0) {
     uiEvents.push({ kind: 'song', time, bar: Math.floor(pulse / (RATES['1/16'] * DRUM_STEPS)) });
@@ -594,7 +608,7 @@ function onPulse(time, pulse, pulseDuration) {
   if (settings.drumOn || settings.breakOn) {
     const dstep = pulseToStep(pulse, time, pulseDuration, RATES['1/16'], swing);
     if (dstep && settings.drumOn) playDrums(dstep);
-    if (dstep && settings.breakOn) playBreakStep(dstep);
+    if (dstep && settings.breakOn) playBreakStep(human(dstep));
   }
 }
 
@@ -633,11 +647,13 @@ function playDrums(step) {
     // Each row has its own level and tuning (the sample mixer, or the kit's mixer).
     const { level, tune: rowTune } = rowMix(id);
     const rowLevel = level / 100;
-    if (drums && settings.drumLevel > 0 && rowLevel > 0) drums.play(id, step.time, gain * rowLevel, rowTune);
+    // Humanize: each hit its own small push or drag and level.
+    const t = settings.humanize > 0 ? human(step).time : step.time;
+    if (drums && settings.drumLevel > 0 && rowLevel > 0) drums.play(id, t, humanLevel(gain, 1.5) * rowLevel, rowTune);
     if (settings.drumMidiCh >= 0) {
       const { gm } = voices.find((v) => v.id === id);
-      midi.noteOn(gm, Math.round(gain * 127), toPerfMs(step.time), settings.drumMidiCh);
-      midi.noteOff(gm, toPerfMs(step.time + 0.05), settings.drumMidiCh);
+      midi.noteOn(gm, Math.min(127, Math.round(gain * 127)), toPerfMs(t), settings.drumMidiCh);
+      midi.noteOff(gm, toPerfMs(t + 0.05), settings.drumMidiCh);
     }
   }
   uiEvents.push({ kind: 'drum', time: step.time, step: step.stepNumber, hits: hits.map((h) => h.id) });
@@ -1016,6 +1032,7 @@ function showPwm() {
   ['chord-width', 'chord-pwm-depth', 'chord-pwm-rate'].forEach((id) => { $(id).disabled = off; });
   $('pwm-note').textContent = off ? 'Set Wave 1 or Wave 2 to Square to use PWM.' : '';
 }
+bindRange('humanize', 'humanize', (v) => (v ? `${v}%` : 'off'));
 bindSelect('chord-sound', 'chordSound', [['analog', 'Analog'], ['ep', 'FM E.Piano'], ['fmpad', 'FM Pad']], () => {
   renderChordSound();
   if (ctx && padVoices.size) updatePad(ctx.currentTime); // swap a held pad over to the new sound

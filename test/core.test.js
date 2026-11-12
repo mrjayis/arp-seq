@@ -353,3 +353,25 @@ test('each progression slot can be shifted up or down two octaves', () => {
     assert.deepEqual(progressionVoicings(slots, 3, mode)[1].notes, plain.map((n) => n + 12), mode);
   }
 });
+
+import { humanizeOffset, humanizeLevel } from '../src/core.js';
+
+test('humanize: offsets stay within ±20 ms and a fifth of the step; off means exact', () => {
+  assert.equal(humanizeOffset(0, 0.125), 0);
+  let max = 0;
+  for (let i = 0; i < 2000; i++) {
+    const o = humanizeOffset(1, 0.125);
+    max = Math.max(max, Math.abs(o));
+  }
+  assert.ok(max <= 0.02 && max > 0.01, `max ${max}`);
+  for (let i = 0; i < 500; i++) assert.ok(Math.abs(humanizeOffset(1, 0.05)) <= 0.01); // short steps: a fifth
+  assert.equal(humanizeOffset(1, 0.125, () => 0.5), 0); // centred
+  assert.equal(humanizeLevel(100, 0), 100);
+  for (let i = 0; i < 500; i++) {
+    const v = humanizeLevel(100, 1);
+    assert.ok(v >= 75 && v <= 125 && Number.isInteger(v));
+    const g = humanizeLevel(1.4, 1, Math.random, 1.5);
+    assert.ok(g > 0 && g <= 1.5);
+  }
+  assert.equal(humanizeLevel(0, 1), 0); // a muted step stays muted
+});
