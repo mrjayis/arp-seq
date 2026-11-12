@@ -3,25 +3,26 @@ import {
   MIN_SEQ_LENGTH, MAX_SEQ_LENGTH, noteName, defaultSteps, CHORDS, chordNotes,
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
+  progressionChord, anticipatedSlot,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=71';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=71';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=71';
-import { Midi } from './midi.js?v=71';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=71';
+} from './core.js?v=72';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=72';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=72';
+import { Midi } from './midi.js?v=72';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=72';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=71';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=71';
+} from './percussion.js?v=72';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=72';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
-} from './breaks.js?v=71';
-import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=71';
+} from './breaks.js?v=72';
+import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=72';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=71';
+} from './mono.js?v=72';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -72,6 +73,7 @@ const settings = {
   osc2Resonance: 1.5,
   osc2Mod: 'off', // oscillator 2 → oscillator 1: 'off' | 'am' | 'fm'
   osc2ModDepth: 30,
+  chordSyncopate: false, // a chord hit in the last 8th before the progression moves on plays the next chord
   arpOn: true, // off: the arp and sequencer keep stepping (chords can follow) but play nothing
   chordOn: true,
   chordRate: '1/8',
@@ -448,13 +450,27 @@ function padFollow(time) {
   for (const v of padVoices.values()) v.follow(semis, scale, time, settings.padGlide / 1000);
 }
 
+/**
+ * The notes a chord hit plays. With Syncopate on, a hit in the last 8th note before
+ * the progression moves on plays the next chord early (anticipation), held keys included.
+ */
+function chordSource(step) {
+  if (!settings.chordSyncopate || !settings.progOn) return engine.notes;
+  const pulse = step.stepNumber * RATES[settings.chordRate];
+  const slots = settings.progression.slice(0, settings.progLength);
+  const next = anticipatedSlot(pulse, slots);
+  if (next < 0) return engine.notes;
+  return engine.notesWith(progressionChord(progVoicings()[next]?.notes || []));
+}
+
 function playChord(step) {
-  if (!engine.notes.length) return;
+  const source = chordSource(step);
+  if (!source.length) return;
   const rhythmPos = step.stepNumber % settings.chordSteps;
   const hit = euclid(settings.chordHits, settings.chordSteps, settings.chordRotate)[rhythmPos];
   const gateLen = gateLength(step, settings.chordGate);
   const notes = hit
-    ? chordVoicing(engine.notes, {
+    ? chordVoicing(source, {
       octave: settings.chordOctave,
       step: settings.chordFollowSeq ? engine.currentStep : null,
     })
@@ -1018,7 +1034,7 @@ bindLog('pad-glide', 'padGlide', 1, 2000, (v) => (v < 1000 ? `${v} ms` : `${(v /
 function renderChordMode() {
   const pad = settings.chordMode === 'pad';
   $('chord-panel').classList.toggle('pad', pad);
-  for (const id of ['chord-rate', 'chord-steps', 'chord-hits', 'chord-rotate', 'chord-gate']) {
+  for (const id of ['chord-rate', 'chord-steps', 'chord-hits', 'chord-rotate', 'chord-gate', 'chord-syncopate']) {
     $(id).closest('label').classList.toggle('rhythm-only', true);
   }
   $('chord-pattern').closest('.field').classList.add('rhythm-only');
@@ -1032,6 +1048,8 @@ bindRange('chord-res', 'chordResonance', (v) => v.toFixed(1));
 bindRange('chorus-mix', 'chordChorusMix', (v) => `${v}%`, (v) => chorus?.setMix(v / 100));
 bindRange('chorus-rate', 'chordChorusRate', (v) => `${v.toFixed(2)} Hz`, (v) => chorus?.setRate(v));
 bindRange('chorus-depth', 'chordChorusDepth', (v) => `${v}%`, (v) => chorus?.setDepth(v / 100));
+$('chord-syncopate').checked = settings.chordSyncopate;
+$('chord-syncopate').addEventListener('change', () => { settings.chordSyncopate = $('chord-syncopate').checked; save(); });
 $('chord-gate-arp').checked = settings.chordGateArp;
 $('chord-gate-arp').addEventListener('change', () => { settings.chordGateArp = $('chord-gate-arp').checked; save(); });
 $('chord-follow').checked = settings.chordFollowSeq;

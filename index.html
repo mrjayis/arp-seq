@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=71" />
-  <link rel="stylesheet" href="mac.css?v=71" />
+  <link rel="stylesheet" href="styles.css?v=72" />
+  <link rel="stylesheet" href="mac.css?v=72" />
 </head>
 <body>
   <main class="device">
@@ -268,6 +268,8 @@
         <label class="field">Mode <select id="chord-mode" title="Rhythm: Euclidean hits. Pad: the chord holds, always on, changing smoothly with the chords."></select></label>
         <label class="check gate-arp" title="Arp only plays while this pattern is on a hit (works even with the chords off)">
           <input id="chord-gate-arp" type="checkbox" /> Gate arp</label>
+        <label class="check syncopate" title="With the progression on: a chord hit on or after the last 8th note before the next chord plays that next chord early (anticipation)">
+          <input id="chord-syncopate" type="checkbox" /> Syncopate</label>
         <label class="field">Rate <select id="chord-rate"></select></label>
         <label class="field">Steps <select id="chord-steps"></select></label>
         <label class="field">Hits <select id="chord-hits"></select></label>
@@ -671,6 +673,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=71"></script>
+  <script type="module" src="src/app.js?v=72"></script>
 </body>
 </html>

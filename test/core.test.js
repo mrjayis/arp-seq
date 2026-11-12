@@ -182,7 +182,7 @@ test('patternAt follows a pattern running at its own rate', () => {
   assert.deepEqual(patternAt(12 * 9, 12, 3, 8), { pos: 1, hit: false });
 });
 
-import { progressionAt, slotNotes, invertChord, progressionVoicings, nearestVoicing, PPQN } from '../src/core.js';
+import { progressionAt, slotNotes, invertChord, progressionVoicings, nearestVoicing, anticipatedSlot, PPQN } from '../src/core.js';
 
 test('progressionAt walks the slots by their beat lengths and loops', () => {
   const slots = [{ beats: 4 }, { beats: 2 }, { beats: 2 }];
@@ -298,4 +298,19 @@ test('nearest-tone voice leading moves each voice the least, open voicings allow
   assert.deepEqual(near[1].notes, [48, 53, 57]); // F/C
   for (const { notes } of near) assert.ok(notes.every((n) => n >= 41 && n <= 74));
   assert.deepEqual(progressionVoicings(slots, 3, 'nearest'), near);
+});
+
+test('anticipatedSlot: hits in the last 8th before a chord change push the next chord', () => {
+  const slots = [{ beats: 4 }, { beats: 2 }, { beats: 4 }];
+  const at = (beat) => anticipatedSlot(Math.round(beat * PPQN), slots);
+  assert.equal(at(0), -1);
+  assert.equal(at(3), -1); // beat 4: a quarter before the change
+  assert.equal(at(3.25), -1); // just before the last 8th
+  assert.equal(at(3.5), 1); // the "and" of 4: the last 8th
+  assert.equal(at(3.75), 1); // after it
+  assert.equal(at(4), -1); // the new chord is already playing
+  assert.equal(at(5.5), 2);
+  assert.equal(at(9.5), 0); // the loop wraps back to the first chord
+  assert.equal(anticipatedSlot(3.5 * PPQN, [{ beats: 4 }]), -1); // one chord: nothing changes
+  assert.equal(anticipatedSlot(0, []), -1);
 });
