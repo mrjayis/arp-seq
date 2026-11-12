@@ -393,3 +393,13 @@ test('modulation: the key moves every N rounds and folds back within a tritone',
     assert.ok(s >= -5 && s <= 6);
   }
 });
+
+test('held notes follow the progression modulation (heldShift); progression notes stay as given', () => {
+  const e = new ArpSeqEngine();
+  e.noteOn(60, 100);
+  e.setProgressionNotes([62, 65]);
+  e.heldShift = 2;
+  assert.deepEqual(e.notes.map((n) => n.note).sort((a, b) => a - b), [62, 65]); // held 60 → 62, shared with the chord
+  e.heldShift = 0;
+  assert.deepEqual(e.notes.map((n) => n.note).sort((a, b) => a - b), [60, 62, 65]);
+});

@@ -8,23 +8,23 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=83';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=83';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=83';
-import { Midi } from './midi.js?v=83';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=83';
+} from './core.js?v=84';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=84';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=84';
+import { Midi } from './midi.js?v=84';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=84';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=83';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=83';
+} from './percussion.js?v=84';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=84';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
-} from './breaks.js?v=83';
-import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=83';
+} from './breaks.js?v=84';
+import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=84';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=83';
+} from './mono.js?v=84';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -133,6 +133,7 @@ const settings = {
   progOctave: 3,
   progModEvery: 0, // modulate every N rounds of the progression (0 = off)
   progModBy: 2, // semitones per modulation
+  progModAll: true, // the mono synth and held keys change key with the progression too
   progVoicing: 'set', // 'set': each chord's own inversion; 'smooth': nearest inversion to the last chord
   progression: defaultProgression(),
   drumOn: false,
@@ -585,6 +586,7 @@ function stepProgression(time, pulse) {
   if (i === progIndex && shift === progShift) return;
   progIndex = i;
   progShift = shift;
+  engine.heldShift = settings.progModAll ? shift : 0;
   engine.setProgressionNotes(shifted(progVoicings()[i]?.notes || [], shift));
   uiEvents.push({ kind: 'prog', time, index: i, shift });
 }
@@ -593,6 +595,7 @@ function stepProgression(time, pulse) {
 function resetProgression() {
   progIndex = -1;
   progShift = 0;
+  engine.heldShift = 0;
   engine.setProgressionNotes([]);
 }
 
@@ -1322,7 +1325,14 @@ function renderProgression() {
 /** The modulation interval only matters when modulation is on. */
 function renderModBy() {
   $('prog-mod-by').disabled = !settings.progModEvery;
+  $('prog-mod-all').disabled = !settings.progModEvery;
+  $('prog-mod-all').checked = settings.progModAll;
 }
+$('prog-mod-all').addEventListener('change', () => {
+  settings.progModAll = $('prog-mod-all').checked;
+  engine.heldShift = settings.progModAll ? progShift : 0;
+  save();
+});
 onRecall(renderModBy);
 
 /** Show which key the progression is in now (relative to how it's written). */
@@ -2501,7 +2511,8 @@ function playMonoStep(step) {
   if (!seq.length) return;
   const idx = step.stepNumber % seq.length;
   const act = stepAction(seq, idx);
-  const shift = settings.monoTranspose + monoKeyTranspose;
+  // The progression's modulation carries the mono line into the new key too (Modulate all).
+  const shift = settings.monoTranspose + monoKeyTranspose + (settings.progModAll ? progShift : 0);
   const t = step.time;
   const off = t + step.duration * Math.min(settings.monoGate / 100, 0.98);
   const midiOn = (n) => {
