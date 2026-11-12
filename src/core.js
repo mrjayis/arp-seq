@@ -378,6 +378,30 @@ export function progressionAt(pulse, slots) {
   return slots.length - 1;
 }
 
+// ---- modulation: the progression changes key every N times round.
+export const MOD_EVERY = [0, 1, 2, 3, 4, 6, 8]; // 0 = off
+export const MOD_INTERVALS = {
+  1: '+1 (half step)', 2: '+2 (whole step)', 3: '+3 (minor 3rd)', 4: '+4 (major 3rd)', 5: '+5 (4th)', 7: '+7 (5th)',
+  [-1]: '−1 (half step)', [-2]: '−2 (whole step)', [-3]: '−3 (minor 3rd)', [-5]: '−5 (4th down)',
+};
+
+/** Which time round the progression is on at clock `pulse` (0 = the first pass). */
+export function progressionRound(pulse, slots) {
+  const total = slots.reduce((sum, s) => sum + s.beats, 0) * PPQN;
+  return total ? Math.floor(pulse / total) : 0;
+}
+
+/**
+ * Semitones the progression is transposed by on `round`: `interval` more every `every`
+ * rounds, folded into −5..+6 so it keeps changing key without drifting out of range.
+ */
+export function modulationShift(round, every, interval) {
+  if (!every || !interval) return 0;
+  const raw = Math.floor(round / every) * interval;
+  const pc = ((raw % 12) + 12) % 12;
+  return pc > 6 ? pc - 12 : pc;
+}
+
 /** Inversion names; a chord can't be inverted further than it has notes. */
 export const INVERSIONS = ['Root', '1st', '2nd', '3rd'];
 

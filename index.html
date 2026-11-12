@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=80" />
-  <link rel="stylesheet" href="mac.css?v=80" />
+  <link rel="stylesheet" href="styles.css?v=82" />
+  <link rel="stylesheet" href="mac.css?v=82" />
 </head>
 <body>
   <main class="device">
@@ -255,6 +255,9 @@
         <button id="prog-on" aria-pressed="false" title="Play the chord progression">Off</button>
         <div class="len" id="prog-length" aria-label="Number of chords"></div>
         <label class="field inline">Octave <select id="prog-octave"></select></label>
+        <label class="field inline" title="Change key every N times round the progression">Modulate <select id="prog-mod-every"></select></label>
+        <label class="field inline" title="How far each modulation moves the key. It keeps adding up, folded back within a tritone, so it never drifts out of range.">by <select id="prog-mod-by"></select></label>
+        <span class="status" id="prog-key" aria-live="polite"></span>
         <label class="field inline">Voicing <select id="prog-voicing" title="As set: each chord in the inversion you choose. Smooth: each chord after the first takes the inversion closest to the one before, so the voices barely move."></select></label>
         <label class="field inline">Preset
           <select id="prog-preset"><option value="">Load…</option></select>
@@ -681,6 +684,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=80"></script>
+  <script type="module" src="src/app.js?v=82"></script>
 </body>
 </html>

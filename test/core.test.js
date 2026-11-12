@@ -375,3 +375,21 @@ test('humanize: offsets stay within ±20 ms and a fifth of the step; off means e
   }
   assert.equal(humanizeLevel(0, 1), 0); // a muted step stays muted
 });
+
+import { modulationShift, progressionRound } from '../src/core.js';
+
+test('modulation: the key moves every N rounds and folds back within a tritone', () => {
+  const slots = [{ beats: 4 }, { beats: 4 }];
+  assert.equal(progressionRound(0, slots), 0);
+  assert.equal(progressionRound(8 * PPQN - 1, slots), 0);
+  assert.equal(progressionRound(8 * PPQN, slots), 1);
+  assert.equal(modulationShift(5, 0, 2), 0); // off
+  assert.deepEqual([0, 1, 2, 3, 4, 5].map((r) => modulationShift(r, 2, 2)), [0, 0, 2, 2, 4, 4]);
+  // Up a 4th each round: 0, 5, 10 → −2, 15 → 3, …
+  assert.deepEqual([0, 1, 2, 3, 4].map((r) => modulationShift(r, 1, 5)), [0, 5, -2, 3, -4]);
+  assert.deepEqual([0, 1, 2].map((r) => modulationShift(r, 1, -1)), [0, -1, -2]);
+  for (let r = 0; r < 50; r++) {
+    const s = modulationShift(r, 1, 7);
+    assert.ok(s >= -5 && s <= 6);
+  }
+});

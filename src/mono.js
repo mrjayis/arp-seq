@@ -2,7 +2,7 @@
 // into a 24 dB resonant low-pass, with ADSR, LFO and portamento, played by its
 // own step sequencer. Sequencer logic is pure and unit-tested.
 
-import { pulseCurve, SAW_RAMP } from './synth.js?v=80';
+import { pulseCurve, SAW_RAMP } from './synth.js?v=82';
 
 export const MAX_MONO_STEPS = 64;
 export const SUB_MODES = { sq1: '−1 oct square', sq2: '−2 oct square', pl2: '−2 oct pulse' };
