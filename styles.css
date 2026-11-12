@@ -520,6 +520,15 @@ input[type="range"]::-moz-range-thumb {
 /* ---------- breakbeat slicer ---------- */
 .brk.off .tracker, .brk.off .break-wave { opacity: 0.6; }
 .break-tools { margin-bottom: 8px; }
+.break-trim { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin-bottom: 8px; }
+.break-trim-view {
+  flex: 1 1 100%;
+  height: 28px;
+  border: 1.5px solid var(--line);
+  border-radius: 2px;
+  cursor: ew-resize;
+  touch-action: none;
+}
 .break-gen { display: flex; gap: 6px; margin-left: auto; flex-wrap: wrap; }
 .break-wave {
   display: block;
@@ -530,7 +539,7 @@ input[type="range"]::-moz-range-thumb {
   margin-bottom: 10px;
 }
 .tracker { display: grid; grid-template-columns: 1fr; gap: 2px 18px; }
-.tracker.two-col { grid-template-columns: 1fr 1fr; grid-template-rows: repeat(17, auto); grid-auto-flow: column; }
+.tracker.two-col { grid-template-columns: 1fr 1fr; grid-template-rows: repeat(var(--trows, 17), auto); grid-auto-flow: column; }
 .trow {
   display: grid;
   grid-template-columns: 34px 52px 46px 44px 46px 40px 52px minmax(0, 1fr);

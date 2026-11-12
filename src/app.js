@@ -8,23 +8,24 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=84';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=84';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=84';
-import { Midi } from './midi.js?v=84';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=84';
+} from './core.js?v=87';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=87';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=87';
+import { Midi } from './midi.js?v=87';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=87';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=84';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=84';
+} from './percussion.js?v=87';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=87';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
-} from './breaks.js?v=84';
-import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=84';
+  trimSamples, fadeEdges,
+} from './breaks.js?v=87';
+import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=87';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=84';
+} from './mono.js?v=87';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -79,6 +80,7 @@ const settings = {
   chordTie: false, // a syncopated chord holds over the bar line instead of being struck again on the downbeat
   humanize: 0, // 0–100: random timing and level variation for every section
   monoKbOctave: 2, // the mono panel's little keyboard starts at C of this octave
+  breakTrim: { start: 0, end: 1 }, // the part of the loaded break that's used (fractions of the file)
   arpLevel: 100, // %: overall level of the arp (both voices)
   arpOn: true, // off: the arp and sequencer keep stepping (chords can follow) but play nothing
   chordOn: true,
@@ -1930,10 +1932,6 @@ let breakNowStep = -1;
 let breakNowSlice = null;
 const breakRowEls = [];
 
-if (!SLICE_COUNTS.includes(settings.breakSlices)) settings.breakSlices = 16;
-if (!BREAK_STEPS.includes(settings.breakSteps)) settings.breakSteps = 32;
-if (!BREAK_BARS.includes(settings.breakBars)) settings.breakBars = 2;
-if (!['equal', 'transient'].includes(settings.breakSliceMode)) settings.breakSliceMode = 'equal';
 onRecall(repairBreak)();
 function repairBreak() {
   if (!SLICE_COUNTS.includes(settings.breakSlices)) settings.breakSlices = 16;
@@ -2016,12 +2014,132 @@ async function renderDemoBreak() {
   return out;
 }
 
-function setBreak(buffer, name) {
-  breakBuffer = buffer;
+let breakSource = null; // the whole loaded file; breakBuffer is the trimmed part of it
+
+/** Use a newly loaded break. `keepTrim`: a stored break restored with its saved trim. */
+function setBreak(buffer, name, { keepTrim = false } = {}) {
+  breakSource = buffer;
   breakName = name;
-  breakPlayer?.setBuffer(buffer);
-  computeBreakPoints();
+  if (!keepTrim) settings.breakTrim = { start: 0, end: 1 };
+  applyBreakTrim();
 }
+
+/** Cut the trimmed part out of the loaded file (with tiny fades) and slice that. */
+function applyBreakTrim() {
+  if (!breakSource) return;
+  const trim = settings.breakTrim || { start: 0, end: 1 };
+  if (trim.start <= 0 && trim.end >= 1) {
+    breakBuffer = breakSource;
+  } else {
+    const [from, to] = trimSamples(breakSource.length, breakSource.sampleRate, trim.start, trim.end);
+    const out = new AudioBuffer({ length: to - from, numberOfChannels: breakSource.numberOfChannels, sampleRate: breakSource.sampleRate });
+    for (let c = 0; c < breakSource.numberOfChannels; c++) {
+      const data = breakSource.getChannelData(c).slice(from, to);
+      fadeEdges(data, Math.round(breakSource.sampleRate * 0.003));
+      out.copyToChannel(data, c);
+    }
+    breakBuffer = out;
+  }
+  breakPlayer?.setBuffer(breakBuffer);
+  computeBreakPoints();
+  renderTrim();
+}
+
+// ---- trim controls: Start/End sliders over an overview of the whole file.
+const TRIM_STEPS = 1000;
+let trimTimer = null;
+function renderTrim() {
+  const t = settings.breakTrim || { start: 0, end: 1 };
+  $('break-trim-start').value = String(Math.round(t.start * TRIM_STEPS));
+  $('break-trim-end').value = String(Math.round(t.end * TRIM_STEPS));
+  const dur = breakSource ? breakSource.duration : 0;
+  $('break-trim-start-val').textContent = `${(t.start * dur).toFixed(3)} s`;
+  $('break-trim-end-val').textContent = `${(t.end * dur).toFixed(3)} s`;
+  $('break-trim-reset').disabled = t.start <= 0 && t.end >= 1;
+  drawTrimOverview();
+}
+
+let trimPeaks = { buffer: null, cols: 0, pk: null, max: 1 };
+function drawTrimOverview() {
+  const canvas = $('break-trim-view');
+  if (!canvas.clientWidth) return;
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth;
+  const h = canvas.clientHeight || 28;
+  if (canvas.width !== w * dpr || canvas.height !== h * dpr) { canvas.width = w * dpr; canvas.height = h * dpr; }
+  const g = canvas.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const css = getComputedStyle(canvas);
+  const ink = css.getPropertyValue('--ink').trim() || '#000';
+  const mod = css.getPropertyValue('--mod').trim() || ink;
+  g.fillStyle = css.getPropertyValue('--field').trim() || '#fff';
+  g.fillRect(0, 0, w, h);
+  if (!breakSource) return;
+  const cols = Math.floor(w);
+  if (trimPeaks.buffer !== breakSource || trimPeaks.cols !== cols) {
+    const pk = peaks(breakSource.getChannelData(0), cols);
+    let m = 0.001;
+    for (const [lo, hi] of pk) m = Math.max(m, -lo, hi);
+    trimPeaks = { buffer: breakSource, cols, pk, max: m };
+  }
+  const t = settings.breakTrim || { start: 0, end: 1 };
+  const x0 = t.start * w;
+  const x1 = t.end * w;
+  const mid = h / 2;
+  for (let x = 0; x < cols; x++) {
+    const [lo, hi] = trimPeaks.pk[x];
+    g.globalAlpha = x >= x0 && x <= x1 ? 1 : 0.25; // the cut-off parts are faint
+    g.fillStyle = ink;
+    g.fillRect(x, mid - (hi / trimPeaks.max) * (mid - 2), 1, Math.max(1, ((hi - lo) / trimPeaks.max) * (mid - 2)));
+  }
+  g.globalAlpha = 1;
+  g.fillStyle = mod;
+  g.fillRect(Math.round(x0), 0, 2, h);
+  g.fillRect(Math.round(x1) - 2, 0, 2, h);
+}
+
+/** Set the trim from the controls; the cut itself is debounced while dragging. */
+function setTrim(start, end) {
+  const s = Math.min(Math.max(0, start), 1);
+  const e = Math.min(Math.max(0, end), 1);
+  settings.breakTrim = s <= e ? { start: s, end: e } : { start: e, end: s };
+  if (settings.breakTrim.end - settings.breakTrim.start < 0.002) settings.breakTrim.end = Math.min(1, settings.breakTrim.start + 0.002);
+  renderTrim();
+  clearTimeout(trimTimer);
+  trimTimer = setTimeout(() => { applyBreakTrim(); save(); }, 120);
+}
+$('break-trim-start').addEventListener('input', () => {
+  setTrim(Number($('break-trim-start').value) / TRIM_STEPS, settings.breakTrim.end);
+});
+$('break-trim-end').addEventListener('input', () => {
+  setTrim(settings.breakTrim.start, Number($('break-trim-end').value) / TRIM_STEPS);
+});
+// Drag on the overview: moves whichever edge is nearer.
+{
+  const view = $('break-trim-view');
+  let edge = null;
+  const at = (e) => {
+    const r = view.getBoundingClientRect();
+    return Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+  };
+  view.addEventListener('pointerdown', (e) => {
+    if (!breakSource) return;
+    const x = at(e);
+    const t = settings.breakTrim;
+    edge = Math.abs(x - t.start) <= Math.abs(x - t.end) ? 'start' : 'end';
+    view.setPointerCapture(e.pointerId);
+    setTrim(edge === 'start' ? x : t.start, edge === 'end' ? x : t.end);
+  });
+  view.addEventListener('pointermove', (e) => {
+    if (!edge) return;
+    const x = at(e);
+    setTrim(edge === 'start' ? x : settings.breakTrim.start, edge === 'end' ? x : settings.breakTrim.end);
+  });
+  const up = () => { edge = null; };
+  view.addEventListener('pointerup', up);
+  view.addEventListener('pointercancel', up);
+}
+$('break-trim-reset').addEventListener('click', () => setTrim(0, 1));
 
 function updateBreakStatus(message = '') {
   if (message) { $('break-status').textContent = message; return; }
@@ -2114,7 +2232,10 @@ function buildBreakRows() {
   const wrap = $('break-rows');
   wrap.replaceChildren();
   breakRowEls.length = 0;
+  // Long patterns are shown in two columns, each half the steps under its own header.
+  const half = Math.ceil(settings.breakSteps / 2);
   wrap.classList.toggle('two-col', settings.breakSteps > 16);
+  wrap.style.setProperty('--trows', String(half + 1));
   const head = document.createElement('div');
   head.className = 'trow thead';
   head.innerHTML = '<span>Step</span><span>Slice</span><span>Vol</span><span>Pitch</span>'
@@ -2131,7 +2252,7 @@ function buildBreakRows() {
     return el;
   };
   settings.breakPattern.forEach((row, i) => {
-    if (i === 16) wrap.append(head.cloneNode(true)); // the second column's header
+    if (settings.breakSteps > 16 && i === half) wrap.append(head.cloneNode(true)); // the second column's header
     const el = document.createElement('div');
     el.className = `trow${i % 4 === 0 ? ' beat' : ''}`;
     const num = document.createElement('button');
@@ -2256,6 +2377,12 @@ bindSelect('break-steps', 'breakSteps', null, () => {
   buildBreakRows();
 });
 bindSelect('break-bars', 'breakBars', null, () => {
+  // An in-order pattern needs room for the whole break: lengthen it (never shorten) if needed.
+  const want = settings.breakBars * 16;
+  if (settings.breakPatternAuto && settings.breakSteps < want) {
+    settings.breakSteps = BREAK_STEPS.find((n) => n >= want) || BREAK_STEPS[BREAK_STEPS.length - 1];
+    $('break-steps').value = String(settings.breakSteps);
+  }
   if (settings.breakPatternAuto) { settings.breakPattern = orderedPattern(); buildBreakRows(); }
   updateBreakStatus();
 });
@@ -2291,7 +2418,7 @@ $('break-demo').addEventListener('click', async () => {
   save();
   try { await saveBreak({ name: 'demo', data: null }); } catch { /* ignore */ }
 });
-window.addEventListener('resize', () => drawBreak());
+window.addEventListener('resize', () => { drawBreak(); drawTrimOverview(); });
 
 $('break-sensitivity').disabled = settings.breakSliceMode !== 'transient';
 $('break-slices').disabled = settings.breakSliceMode === 'transient';
@@ -2301,7 +2428,7 @@ onRecall(() => {
   $('break-fit').checked = settings.breakFit;
   $('break-sensitivity').disabled = settings.breakSliceMode !== 'transient';
   $('break-slices').disabled = settings.breakSliceMode === 'transient';
-  if (breakBuffer) computeBreakPoints();
+  if (breakSource) applyBreakTrim();
   else buildBreakRows();
   renderBreakPanel();
 });
@@ -2310,7 +2437,7 @@ loadBreak().then(async (stored) => {
   if (stored?.data) {
     try {
       const buffer = await new OfflineAudioContext(1, 1, 44100).decodeAudioData(stored.data.slice(0));
-      setBreak(buffer, stored.name);
+      setBreak(buffer, stored.name, { keepTrim: true });
       return;
     } catch { /* fall back to the demo */ }
   }
@@ -3505,7 +3632,7 @@ function setCollapsed(panel, collapsed) {
   panel.querySelector('.collapse-btn')?.setAttribute('aria-expanded', String(!collapsed));
   if (collapsed) settings.collapsed[key] = true;
   else delete settings.collapsed[key];
-  if (!collapsed && panel.id === 'break-panel') requestAnimationFrame(() => drawBreak()); // canvas needs its width again
+  if (!collapsed && panel.id === 'break-panel') requestAnimationFrame(() => { drawBreak(); drawTrimOverview(); }); // canvases need their width again
 }
 
 document.querySelectorAll('main > .panel').forEach((panel) => {

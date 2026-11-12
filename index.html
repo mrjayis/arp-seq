@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=84" />
-  <link rel="stylesheet" href="mac.css?v=84" />
+  <link rel="stylesheet" href="styles.css?v=87" />
+  <link rel="stylesheet" href="mac.css?v=87" />
 </head>
 <body>
   <main class="device">
@@ -602,6 +602,17 @@
           <button data-gen="clear">Clear</button>
         </span>
       </div>
+      <div class="break-trim">
+        <span class="row-label">Trim</span>
+        <canvas id="break-trim-view" class="break-trim-view" title="The whole file: drag near an edge to move it. The faint parts are cut off."></canvas>
+        <label class="field slider">Start <output id="break-trim-start-val"></output>
+          <input id="break-trim-start" type="range" min="0" max="1000" value="0" />
+        </label>
+        <label class="field slider">End <output id="break-trim-end-val"></output>
+          <input id="break-trim-end" type="range" min="0" max="1000" value="1000" />
+        </label>
+        <button id="break-trim-reset" title="Use the whole file again">Whole file</button>
+      </div>
       <canvas id="break-wave" class="break-wave" title="Click a slice to put it on the selected row · drop a break here to load it"></canvas>
       <div id="break-rows" class="tracker"></div>
     </section>
@@ -695,6 +706,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=84"></script>
+  <script type="module" src="src/app.js?v=87"></script>
 </body>
 </html>
