@@ -67,3 +67,35 @@ export function evolveBreakRow(row, amount, rng, slices) {
   if (r < amount * 0.4) return { ...row, fx: row.fx === 'rev' ? '' : 'rev' };
   return row;
 }
+
+// ---- showing what's actually played (for the grids)
+
+/**
+ * Per-cell differences between the drum rows on screen and the rows played this bar:
+ * {id: ['' | 'add' | 'drop' | 'change', …]}, or null when they're the same.
+ */
+export function drumOverlay(shown, played) {
+  if (shown === played) return null;
+  const out = {};
+  let any = false;
+  for (const [id, row] of Object.entries(shown)) {
+    const p = played[id] || [];
+    out[id] = row.map((v, s) => {
+      const q = p[s] || 0;
+      const d = v > 0 && q === 0 ? 'drop' : v === 0 && q > 0 ? 'add' : v !== q ? 'change' : '';
+      if (d) any = true;
+      return d;
+    });
+  }
+  return any ? out : null;
+}
+
+/** A short label for how Evolve changed a break row this time ('' when unchanged). */
+export function breakRowChange(base, played) {
+  if (!base || !played || base === played) return '';
+  const parts = [];
+  if (played.slice !== base.slice && played.slice !== null && played.slice !== undefined) parts.push(`→${played.slice + 1}`);
+  if ((played.roll || 0) !== (base.roll || 0)) parts.push(`R${played.roll}`);
+  if (played.fx !== base.fx) parts.push(played.fx === 'rev' ? 'rev' : played.fx || 'fwd');
+  return parts.join(' ');
+}

@@ -8,24 +8,24 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=87';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=87';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=87';
-import { Midi } from './midi.js?v=87';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=87';
+} from './core.js?v=90';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=90';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=90';
+import { Midi } from './midi.js?v=90';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=90';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=87';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=87';
+} from './percussion.js?v=90';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=90';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges,
-} from './breaks.js?v=87';
-import { barRng, evolveDrums, evolveBreakRow } from './evolve.js?v=87';
+} from './breaks.js?v=90';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=90';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=87';
+} from './mono.js?v=90';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -681,7 +681,13 @@ function playDrums(step) {
   }
   const voices = kitVoices();
   const data = drumSlotData(songSlot(step.stepNumber) || settings.drumSlot);
-  const hits = drumHits(evolvedDrumRows(step.stepNumber, data.rows, data.conds), step.stepNumber, {
+  const played = evolvedDrumRows(step.stepNumber, data.rows, data.conds);
+  // Once a bar (and on the first step): tell the grid how this bar differs from what's on screen.
+  if (step.stepNumber % DRUM_STEPS === 0 || !drumOverlayShown) {
+    drumOverlayShown = true;
+    uiEvents.push({ kind: 'drum-overlay', time: step.time, overlay: drumOverlay(settings.drumRows, played) });
+  }
+  const hits = drumHits(played, step.stepNumber, {
     conds: data.conds, lens: data.lens, muted: settings.drumMuted, voices,
     fill: isFillBar(step.stepNumber, settings.drumFillEvery),
   });
@@ -748,6 +754,10 @@ function setPlaying(on, { fromClock = false } = {}) {
     showMonoStep(-1);
     midi.allNotesOff();
     uiEvents.length = 0;
+    // Back to showing the patterns as written.
+    drumOverlayShown = false;
+    showDrumOverlay(null);
+    for (const el of breakRowEls) { el.classList.remove('evolved'); delete el.dataset.ev; }
     clearCurrentStep();
     showRhythmPos(-1);
     resetProgression();
@@ -1618,7 +1628,22 @@ function renderDrumGrid() {
 
 /** Playhead: each row shows its own position (rows of different lengths drift apart). */
 let drumNowCells = [];
+let drumOverlayShown = false; // has this run told the grid about the bar yet?
+
+/** Mark cells that Evolve (or a Song slot) changed this bar: added, dropped or re-levelled hits. */
+function showDrumOverlay(overlay) {
+  for (const { id } of kitVoices()) {
+    (drumCells[id] || []).forEach((c, s) => {
+      const d = overlay?.[id]?.[s] || '';
+      c.classList.toggle('ev-add', d === 'add');
+      c.classList.toggle('ev-drop', d === 'drop');
+      c.classList.toggle('ev-change', d === 'change');
+    });
+  }
+}
+
 function showDrumStep(step, hits) {
+  if (step < 0) { drumOverlayShown = false; showDrumOverlay(null); }
   for (const c of drumNowCells) c.classList.remove('now');
   drumNowCells = [];
   drumCol = step;
@@ -1984,7 +2009,7 @@ function playBreakStep(step) {
       });
     }
   }
-  uiEvents.push({ kind: 'break', time: step.time, step: idx, slice: shown });
+  uiEvents.push({ kind: 'break', time: step.time, step: idx, slice: shown, change: breakRowChange(pattern[idx], row) });
 }
 
 /**
@@ -2317,7 +2342,16 @@ function selectBreakRow(i) {
   drawBreak();
 }
 
-function showBreakStep(step, slice) {
+function showBreakStep(step, slice, change = '') {
+  if (step < 0) {
+    for (const el of breakRowEls) { el.classList.remove('evolved'); delete el.dataset.ev; }
+  } else if (breakRowEls[step]) {
+    // Evolve's change to this row on this pass (it stays shown until the row comes round again).
+    const el = breakRowEls[step];
+    el.classList.toggle('evolved', !!change);
+    if (change) el.dataset.ev = change;
+    else delete el.dataset.ev;
+  }
   if (breakNowStep >= 0) breakRowEls[breakNowStep]?.classList.remove('now');
   breakNowStep = step;
   if (step >= 0) breakRowEls[step]?.classList.add('now');
@@ -3356,8 +3390,12 @@ function frame() {
       showSongBar(ev.bar);
       continue;
     }
+    if (ev.kind === 'drum-overlay') {
+      showDrumOverlay(ev.overlay);
+      continue;
+    }
     if (ev.kind === 'break') {
-      showBreakStep(ev.step, ev.slice);
+      showBreakStep(ev.step, ev.slice, ev.change);
       continue;
     }
     if (ev.kind === 'drum') {
