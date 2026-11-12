@@ -8,25 +8,25 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=109';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=109';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=109';
-import { Midi } from './midi.js?v=109';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=109';
+} from './core.js?v=110';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=110';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=110';
+import { Midi } from './midi.js?v=110';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=110';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=109';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=109';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=109';
+} from './percussion.js?v=110';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=110';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=110';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices,
-} from './breaks.js?v=109';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=109';
+} from './breaks.js?v=110';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=110';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=109';
+} from './mono.js?v=110';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -88,7 +88,8 @@ const settings = {
   scoreVoices: {}, // {pieceId: ['arp' | 'chord' | 'mono' | 'off', …]} one per part
   scoreTranspose: 0,
   scoreSpeed: 1,
-  scoreLoop: true,
+  scoreLoop: true, // (older saves) — now scoreMode
+  scoreMode: null, // 'once' | 'loop' | 'list' (every piece in order) | 'shuffle'
   monoKbOctave: 2, // the mono panel's little keyboard starts at C of this octave
   breakOff: [], // slices switched off (shift-click): not played, not picked by Evolve/Randomize
   breakRollHold: true, // a roll keeps going until the next filled row (Polyend style); off = one step
@@ -3315,7 +3316,9 @@ function renderScore() {
     wrap.append(row);
   });
   const bars = score.length / (score.ppq * 4);
-  $('score-status').textContent = `${score.parts.length} part${score.parts.length === 1 ? '' : 's'} · ${bars} bar${bars === 1 ? '' : 's'} · written at ${tempoBpm(score.tempo)} BPM`;
+  const order = pieceIds();
+  const where = order.length > 1 ? `${order.indexOf(score.id) + 1} of ${order.length} · ` : '';
+  $('score-status').textContent = `${where}${score.parts.length} part${score.parts.length === 1 ? '' : 's'} · ${bars} bar${bars === 1 ? '' : 's'} · written at ${tempoBpm(score.tempo)} BPM`;
 }
 
 /** Schedule the score's notes that start within this clock pulse. */
@@ -3329,8 +3332,15 @@ function playScorePulse(time, pulse, pulseDuration) {
   const tpp = (score.ppq / PPQN) * speed; // file ticks per clock pulse
   let from = p * tpp;
   if (from >= score.length) {
-    if (!settings.scoreLoop) return;
-    from %= score.length;
+    const mode = scoreMode();
+    if (mode === 'loop') from %= score.length;
+    else if (mode === 'list' || mode === 'shuffle') {
+      // Playlist: on to the next piece, from the next bar line (pieces end on one).
+      const next = nextPieceId(mode === 'shuffle');
+      if (!next) return;
+      chooseScore(next);
+      return playScorePulse(time, pulse, pulseDuration);
+    } else return;
   }
   const to = from + tpp;
   const secPerTick = pulseDuration / tpp;
@@ -3426,9 +3436,26 @@ $('score-tempo').addEventListener('click', () => { if (score) setBpm(tempoBpm(sc
 for (let t = -24; t <= 24; t++) $('score-transpose').add(new Option(`${t > 0 ? '+' : ''}${t}`, String(t)));
 bindSelect('score-transpose', 'scoreTranspose');
 bindSelect('score-speed', 'scoreSpeed', [['0.5', '½×'], ['0.75', '¾×'], ['1', '1×'], ['1.5', '1½×'], ['2', '2×']]);
-$('score-loop').checked = settings.scoreLoop;
-$('score-loop').addEventListener('change', () => { settings.scoreLoop = $('score-loop').checked; save(); });
-onRecall(() => { $('score-loop').checked = settings.scoreLoop; scoreStart = null; chooseScore(settings.scoreId); });
+/** What happens at the end of a piece (older saves only had Loop on/off). */
+function scoreMode() {
+  return ['once', 'loop', 'list', 'shuffle'].includes(settings.scoreMode) ? settings.scoreMode : settings.scoreLoop ? 'loop' : 'once';
+}
+/** The pieces in menu order. */
+const pieceIds = () => Object.keys(scoreFiles).sort((a, b) => scoreFiles[a].name.localeCompare(scoreFiles[b].name));
+/** The playlist's next piece: the one after this in the menu (round again at the end), or a random other one. */
+function nextPieceId(shuffle) {
+  const ids = pieceIds();
+  if (!ids.length) return null;
+  const i = ids.indexOf(score?.id);
+  if (shuffle && ids.length > 1) {
+    const others = ids.filter((id) => id !== score?.id);
+    return others[Math.floor(Math.random() * others.length)];
+  }
+  return ids[(i + 1) % ids.length];
+}
+settings.scoreMode = scoreMode();
+bindSelect('score-mode', 'scoreMode', [['once', 'This piece once'], ['loop', 'Loop this piece'], ['list', 'Playlist: all in order'], ['shuffle', 'Playlist: shuffled']]);
+onRecall(() => { settings.scoreMode = scoreMode(); $('score-mode').value = settings.scoreMode; scoreStart = null; chooseScore(settings.scoreId); });
 // Drop MIDI files onto the window.
 $('score-panel').addEventListener('dragover', (e) => { e.preventDefault(); $('score-panel').classList.add('dragover'); });
 $('score-panel').addEventListener('dragleave', () => $('score-panel').classList.remove('dragover'));
