@@ -529,3 +529,26 @@ export function freqToSlider(freq, min = CUTOFF_MIN, max = CUTOFF_MAX) {
 export function formatHz(f) {
   return f < 1000 ? `${Math.round(f)} Hz` : `${(f / 1000).toFixed(f < 10000 ? 2 : 1)} kHz`;
 }
+
+// ---- humanize: small random timing and level variation on top of the clock grid.
+
+/** Centred triangular random in −1..1 (most values near 0, like a player's spread). */
+const tri = (rng) => rng() + rng() - 1;
+
+/**
+ * Seconds to move a note off the grid, for humanize `amount` 0..1. At 100% notes land
+ * within ±20 ms, but never more than a fifth of the step, so fast notes keep their order.
+ */
+export function humanizeOffset(amount, stepDuration, rng = Math.random) {
+  const a = clamp(amount, 0, 1);
+  if (!a) return 0;
+  return tri(rng) * a * Math.min(0.02, stepDuration * 0.2);
+}
+
+/** A level (MIDI velocity, or a 0..1 gain with max 1.5) varied by up to ±25 % at 100 %. */
+export function humanizeLevel(value, amount, rng = Math.random, max = 127) {
+  const a = clamp(amount, 0, 1);
+  if (!a || value <= 0) return value;
+  const v = value * (1 + tri(rng) * 0.25 * a);
+  return max === 127 ? clamp(Math.round(v), 1, 127) : clamp(v, 0.01, max);
+}

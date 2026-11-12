@@ -68,6 +68,7 @@ The arp has two monophonic voices: **Oscillator 1**, and **Oscillator 2**, which
 - **Monophonic:** each new note on a voice cuts off that voice's previous note, with a 3 ms fade so there's no click. Chords stay polyphonic.
 
 ### Sync
+- **Humanize** (Clock window): loosens the quantization of every section. Notes land a little early or late, within ±20 ms at 100% but never more than a fifth of a step, so fast notes keep their order. Levels vary by up to ±25%. Each section is moved on its own, and every drum hit and chord note gets its own variation, so the parts don't drift together. It applies to the arp, chord rhythm, mono synth, percussion (MIDI out included) and breakbeat. At 0 everything is exactly on the grid.
 - **Internal:** a look-ahead scheduler on the audio clock, kept running in background tabs by a Worker timer. Pressing a key starts the transport.
 - **MIDI Clock In:** follows 0xF8 ticks and Start/Continue/Stop, and shows the tempo it detects. *Play* starts it by hand for sources that never send Start.
 - **Send MIDI clock:** sends clock plus Start/Stop to the selected MIDI output when running on the internal clock.
