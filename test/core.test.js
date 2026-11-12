@@ -403,3 +403,30 @@ test('held notes follow the progression modulation (heldShift); progression note
   e.heldShift = 0;
   assert.deepEqual(e.notes.map((n) => n.note).sort((a, b) => a - b), [60, 62, 65]);
 });
+
+import { justCents, chordRootPc } from '../src/core.js';
+
+test('just intonation: pure ratios above the chord root, root unchanged', () => {
+  const c = (note, root, t = 'just') => +justCents(note, root, t).toFixed(1);
+  assert.equal(c(60, 0), 0); // root
+  assert.equal(c(64, 0), -13.7); // major third 5/4
+  assert.equal(c(67, 0), 2); // fifth 3/2
+  assert.equal(c(63, 0), 15.6); // minor third 6/5
+  assert.equal(c(70, 0), 17.6); // minor 7th 9/5
+  assert.equal(c(70, 0, 'just7'), -31.2); // harmonic 7th 7/4
+  assert.equal(c(52, 0), -13.7); // any octave
+  assert.equal(c(64, 9), 2); // E is the fifth of A
+  assert.equal(c(64, 0, 'equal'), 0);
+  assert.equal(c(64, null), 0);
+});
+
+test('chordRootPc finds the root in any inversion', () => {
+  assert.equal(chordRootPc([60, 64, 67]), 0); // C
+  assert.equal(chordRootPc([64, 67, 72]), 0); // C/E
+  assert.equal(chordRootPc([55, 60, 64]), 0); // C/G
+  assert.equal(chordRootPc([57, 60, 64]), 9); // Am
+  assert.equal(chordRootPc([55, 59, 62, 65]), 7); // G7
+  assert.equal(chordRootPc([59, 62, 65]), 11); // B dim
+  assert.equal(chordRootPc([62]), 2); // one note: itself
+  assert.equal(chordRootPc([]), null);
+});
