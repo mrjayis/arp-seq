@@ -5,27 +5,27 @@ import {
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   progressionChord, anticipatedSlot, chordTie, SLOT_OCTAVES, humanizeOffset, humanizeLevel,
-  MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift,
+  MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=94';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=94';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=94';
-import { Midi } from './midi.js?v=94';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=94';
+} from './core.js?v=97';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=97';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=97';
+import { Midi } from './midi.js?v=97';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=97';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=94';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=94';
+} from './percussion.js?v=97';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak } from './samples.js?v=97';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices,
-} from './breaks.js?v=94';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=94';
+} from './breaks.js?v=97';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=97';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=94';
+} from './mono.js?v=97';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -78,6 +78,7 @@ const settings = {
   osc2ModDepth: 30,
   chordSyncopate: false, // a chord hit in the last 8th before the progression moves on plays the next chord
   chordTie: false, // a syncopated chord holds over the bar line instead of being struck again on the downbeat
+  tuning: 'equal', // 'equal' | 'just' | 'just7': adaptive just intonation to the chord now playing
   humanize: 0, // 0–100: random timing and level variation for every section
   monoKbOctave: 2, // the mono panel's little keyboard starts at C of this octave
   breakOff: [], // slices switched off (shift-click): not played, not picked by Evolve/Randomize
@@ -334,23 +335,41 @@ function modSpec(modNote) {
   return {
     type: settings.osc2Mod,
     depth: settings.osc2ModDepth / 100,
-    note: modNote,
+    note: tuned(modNote), // in tune with the carrier, so AM/FM ratios stay pure
     detune: settings.osc2Detune,
     wave: settings.osc2Wave,
   };
+}
+
+// ---- adaptive just intonation: every pitched voice is tuned to pure ratios above the
+// root of the chord playing now. The root itself stays on its equal-tempered pitch,
+// so the tuning moves with the harmony without drifting.
+
+/** Pitch class of the chord now in force: the progression's chord, else the held notes. */
+function chordRoot() {
+  if (settings.progOn && progIndex >= 0) {
+    const slot = settings.progression[progIndex];
+    if (slot && slot.type !== 'rest') return (((slot.root + progShift) % 12) + 12) % 12;
+  }
+  return chordRootPc(engine.notes.map((n) => n.note));
+}
+
+/** A note as the synths should play it: a fractional MIDI note, nudged to just intonation. */
+function tuned(note, root = chordRoot()) {
+  return note + justCents(note, root, settings.tuning) / 100;
 }
 
 function playVoice(note, note2, velocity, time, gateLen, modNote) {
   const on = toPerfMs(time);
   const off = toPerfMs(time + gateLen);
   if (settings.synthOn && synth) {
-    synth.playWest(note, velocity, time, gateLen, { ...westVoice(1), mod: modSpec(modNote), out: buses.arp });
+    synth.playWest(tuned(note), velocity, time, gateLen, { ...westVoice(1), mod: modSpec(modNote), out: buses.arp });
   }
   midi.noteOn(note, velocity, on);
   midi.noteOff(note, off);
   if (note2 === null) return;
   if (settings.synthOn && synth && settings.osc2Level > 0) {
-    synth.playWest(note2, velocity, time, gateLen, { ...westVoice(2), out: buses.arp });
+    synth.playWest(tuned(note2), velocity, time, gateLen, { ...westVoice(2), out: buses.arp });
   }
   if (settings.osc2MidiCh >= 0) {
     midi.noteOn(note2, velocity, on, settings.osc2MidiCh);
@@ -379,8 +398,8 @@ function playArp(step) {
     const modNote = osc2Note(ev, settings.osc2Mode, settings.osc2Transpose);
     const note2 = settings.osc2On ? modNote : null;
     if (settings.synthOn && synth) {
-      synth.retune('osc1', ev.note, step.time, modNote);
-      if (note2 !== null) synth.retune('osc2', note2, step.time);
+      synth.retune('osc1', tuned(ev.note), step.time, modNote);
+      if (note2 !== null) synth.retune('osc2', tuned(note2), step.time);
     }
     uiEvents.push({ kind: 'arp', time: step.time, off: step.time, ...ev, note2 });
     return;
@@ -442,6 +461,9 @@ function updatePad(time) {
     cutoff: settings.chordCutoff, resonance: settings.chordResonance,
     attack: settings.padAttack / 1000, release: settings.padRelease / 1000,
   };
+  const root = chordRoot();
+  if (root !== padRoot && padVoices.size) { padRoot = root; padFollow(time, 0.04); } // the harmony moved: retune what's held
+  padRoot = root;
   for (const [key, n] of want) {
     if (padVoices.has(key)) continue;
     const voice = n.sub
@@ -456,10 +478,11 @@ function updatePad(time) {
         : synth.padVoice(n.note, n.velocity, time, {
           ...common, layers: chordLayers(), level: settings.chordLevel / 100, out: chorus.input,
         });
-    // A note joining mid-sequence starts where the others are.
-    const [semis, scale] = padStepState();
-    voice.follow(semis, scale, time, 0);
+    // A note joining mid-sequence starts where the others are (and in tune with the chord).
+    voice.note = n.note;
+    voice.cents = 0; // built at equal temperament; padFollow adds the just-intonation offset
     padVoices.set(key, voice);
+    padTune(voice, time, 0);
   }
 }
 
@@ -471,17 +494,27 @@ function padStepState() {
 }
 
 /** Pad following the sequencer: on each arp step, slide every held pad note to the step. */
-function padFollow(time) {
-  if (!padVoices.size) return;
+function padFollow(time, glide = settings.padGlide / 1000) {
+  for (const v of padVoices.values()) padTune(v, time, glide);
+}
+
+let padRoot = null; // the chord root the held pad is tuned to
+
+/** Slide one pad voice to the sequencer step's offset and level, in just intonation to the chord. */
+function padTune(v, time, glide) {
   const [semis, scale] = padStepState();
-  for (const v of padVoices.values()) v.follow(semis, scale, time, settings.padGlide / 1000);
+  const cents = v.note === undefined ? 0 : justCents(v.note, chordRoot(), settings.tuning);
+  v.follow(semis + cents / 100, scale, time, glide);
 }
 
 /**
  * The notes a chord hit plays. With Syncopate on, a hit in the last 8th note before
  * the progression moves on plays the next chord early (anticipation), held keys included.
  */
+let chordPushed = false; // the last chordSource() was an early (syncopated) next chord
+
 function chordSource(step) {
+  chordPushed = false;
   if (!settings.chordSyncopate || !settings.progOn) return engine.notes;
   const pulse = step.stepNumber * RATES[settings.chordRate];
   const slots = settings.progression.slice(0, settings.progLength);
@@ -489,6 +522,7 @@ function chordSource(step) {
   if (next < 0) return engine.notes;
   // The pushed chord is in the key of the round it belongs to (it may be the next one).
   const shift = progShiftAt(pulse + PPQN / 2);
+  chordPushed = true;
   return engine.notesWith(progressionChord(shifted(progVoicings()[next]?.notes || [], shift)));
 }
 
@@ -537,8 +571,12 @@ function playChord(step) {
     midi.noteOn(note, velocity, on, settings.chordMidiCh);
     midi.noteOff(note, off, settings.chordMidiCh);
   };
-  for (const { note, velocity: v0 } of notes) {
+  // Just intonation: tuned to this chord's own root (an early, syncopated chord has its own).
+  const root = chordPushed ? chordRootPc(source.map((n) => n.note)) : chordRoot();
+  for (const { note: n0, velocity: v0 } of notes) {
     const velocity = humanLevel(v0); // each chord note a little different, like fingers
+    const note = tuned(n0, root);
+    const midiNote = n0;
     if (sound && settings.chordSound !== 'analog') {
       // FM: struck at the hit, damped at the end of the gate (the pad swells in faster here).
       const fm = fmOptions();
@@ -550,13 +588,13 @@ function playChord(step) {
         ...filterOpts, layers, level: settings.chordLevel / 100, out: chorus.input,
       });
     }
-    sendMidi(note, velocity);
+    sendMidi(midiNote, velocity);
   }
   // Sub: one octave under the lowest chord note, kept out of the chorus so the bass stays tight.
   const sub = settings.chordSub !== 'off' && notes.length && notes[0].note >= 12 ? notes[0] : null;
   if (sub) {
     if (sound && settings.chordSubLevel > 0) {
-      synth.play(sub.note - 12, sub.velocity, step.time, gateLen, {
+      synth.play(tuned(sub.note - 12, root), sub.velocity, step.time, gateLen, {
         ...filterOpts,
         wave: settings.chordSub,
         out: buses.chords,
@@ -1099,6 +1137,7 @@ function showPwm() {
   $('pwm-note').textContent = off ? 'Set Wave 1 or Wave 2 to Square to use PWM.' : '';
 }
 bindRange('arp-level', 'arpLevel', (v) => `${v}%`);
+bindSelect('tuning', 'tuning', Object.entries(TUNINGS), () => { if (ctx) padFollow(ctx.currentTime, 0.05); });
 bindRange('humanize', 'humanize', (v) => (v ? `${v}%` : 'off'));
 bindSelect('chord-sound', 'chordSound', [['analog', 'Analog'], ['ep', 'FM E.Piano'], ['fmpad', 'FM Pad']], () => {
   renderChordSound();
@@ -2794,7 +2833,7 @@ function playMonoStep(step) {
     // A legato step with nothing sounding (first pass after Play, or Mono just
     // switched on) has no note to slide from: strike it as a new note.
     const legato = act.type === 'legato' && monoGateOpen;
-    if (monoSynth && settings.synthOn) monoSynth.noteOn(n, t, { legato });
+    if (monoSynth && settings.synthOn) monoSynth.noteOn(tuned(n), t, { legato });
     // MIDI: legato overlaps the old note so a mono synth slides; a new note releases first.
     if (!legato) midiOff(monoMidiNote, t);
     midiOn(n);

@@ -581,3 +581,47 @@ export function humanizeLevel(value, amount, rng = Math.random, max = 127) {
   const v = value * (1 + tri(rng) * 0.25 * a);
   return max === 127 ? clamp(Math.round(v), 1, 127) : clamp(v, 0.01, max);
 }
+
+// ---- just intonation: tune every note to a pure ratio above the chord's root.
+export const TUNINGS = { equal: 'Equal', just: 'Just (5-limit)', just7: 'Just (7-limit)' };
+// Ratios for each semitone above the root. 5-limit: thirds 5/4 and 6/5, fifths 3/2,
+// minor 7th 9/5. 7-limit swaps in the "harmonic" 7th (7/4) and tritone (7/5).
+const RATIOS_5 = [1, 16 / 15, 9 / 8, 6 / 5, 5 / 4, 4 / 3, 45 / 32, 3 / 2, 8 / 5, 5 / 3, 9 / 5, 15 / 8];
+const RATIOS_7 = [1, 16 / 15, 9 / 8, 6 / 5, 5 / 4, 4 / 3, 7 / 5, 3 / 2, 8 / 5, 5 / 3, 7 / 4, 15 / 8];
+
+/**
+ * Cents to add to an equal-tempered `note` so it sits at the just ratio above the
+ * chord root (pitch class `rootPc`, which stays where it is). 0 for Equal or no root.
+ */
+export function justCents(note, rootPc, tuning) {
+  if (tuning !== 'just' && tuning !== 'just7') return 0;
+  if (rootPc === null || rootPc === undefined) return 0;
+  const i = (((Math.round(note) - rootPc) % 12) + 12) % 12;
+  const ratio = (tuning === 'just7' ? RATIOS_7 : RATIOS_5)[i];
+  return 1200 * Math.log2(ratio) - 100 * i;
+}
+
+/**
+ * The root (pitch class) of a set of MIDI notes, however they're voiced: the note
+ * with a fifth and a third above it wins (then a fifth, then a third), else the bass.
+ * null for no notes.
+ */
+export function chordRootPc(notes) {
+  if (!notes.length) return null;
+  const sorted = [...notes].sort((a, b) => a - b);
+  const pcs = new Set(sorted.map((n) => ((n % 12) + 12) % 12));
+  const bass = ((sorted[0] % 12) + 12) % 12;
+  let best = bass;
+  let bestScore = -1;
+  for (const pc of pcs) {
+    const has = (i) => pcs.has((pc + i) % 12);
+    let score = 0;
+    if (has(7)) score += 2; // perfect fifth
+    if (has(4) || has(3)) score += 1.5; // a third
+    if (has(10) || has(11)) score += 0.25; // a seventh
+    if (has(6) && has(3) && !has(7)) score += 2; // diminished: root of the stacked minor thirds
+    if (pc === bass) score += 0.1; // ties go to the bass
+    if (score > bestScore) { bestScore = score; best = pc; }
+  }
+  return best;
+}
