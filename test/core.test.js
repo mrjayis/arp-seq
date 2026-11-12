@@ -182,7 +182,7 @@ test('patternAt follows a pattern running at its own rate', () => {
   assert.deepEqual(patternAt(12 * 9, 12, 3, 8), { pos: 1, hit: false });
 });
 
-import { progressionAt, slotNotes, invertChord, progressionVoicings, nearestVoicing, anticipatedSlot, PPQN } from '../src/core.js';
+import { progressionAt, slotNotes, invertChord, progressionVoicings, nearestVoicing, anticipatedSlot, chordTie, PPQN } from '../src/core.js';
 
 test('progressionAt walks the slots by their beat lengths and loops', () => {
   const slots = [{ beats: 4 }, { beats: 2 }, { beats: 2 }];
@@ -313,4 +313,30 @@ test('anticipatedSlot: hits in the last 8th before a chord change push the next 
   assert.equal(at(9.5), 0); // the loop wraps back to the first chord
   assert.equal(anticipatedSlot(3.5 * PPQN, [{ beats: 4 }]), -1); // one chord: nothing changes
   assert.equal(anticipatedSlot(0, []), -1);
+});
+
+test('chordTie: the first pushed hit holds through the downbeat; later hits are tied, not struck', () => {
+  const slots = [{ beats: 4 }, { beats: 4 }];
+  const pps = PPQN / 4; // 16ths: 16 per bar, change at step 16, last 8th = steps 14 and 15
+  const hits = (list) => (s) => list.includes(((s % 32) + 32) % 32);
+  // Hits on 14 (the "and" of 4), 15 and the downbeat 16.
+  let isHit = hits([0, 14, 15, 16]);
+  assert.deepEqual(chordTie(14, pps, slots, isHit), { role: 'start', until: 16 });
+  assert.equal(chordTie(15, pps, slots, isHit).role, 'held');
+  assert.equal(chordTie(16, pps, slots, isHit).role, 'held');
+  assert.equal(chordTie(0, pps, slots, isHit).role, 'none');
+  // Pushed on 15 only: it starts the tie.
+  isHit = hits([15, 16]);
+  assert.deepEqual(chordTie(15, pps, slots, isHit), { role: 'start', until: 16 });
+  // No downbeat hit: nothing to tie into, play as usual.
+  isHit = hits([14, 18]);
+  assert.equal(chordTie(14, pps, slots, isHit).role, 'none');
+  assert.equal(chordTie(18, pps, slots, isHit).role, 'none');
+  // A downbeat with no push before it is struck as usual.
+  isHit = hits([12, 16]);
+  assert.equal(chordTie(16, pps, slots, isHit).role, 'none');
+  // The loop wraps: a push at the end of the last chord ties into step 32 (bar 1 again).
+  isHit = hits([30, 0]);
+  assert.deepEqual(chordTie(30, pps, slots, isHit), { role: 'start', until: 32 });
+  assert.equal(chordTie(32, pps, slots, isHit).role, 'held');
 });
