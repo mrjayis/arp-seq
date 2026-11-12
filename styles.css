@@ -109,6 +109,7 @@ h1 small {
 .readout .arrow { color: #a89a7a; margin: 0 3px; }
 .readout .vel { color: #a89a7a; margin-left: 6px; font-weight: 400; }
 .readout .sep { color: #5a5348; margin: 0 6px; }
+.readout-tune { margin-top: 3px; font-size: 13px; white-space: nowrap; }
 
 /* ---------- modules ---------- */
 .panel {
