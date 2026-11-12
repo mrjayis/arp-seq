@@ -54,3 +54,22 @@ test('evolveDrums leaves conditioned hits (fills, 1:2…) on their steps', () =>
     assert.deepEqual(evolveDrums(rows, 1, barRng(3, bar), conds).snare, rows.snare);
   }
 });
+
+import { drumOverlay, breakRowChange } from '../src/evolve.js';
+
+test('drumOverlay marks added, dropped and re-levelled hits; null when nothing differs', () => {
+  const shown = { bd: [1, 0, 0.6, 0], hh: [0.6, 0.6, 0, 0] };
+  assert.equal(drumOverlay(shown, shown), null);
+  assert.equal(drumOverlay(shown, { bd: [1, 0, 0.6, 0], hh: [0.6, 0.6, 0, 0] }), null);
+  const o = drumOverlay(shown, { bd: [1, 0, 0, 0.6], hh: [0.6, 0.4, 0.4, 0] });
+  assert.deepEqual(o.bd, ['', '', 'drop', 'add']);
+  assert.deepEqual(o.hh, ['', 'change', 'add', '']);
+});
+
+test('breakRowChange describes what Evolve did to a row', () => {
+  const base = { slice: 2, roll: 0, fx: '' };
+  assert.equal(breakRowChange(base, base), '');
+  assert.equal(breakRowChange(base, { ...base, slice: 6 }), '→7');
+  assert.equal(breakRowChange(base, { ...base, roll: 3 }), 'R3');
+  assert.equal(breakRowChange(base, { ...base, fx: 'rev' }), 'rev');
+});

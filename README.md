@@ -106,6 +106,7 @@ A separate layer that repeats the **held chord** in a Euclidean rhythm while the
 - **Follow sequencer:** off by default, so the chord repeats unchanged. When on, the chord takes the pitch offset and volume of the step the arp is on. It never moves the sequencer forward. In **Pad** mode the held chord slides to each step instead of re-striking: **Glide** (pad row) sets how long the slide takes, from a near-instant jump to a slow 1 s bend, and a step at 0% volume fades the pad out until the next step.
 
 ### Percussion
+- **What's playing:** while it plays, the grid shows how the current bar differs from the pattern on screen. That covers **Evolve**'s changes and, in Song mode, a different slot. Added hits get a dot and outline, dropped hits are greyed out with a slash, and hits at a different level get a small dot. Stop clears the marks.
 Three kits, all synthesized live with Web Audio (no samples). Each kit remembers its own pattern, preset and mutes.
 - **Latin:** in the style of a 70s preset rhythm box (below).
 - **808-style:** a long pitch-swept boom kick, a two-tone snare with noise, a multi-burst clap, rim, toms and cowbell, metallic hats and a cymbal from the 808's six square oscillators at their original pitches (the closed hat chokes the open one). The open hat and cymbal are tuned against reference 808 recordings: a ~0.7 s open hat centred around 8 kHz, and a bright splash over a darker 2–5 kHz ring that lasts about 3 s, plus its Latin section: low/mid/hi congas, claves and maracas. Presets: Electro, Boom Bap, House, Half-time, and all seven Latin rhythms. On the 808 the bongos move to the higher congas and the guiro to the maracas.
@@ -155,6 +156,7 @@ The Latin kit:
 - Pads, keys and MIDI can all be used together. A note shared by two of them keeps sounding until both let go.
 
 ### Breakbeat slicer
+- **What's playing:** with **Evolve** on, a row it changed shows a tag with what played instead: **→7** (slice 7), **R3** (a roll), **rev**. Each tag stays until that row comes round again, and Stop clears them.
 - **Trim:** use only part of the loaded file. Drag near either edge of the overview strip, or use the **Start** and **End** sliders; the parts that are cut off are drawn faint. The trimmed part is what gets sliced, played and fitted to the tempo, with tiny fades at the cuts so they don't click. **Whole file** undoes it. The trim is saved with your break and in scenes. Loading a new file starts untrimmed.
 - **Break is:** how many bars the loaded (trimmed) break is, from **1 to 16**, so a 6-bar break is fitted to the tempo correctly. If the pattern is shorter than the break and still in order, it's lengthened to fit. **Steps** goes up to 128 (8 bars).
 A drum break cut into slices and re-sequenced tracker style, for jungle, drum & bass and breakbeat.
