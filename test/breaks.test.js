@@ -148,3 +148,28 @@ test('fadeEdges ramps both ends to silence', () => {
   assert.ok(d[2] > 0 && d[2] < 1);
   assert.equal(d[5], 1);
 });
+
+import { rollSpan, isFilled } from '../src/breaks.js';
+
+test('rolls hold until the next filled row and ramp over the whole run', () => {
+  const e = { slice: null, vol: 100, pitch: 0, chance: 100, roll: 0, rollType: 'R', fx: '' };
+  const pat = [{ ...e, slice: 0, roll: 2, rollType: 'Rv' }, e, e, { ...e, slice: 3 }, e, { ...e, fx: 'cut' }];
+  assert.equal(rollSpan(pat, 0), 3);
+  assert.equal(rollSpan(pat, 3), 2);
+  assert.equal(rollSpan(pat, 5), 1); // wraps to row 0, which is filled
+  assert.equal(rollSpan([pat[0], e, e], 0), 3); // nothing else filled: the whole pattern
+  assert.ok(isFilled(pat[5]) && !isFilled(e));
+  const row = pat[0];
+  // 3 steps × 2 = 6 retriggers, volume falling across all of them.
+  const gains = [0, 1, 2].flatMap((part) => rowTriggers(row, 0.1, Math.random, { span: 3, part }).map((t) => +t.gain.toFixed(2)));
+  assert.deepEqual(gains, [1, 0.83, 0.67, 0.5, 0.33, 0.17]);
+  const at = rowTriggers(row, 0.1, Math.random, { span: 3, part: 2 }).map((t) => +t.at.toFixed(3));
+  assert.deepEqual(at, [0, 0.05]); // times are within this step
+  // Rn keeps stepping down across the run, held within ±24.
+  const rn = [0, 1].flatMap((part) => rowTriggers({ ...row, rollType: 'Rn' }, 0.1, Math.random, { span: 2, part }).map((t) => t.pitch));
+  assert.deepEqual(rn, [0, -1, -2, -3]);
+  // Chance is only decided on the row itself.
+  assert.equal(rowTriggers({ ...row, chance: 0 }, 0.1, () => 0.99, { span: 3, part: 1 }).length, 2);
+  // A plain hit (no roll) doesn't carry on.
+  assert.deepEqual(rowTriggers({ ...row, roll: 0 }, 0.1, Math.random, { span: 3, part: 1 }), []);
+});
