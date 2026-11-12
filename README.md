@@ -155,6 +155,8 @@ The Latin kit:
 - Pads, keys and MIDI can all be used together. A note shared by two of them keeps sounding until both let go.
 
 ### Breakbeat slicer
+- **Trim:** use only part of the loaded file. Drag near either edge of the overview strip, or use the **Start** and **End** sliders; the parts that are cut off are drawn faint. The trimmed part is what gets sliced, played and fitted to the tempo, with tiny fades at the cuts so they don't click. **Whole file** undoes it. The trim is saved with your break and in scenes. Loading a new file starts untrimmed.
+- **Break is:** how many bars the loaded (trimmed) break is, from **1 to 16**, so a 6-bar break is fitted to the tempo correctly. If the pattern is shorter than the break and still in order, it's lengthened to fit. **Steps** goes up to 128 (8 bars).
 A drum break cut into slices and re-sequenced tracker style, for jungle, drum & bass and breakbeat.
 - **Slicing:** **Equal** (8, 16 or 32 slices), or **On the hits**. Transient detection finds each kick, snare and hat (up to 32) and starts each slice just before the hit's attack. **Sensitivity** sets how many hits count: low gives only the big ones, high includes ghost notes.
 - **Break:** **Load break…** (or drop one on the waveform), or use the built-in synthesized **Demo break**. Your break is kept in this browser only.

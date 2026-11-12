@@ -3,8 +3,8 @@
 // plus a small player.
 
 export const SLICE_COUNTS = [8, 16, 32];
-export const BREAK_STEPS = [16, 32];
-export const BREAK_BARS = [1, 2, 4];
+export const BREAK_STEPS = [16, 32, 48, 64, 96, 128]; // 16ths: up to 8 bars of pattern
+export const BREAK_BARS = Array.from({ length: 16 }, (_, i) => i + 1); // how long the loaded break is
 export const BREAK_FX = { '': '—', rev: 'Reverse', cut: 'Cut' };
 export const ROLL_TYPES = {
   R: 'R · regular',
@@ -289,4 +289,35 @@ export class BreakPlayer {
       src.stop(end + 0.01);
     }
   }
+}
+
+// ---- trimming the loaded file
+
+export const MIN_TRIM_SECONDS = 0.05;
+
+/**
+ * Sample range [from, to) kept by a trim of `start`..`end` (fractions 0..1 of the file),
+ * at least MIN_TRIM_SECONDS long and inside the file.
+ */
+export function trimSamples(length, sampleRate, start = 0, end = 1) {
+  const minLen = Math.min(length, Math.max(1, Math.round(MIN_TRIM_SECONDS * sampleRate)));
+  let from = Math.round(Math.min(1, Math.max(0, start)) * length);
+  let to = Math.round(Math.min(1, Math.max(0, end)) * length);
+  if (to < from) [from, to] = [to, from];
+  if (to - from < minLen) {
+    to = Math.min(length, from + minLen);
+    from = Math.max(0, to - minLen);
+  }
+  return [from, to];
+}
+
+/** Short linear fades at both ends of a trimmed channel, so the cuts don't click. */
+export function fadeEdges(data, samples) {
+  const n = Math.min(samples, Math.floor(data.length / 2));
+  for (let i = 0; i < n; i++) {
+    const g = i / n;
+    data[i] *= g;
+    data[data.length - 1 - i] *= g;
+  }
+  return data;
 }

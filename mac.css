@@ -419,3 +419,4 @@
 :root[data-theme="mac"] .scene-list li { border: 1px solid #000; border-radius: 0; }
 :root[data-theme="mac"] .scene-list li.current { box-shadow: inset 4px 0 0 #000; }
 :root[data-theme="mac"] button.armed { background: #000; color: #fff; border-color: #000; }
+:root[data-theme="mac"] .break-trim-view { border: 1px solid #000; border-radius: 0; }

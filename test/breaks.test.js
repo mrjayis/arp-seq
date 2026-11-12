@@ -128,3 +128,23 @@ test('waveform peaks', () => {
   assert.equal(p.length, 10);
   assert.deepEqual(p[0], [-0.25, 0.5]);
 });
+
+import { trimSamples, fadeEdges } from '../src/breaks.js';
+
+test('trimSamples keeps the chosen part, at least 50 ms, inside the file', () => {
+  assert.deepEqual(trimSamples(44100, 44100, 0, 1), [0, 44100]);
+  assert.deepEqual(trimSamples(44100, 44100, 0.25, 0.75), [11025, 33075]);
+  assert.deepEqual(trimSamples(44100, 44100, 0.75, 0.25), [11025, 33075]); // swapped
+  const [a, b] = trimSamples(44100, 44100, 0.999, 1);
+  assert.equal(b - a, 2205); // 50 ms minimum
+  assert.equal(b, 44100);
+  assert.deepEqual(trimSamples(44100, 44100, -1, 2), [0, 44100]);
+});
+
+test('fadeEdges ramps both ends to silence', () => {
+  const d = fadeEdges(new Float32Array(10).fill(1), 4);
+  assert.equal(d[0], 0);
+  assert.equal(d[9], 0);
+  assert.ok(d[2] > 0 && d[2] < 1);
+  assert.equal(d[5], 1);
+});
