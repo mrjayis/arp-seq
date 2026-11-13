@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=113" />
-  <link rel="stylesheet" href="mac.css?v=113" />
+  <link rel="stylesheet" href="styles.css?v=114" />
+  <link rel="stylesheet" href="mac.css?v=114" />
 </head>
 <body>
   <main class="device">
@@ -745,10 +745,14 @@
           <select id="midi-in-drums"><option value="-1">Off</option></select></label>
         <label class="field" title="C1 (note 36) plays slice 1, C♯1 slice 2, and so on">Breakbeat
           <select id="midi-in-break"><option value="-1">Off</option></select></label>
+        <label class="check" title="Polyphonic aftertouch (and channel pressure, for keyboards without it): pressing harder into a held key opens that note's filter and lifts it a little (the chord synth, per note), brightens FM sounds, opens the mono synth's filter, and makes the arp's notes from that key louder and brighter">
+          <input id="aftertouch" type="checkbox" /> Aftertouch</label>
+        <label class="field slider">Depth <output id="aftertouch-depth-val"></output>
+          <input id="aftertouch-depth" type="range" min="0" max="100" /></label>
         <span id="midi-in-note" class="status"></span>
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=113"></script>
+  <script type="module" src="src/app.js?v=114"></script>
 </body>
 </html>

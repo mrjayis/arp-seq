@@ -245,7 +245,8 @@ export class Synth {
     // Following the sequencer: a level trim after the swell, and one pitch offset
     // (in cents) added to every oscillator's detune.
     const trim = ctx.createGain();
-    filter.connect(amp).connect(trim).connect(out);
+    const press = ctx.createGain(); // aftertouch: a little louder as you press
+    filter.connect(amp).connect(press).connect(trim).connect(out);
     const sources = this._stack(note, t0, layers || [{ wave, gain: 1, detune }], filter, amp);
     const bend = ctx.createConstantSource();
     bend.offset.value = 0;
@@ -254,6 +255,12 @@ export class Synth {
     sources.push(bend);
     let released = false;
     return {
+      /** Aftertouch 0..1: opens the filter (up to `octaves`) and lifts the level a little. */
+      pressure: (p, t, octaves = 2) => {
+        const at = Math.max(t, ctx.currentTime);
+        filter.detune.setTargetAtTime(p * octaves * 1200, at, 0.02);
+        press.gain.setTargetAtTime(1 + p * 0.35, at, 0.02);
+      },
       follow: (semitones, scale, t, glide = 0.03) => {
         if (released) return;
         const at = Math.max(t, ctx.currentTime);
@@ -529,7 +536,9 @@ export class Synth {
     const nyq = ctx.sampleRate * 0.45;
     const amp = ctx.createGain();
     const trim = ctx.createGain();
-    amp.connect(trim).connect(out);
+    const press = ctx.createGain(); // aftertouch: level
+    amp.connect(press).connect(trim).connect(out);
+    const brights = []; // aftertouch: each pair's modulation depth
     const bend = ctx.createConstantSource(); // follow: cents added to every oscillator
     bend.offset.value = 0;
     const sources = [bend];
@@ -550,7 +559,9 @@ export class Synth {
       const index = ctx.createGain(); // Hz of deviation
       const out = ctx.createGain();
       out.gain.value = gain;
-      mod.connect(index).connect(car.frequency);
+      const bright = ctx.createGain();
+      brights.push(bright);
+      mod.connect(index).connect(bright).connect(car.frequency);
       car.connect(out).connect(amp);
       return { index, out, modHz: Math.min(nyq, f * modRatio) };
     };
@@ -613,6 +624,12 @@ export class Synth {
         amp.gain.cancelAndHoldAtTime(at);
         amp.gain.setTargetAtTime(0, at, Math.max(0.01, release / 4));
         for (const src of sources) { try { src.stop(at + Math.max(0.05, release) * 1.6); } catch { /* stopped */ } }
+      },
+      /** Aftertouch 0..1: deeper modulation (brighter, more bell) and a little louder. */
+      pressure: (p, t) => {
+        const at = Math.max(t, ctx.currentTime);
+        for (const g of brights) g.gain.setTargetAtTime(1 + p * 1.5, at, 0.02);
+        press.gain.setTargetAtTime(1 + p * 0.3, at, 0.02);
       },
       follow: (semitones, scale, t, glide = 0.03) => {
         if (released) return;

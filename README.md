@@ -198,6 +198,10 @@ A shared delay and reverb, with a **send** from each source (Arp, Chords, Drums)
   - **Percussion:** General MIDI drum notes (36 kick, 38 snare, 42 closed hat…) play the current kit's matching sounds, with its mixer levels and tuning.
   - **Breakbeat:** C1 (note 36) plays slice 1, C♯1 slice 2, and so on, for finger-drumming the break.
   - All notes off (CC 123/120) silences a module, and so does switching its channel off.
+  - **Aftertouch** (on by default, with a **Depth**): polyphonic aftertouch shapes each note you press into. Keyboards that only send channel pressure work too, with the pressure applying to every held note.
+    - **Chord synth:** each pressed note's own filter opens (up to two octaves at full depth) and gets a little louder. FM sounds get brighter and more bell-like instead.
+    - **Mono synth:** the filter opens, following the note that's sounding.
+    - **Arp:** pressing into a held key makes the arp notes that come from it louder and brighter.
 - On-screen keyboard (click and drag), computer keys `A W S E D F T G Y H U J K O L P ;`, `Z`/`X` to change octave, `Space` to play or stop
 - MIDI in, with a channel filter or omni
 - Built-in synth (wave, cutoff, volume) and/or MIDI out on any channel, timestamped for tight timing
