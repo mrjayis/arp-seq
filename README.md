@@ -192,6 +192,12 @@ A shared delay and reverb, with a **send** from each source (Arp, Chords, Drums)
 - **Reverb:** convolution with a generated, decorrelated stereo tail that darkens as it decays. **Size** is the time to −60 dB (0.3–8 s), plus **Pre-delay** and **Tone**.
 
 ### Input / output
+- **MIDI In per module** (Sound & MIDI window): each module can be played live from its own MIDI channel. A channel set for a module goes only to that module. **Keys / Arp In Ch** plays the keyboard and arpeggiator as before; on Omni it gets every channel no module has claimed.
+  - **Chord synth:** plays live and polyphonically with the chord layer's analog or FM sound, holding until you let go. Just tuning sweetens what you hold.
+  - **Mono synth:** last-note priority, like the real thing. Overlapping notes slide (legato), and letting go of the top note goes back to the one still held.
+  - **Percussion:** General MIDI drum notes (36 kick, 38 snare, 42 closed hat…) play the current kit's matching sounds, with its mixer levels and tuning.
+  - **Breakbeat:** C1 (note 36) plays slice 1, C♯1 slice 2, and so on, for finger-drumming the break.
+  - All notes off (CC 123/120) silences a module, and so does switching its channel off.
 - On-screen keyboard (click and drag), computer keys `A W S E D F T G Y H U J K O L P ;`, `Z`/`X` to change octave, `Space` to play or stop
 - MIDI in, with a channel filter or omni
 - Built-in synth (wave, cutoff, volume) and/or MIDI out on any channel, timestamped for tight timing
