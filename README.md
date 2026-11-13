@@ -92,6 +92,7 @@ The arp has two monophonic voices: **Oscillator 1**, and **Oscillator 2**, which
 - Edits take effect on the next clock pulse, so you can change chords while it plays.
 
 ### Chord rhythm
+- **Live filter:** **Cutoff**, **Resonance** and, for the FM sounds, **Brightness** change notes that are already sounding: held pad notes, chords played on the chord synth's MIDI channel, and rhythm hits still ringing (once their pluck has finished). So you can sweep the filter over a held chord. Aftertouch stays on top. The mono synth's filter already worked this way.
 A separate layer that repeats the **held chord** in a Euclidean rhythm while the arpeggiator (and oscillator 2) keep playing on top.
 - **Mode: Rhythm / Pad.** Rhythm plays the Euclidean hits below. **Pad** holds the chord, always on, for as long as there are notes (keys, latch or the progression). When the chord changes, only the notes that change fade out and swell in; shared notes carry on. **Attack** and **Release** set the swell and the tail. It uses the same voice, sub, filter and chorus.
 - **Sound: Analog / FM E.Piano / FM Pad.** Analog is the two-wave voice with PWM and filter. The FM sounds are DX7-style: sine operators frequency-modulating each other, without the filter (its controls grey out). Sub, Level and Chorus still apply.

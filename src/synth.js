@@ -157,6 +157,17 @@ export class Synth {
     const end = tOff + this.release * 1.5;
     const sources = this._stack(note, t0, layers || [{ wave, gain: 1, detune }], filter, amp);
     for (const src of sources) src.stop(end);
+    return {
+      end,
+      /** Turned while the note sounds: the filter glides to the new cutoff (after its pluck). */
+      setFilter: (hz, q, t) => {
+        const at = Math.max(t, ctx.currentTime, t0 + 0.15);
+        if (at >= end) return;
+        filter.frequency.cancelScheduledValues(at);
+        filter.frequency.setTargetAtTime(Math.max(30, hz), at, 0.015);
+        filter.Q.setTargetAtTime(q, at, 0.015);
+      },
+    };
   }
 
   /**
@@ -256,6 +267,12 @@ export class Synth {
     let released = false;
     return {
       /** Aftertouch 0..1: opens the filter (up to `octaves`) and lifts the level a little. */
+      /** Turned while held: the filter glides to the new cutoff and resonance. */
+      setFilter: (hz, q, t) => {
+        const at = Math.max(t, ctx.currentTime);
+        filter.frequency.setTargetAtTime(Math.max(30, hz), at, 0.015);
+        filter.Q.setTargetAtTime(q, at, 0.015);
+      },
       pressure: (p, t, octaves = 2) => {
         const at = Math.max(t, ctx.currentTime);
         filter.detune.setTargetAtTime(p * octaves * 1200, at, 0.02);
@@ -538,7 +555,9 @@ export class Synth {
     const trim = ctx.createGain();
     const press = ctx.createGain(); // aftertouch: level
     amp.connect(press).connect(trim).connect(out);
-    const brights = []; // aftertouch: each pair's modulation depth
+    const brights = []; // aftertouch / live Brightness: each pair's modulation depth
+    let brightScale = 1;
+    let pressNow = 0;
     const bend = ctx.createConstantSource(); // follow: cents added to every oscillator
     bend.offset.value = 0;
     const sources = [bend];
@@ -628,8 +647,15 @@ export class Synth {
       /** Aftertouch 0..1: deeper modulation (brighter, more bell) and a little louder. */
       pressure: (p, t) => {
         const at = Math.max(t, ctx.currentTime);
-        for (const g of brights) g.gain.setTargetAtTime(1 + p * 1.5, at, 0.02);
+        pressNow = p;
+        for (const g of brights) g.gain.setTargetAtTime((1 + p * 1.5) * brightScale, at, 0.02);
         press.gain.setTargetAtTime(1 + p * 0.3, at, 0.02);
+      },
+      /** Brightness turned while held: modulation depth scaled from where the note started. */
+      setBright: (b, t) => {
+        const at = Math.max(t, ctx.currentTime);
+        brightScale = (0.4 + 1.6 * b) / (0.4 + 1.6 * bright);
+        for (const g of brights) g.gain.setTargetAtTime((1 + pressNow * 1.5) * brightScale, at, 0.02);
       },
       follow: (semitones, scale, t, glide = 0.03) => {
         if (released) return;
