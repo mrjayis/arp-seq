@@ -8,25 +8,25 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=113';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=113';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=113';
-import { Midi } from './midi.js?v=113';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=113';
+} from './core.js?v=114';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=114';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=114';
+import { Midi } from './midi.js?v=114';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=114';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=113';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=113';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=113';
+} from './percussion.js?v=114';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=114';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=114';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices,
-} from './breaks.js?v=113';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=113';
+} from './breaks.js?v=114';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=114';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=113';
+} from './mono.js?v=114';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -63,6 +63,8 @@ const settings = {
   midiInMono: -1,
   midiInDrums: -1,
   midiInBreak: -1,
+  aftertouch: true, // polyphonic aftertouch / channel pressure shapes the synths
+  aftertouchDepth: 70, // %
   midiOut: '',
   midiOutCh: 0,
   baseOctave: 3,
@@ -194,7 +196,7 @@ const DEFAULTS = structuredClone(settings);
 // Settings that belong to this device or this moment, not to a scene.
 const DEVICE_KEYS = [
   'theme', 'themeV2', 'collapsed', 'showHelp', 'midiIn', 'midiInCh', 'midiOut', 'midiOutCh', 'volume', 'synthOn',
-  'midiInChord', 'midiInMono', 'midiInDrums', 'midiInBreak',
+  'midiInChord', 'midiInMono', 'midiInDrums', 'midiInBreak', 'aftertouch', 'aftertouchDepth',
   'sync', 'baseOctave', 'chordRoot', 'monoKbOctave',
 ];
 // Live scene recall: each part of the page registers how to re-read its settings,
@@ -473,17 +475,19 @@ function renderPure() {
   $('tuning-key').disabled = settings.tuning === 'equal';
 }
 
-function playVoice(note, note2, velocity, time, gateLen, modNote) {
+function playVoice(note, note2, velocity, time, gateLen, modNote, press = 0) {
   const on = toPerfMs(time);
   const off = toPerfMs(time + gateLen);
+  // Aftertouch on the key this note comes from: brighter (the low-pass gate opens further).
+  const bright = (v) => ({ ...v, cutoff: Math.min(16000, v.cutoff * Math.pow(2, 2 * press)) });
   if (settings.synthOn && synth) {
-    synth.playWest(tuned(note), velocity, time, gateLen, { ...westVoice(1), mod: modSpec(modNote), out: buses.arp });
+    synth.playWest(tuned(note), velocity, time, gateLen, { ...bright(westVoice(1)), mod: modSpec(modNote), out: buses.arp });
   }
   midi.noteOn(note, velocity, on);
   midi.noteOff(note, off);
   if (note2 === null) return;
   if (settings.synthOn && synth && settings.osc2Level > 0) {
-    synth.playWest(tuned(note2), velocity, time, gateLen, { ...westVoice(2), out: buses.arp });
+    synth.playWest(tuned(note2), velocity, time, gateLen, { ...bright(westVoice(2)), out: buses.arp });
   }
   if (settings.osc2MidiCh >= 0) {
     midi.noteOn(note2, velocity, on, settings.osc2MidiCh);
@@ -524,7 +528,10 @@ function playArp(step) {
   const modNote = osc2Note(ev, settings.osc2Mode, settings.osc2Transpose);
   const note2 = settings.osc2On ? modNote : null;
   if (ev.velocity > 0) {
-    playVoice(ev.note, note2, humanLevel(ev.velocity), step.time, gateLen, modNote);
+    // Aftertouch: pressing harder on a held key makes its arp notes louder and brighter.
+    const press = arpPressureFor(ev.sourceNote);
+    const velocity = Math.min(127, Math.round(humanLevel(ev.velocity) * (1 + 0.5 * press)));
+    playVoice(ev.note, note2, velocity, step.time, gateLen, modNote, press);
     arpTail = { note: ev.note, note2, modNote, root: chordRoot() };
   }
   uiEvents.push({ kind: 'arp', time: step.time, off: step.time + gateLen, note2, ...ev });
@@ -993,6 +1000,17 @@ const liveMono = []; // notes held on the mono synth's channel, last one soundin
 
 const liveNow = () => { ensureAudio(); return ctx.currentTime + 0.005; };
 
+/** Aftertouch value 0..127 as an amount 0..1, scaled by the depth (0 when switched off). */
+const pressureAmount = (v) => (settings.aftertouch ? (v / 127) * (settings.aftertouchDepth / 100) : 0);
+const arpPressure = new Map(); // held key -> aftertouch amount (Arp channel)
+let arpChannelPressure = 0;
+/** Aftertouch for an arp note: its own key's pressure (any octave of it), else channel pressure. */
+function arpPressureFor(sourceNote) {
+  if (arpPressure.has(sourceNote)) return arpPressure.get(sourceNote);
+  for (const [n, p] of arpPressure) if ((n - sourceNote) % 12 === 0) return p;
+  return arpChannelPressure;
+}
+
 const MIDI_IN_MODULES = [
   ['midiInChord', {
     on(note, vel) {
@@ -1012,6 +1030,8 @@ const MIDI_IN_MODULES = [
       liveChord.get(note)?.release(liveNow());
       liveChord.delete(note);
     },
+    pressure(note, p) { liveChord.get(note)?.pressure?.(p, liveNow()); },
+    channel(p) { const t = liveNow(); for (const v of liveChord.values()) v?.pressure?.(p, t); },
     all() { const t = liveNow(); for (const v of liveChord.values()) v?.release(t); liveChord.clear(); },
   }],
   ['midiInMono', {
@@ -1022,8 +1042,14 @@ const MIDI_IN_MODULES = [
       const i = liveMono.indexOf(note);
       if (i >= 0) liveMono.splice(i, 1);
       liveMono.push(note);
-      if (monoSynth && settings.synthOn) monoSynth.noteOn(tuned(note), t, { legato, velocity: vel / 127 });
+      if (monoSynth && settings.synthOn) {
+        if (!legato) monoSynth.pressure(0, t); // a fresh note starts without pressure
+        monoSynth.noteOn(tuned(note), t, { legato, velocity: vel / 127 });
+      }
     },
+    // Only the note that's sounding responds (it's a mono synth).
+    pressure(note, p) { if (monoSynth && liveMono[liveMono.length - 1] === note) monoSynth.pressure(p, liveNow()); },
+    channel(p) { if (monoSynth) monoSynth.pressure(p, liveNow()); },
     off(note) {
       const i = liveMono.indexOf(note);
       if (i < 0) return;
@@ -1084,11 +1110,15 @@ const midi = new Midi({
       if (isOn) play.on(d1, d2);
       else if (isOff) play.off(d1);
       else if (type === 0xb0 && (d1 === 123 || d1 === 120)) play.all?.(); // all notes / sound off
+      else if (type === 0xa0) play.pressure?.(d1, pressureAmount(d2)); // polyphonic aftertouch
+      else if (type === 0xd0) play.channel?.(pressureAmount(d1)); // channel pressure: every held note
       return;
     }
     if (settings.midiInCh === -2 || (settings.midiInCh >= 0 && ch !== settings.midiInCh)) return; // -2: arp off
     if (type === 0x90 && d2 > 0) noteOn(d1, d2);
-    else if (type === 0x80 || (type === 0x90 && d2 === 0)) noteOff(d1);
+    else if (type === 0x80 || (type === 0x90 && d2 === 0)) { noteOff(d1); arpPressure.delete(d1); }
+    else if (type === 0xa0) { if (d2 > 0) arpPressure.set(d1, pressureAmount(d2)); else arpPressure.delete(d1); }
+    else if (type === 0xd0) arpChannelPressure = pressureAmount(d1);
     else if (type === 0xb0 && d1 === 64) { // sustain pedal toggles latch
       setLatch(d2 >= 64);
     }
@@ -1284,6 +1314,9 @@ function renderMidiInClash() {
     : taken.includes(settings.midiInCh) ? 'The arp shares a channel with a module: the module gets those notes.' : '';
 }
 renderMidiInClash();
+$('aftertouch').checked = settings.aftertouch;
+$('aftertouch').addEventListener('change', () => { settings.aftertouch = $('aftertouch').checked; save(); });
+bindRange('aftertouch-depth', 'aftertouchDepth', (v) => `${v}%`);
 midi.outChannel = settings.midiOutCh;
 bindSelect('midi-out-ch', 'midiOutCh', null, (ch) => { midi.allNotesOff(); midi.outChannel = ch; });
 $('midi-in').addEventListener('change', () => {

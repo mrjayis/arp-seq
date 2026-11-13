@@ -2,7 +2,7 @@
 // into a 24 dB resonant low-pass, with ADSR, LFO and portamento, played by its
 // own step sequencer. Sequencer logic is pure and unit-tested.
 
-import { pulseCurve, SAW_RAMP } from './synth.js?v=113';
+import { pulseCurve, SAW_RAMP } from './synth.js?v=114';
 
 export const MAX_MONO_STEPS = 64;
 export const SUB_MODES = { sq1: '−1 oct square', sq2: '−2 oct square', pl2: '−2 oct pulse' };
@@ -242,6 +242,11 @@ export class MonoSynth {
     to(this.lfoFilter.gain, p.lfoFilter * 2500);
     to(this.out.gain, p.level);
     if (this.note !== null) this.setCutoff(this.note, now);
+  }
+
+  /** Aftertouch 0..1: opens both filters by up to `octaves`, on top of everything else. */
+  pressure(p, t, octaves = 2) {
+    for (const flt of [this.f1, this.f2]) flt.detune.setTargetAtTime(p * octaves * 1200, t, 0.02);
   }
 
   setCutoff(note, t) {
