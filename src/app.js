@@ -8,25 +8,25 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=111';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=111';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=111';
-import { Midi } from './midi.js?v=111';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=111';
+} from './core.js?v=113';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=113';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=113';
+import { Midi } from './midi.js?v=113';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=113';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=111';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=111';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=111';
+} from './percussion.js?v=113';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=113';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=113';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices,
-} from './breaks.js?v=111';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=111';
+} from './breaks.js?v=113';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=113';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=111';
+} from './mono.js?v=113';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -1086,7 +1086,7 @@ const midi = new Midi({
       else if (type === 0xb0 && (d1 === 123 || d1 === 120)) play.all?.(); // all notes / sound off
       return;
     }
-    if (settings.midiInCh >= 0 && ch !== settings.midiInCh) return;
+    if (settings.midiInCh === -2 || (settings.midiInCh >= 0 && ch !== settings.midiInCh)) return; // -2: arp off
     if (type === 0x90 && d2 > 0) noteOn(d1, d2);
     else if (type === 0x80 || (type === 0x90 && d2 === 0)) noteOff(d1);
     else if (type === 0xb0 && d1 === 64) { // sustain pedal toggles latch

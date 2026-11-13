@@ -192,7 +192,7 @@ A shared delay and reverb, with a **send** from each source (Arp, Chords, Drums)
 - **Reverb:** convolution with a generated, decorrelated stereo tail that darkens as it decays. **Size** is the time to −60 dB (0.3–8 s), plus **Pre-delay** and **Tone**.
 
 ### Input / output
-- **MIDI In per module** (Sound & MIDI window): each module can be played live from its own MIDI channel. A channel set for a module goes only to that module. **Keys / Arp In Ch** plays the keyboard and arpeggiator as before; on Omni it gets every channel no module has claimed.
+- **MIDI In per module** (Sound & MIDI window): each module can be played live from its own MIDI channel. A channel set for a module goes only to that module. **Arp** (first in the row) plays the keyboard and arpeggiator: **Omni** gets every channel no other module has claimed, a channel number takes just that channel, and **Off** has the arp ignore MIDI.
   - **Chord synth:** plays live and polyphonically with the chord layer's analog or FM sound, holding until you let go. Just tuning sweetens what you hold.
   - **Mono synth:** last-note priority, like the real thing. Overlapping notes slide (legato), and letting go of the top note goes back to the one still held.
   - **Percussion:** General MIDI drum notes (36 kick, 38 snare, 42 closed hat…) play the current kit's matching sounds, with its mixer levels and tuning.
