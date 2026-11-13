@@ -8,25 +8,25 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=117';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=117';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=117';
-import { Midi } from './midi.js?v=117';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=117';
+} from './core.js?v=118';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=118';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=118';
+import { Midi } from './midi.js?v=118';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=118';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=117';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=117';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=117';
+} from './percussion.js?v=118';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=118';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=118';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices,
-} from './breaks.js?v=117';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=117';
+} from './breaks.js?v=118';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=118';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=117';
+} from './mono.js?v=118';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -625,9 +625,11 @@ function updatePad(time) {
         });
     // A note joining mid-sequence starts where the others are (and in tune with the chord).
     voice.note = n.note;
+    voice.sub = !!n.sub;
     voice.cents = 0; // built at equal temperament; padFollow adds the just-intonation offset
     padVoices.set(key, voice);
     padTune(voice, time, 0);
+    if (!n.sub) voice.pressure?.(chordPressure(n.note), time); // a key already pressed in
   }
 }
 
@@ -722,15 +724,21 @@ function playChord(step) {
     const velocity = humanLevel(v0); // each chord note a little different, like fingers
     const note = tuned(n0, root);
     const midiNote = n0;
+    // Poly aftertouch on the key this chord note comes from: brighter and a little louder.
+    const press = chordPressure(n0);
+    const hitVel = press ? Math.min(127, Math.round(velocity * (1 + 0.35 * press))) : velocity;
     if (sound && settings.chordSound !== 'analog') {
       // FM: struck at the hit, damped at the end of the gate (the pad swells in faster here).
       const fm = fmOptions();
-      synth.fmVoice(note, velocity, step.time, {
+      const v = synth.fmVoice(note, hitVel, step.time, {
         ...fm, out: chorus.input, ...(fm.kind === 'pad' ? { attack: Math.min(0.15, gateLen / 2), release: 0.5 } : {}),
-      }).release(step.time + gateLen);
+      });
+      if (press) v.pressure(press, step.time);
+      v.release(step.time + gateLen);
     } else if (sound) {
-      synth.play(note, velocity, step.time, gateLen, {
-        ...filterOpts, layers, level: settings.chordLevel / 100, out: chorus.input,
+      synth.play(note, hitVel, step.time, gateLen, {
+        ...filterOpts, cutoff: Math.min(16000, filterOpts.cutoff * Math.pow(2, 2 * press)),
+        layers, level: settings.chordLevel / 100, out: chorus.input,
       });
     }
     sendMidi(midiNote, velocity);
@@ -1006,6 +1014,16 @@ const pressureAmount = (v) => (settings.aftertouch ? (v / 127) * (settings.after
 const arpPressure = new Map(); // held key -> aftertouch amount (Arp channel)
 let arpChannelPressure = 0;
 /** Aftertouch for an arp note: its own key's pressure (any octave of it), else channel pressure. */
+/** Aftertouch for a chord-layer note: the pressure on the key it comes from (the chord's Octave undone). */
+const chordPressure = (chordNote) => arpPressureFor(chordNote - 12 * settings.chordOctave);
+
+/** Poly aftertouch on the keys: each held pad note follows its own key's pressure. */
+function padPressure() {
+  if (!ctx || !padVoices.size) return;
+  const t = ctx.currentTime;
+  for (const v of padVoices.values()) if (!v.sub && v.note !== undefined) v.pressure?.(chordPressure(v.note), t);
+}
+
 function arpPressureFor(sourceNote) {
   if (arpPressure.has(sourceNote)) return arpPressure.get(sourceNote);
   for (const [n, p] of arpPressure) if ((n - sourceNote) % 12 === 0) return p;
@@ -1120,8 +1138,10 @@ const midi = new Midi({
     if (settings.midiInCh === -2 || (settings.midiInCh >= 0 && ch !== settings.midiInCh)) return; // -2: arp off
     if (type === 0x90 && d2 > 0) noteOn(d1, d2);
     else if (type === 0x80 || (type === 0x90 && d2 === 0)) { noteOff(d1); arpPressure.delete(d1); }
-    else if (type === 0xa0) { if (d2 > 0) arpPressure.set(d1, pressureAmount(d2)); else arpPressure.delete(d1); }
-    else if (type === 0xd0) arpChannelPressure = pressureAmount(d1);
+    else if (type === 0xa0) {
+      if (d2 > 0) arpPressure.set(d1, pressureAmount(d2)); else arpPressure.delete(d1);
+      padPressure();
+    } else if (type === 0xd0) { arpChannelPressure = pressureAmount(d1); padPressure(); }
     else if (type === 0xb0 && d1 === 64) { // sustain pedal toggles latch
       setLatch(d2 >= 64);
     }

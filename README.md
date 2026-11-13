@@ -207,6 +207,7 @@ A shared delay and reverb, with a **send** from each source (Arp, Chords, Drums)
     - **Chord synth:** each pressed note's own filter opens (up to two octaves at full depth) and gets a little louder. FM sounds get brighter and more bell-like instead.
     - **Mono synth:** the filter opens, following the note that's sounding.
     - **Arp:** pressing into a held key makes the arp notes that come from it louder and brighter.
+    - **Chord layer from the keys:** keys held on the Arp channel also drive the chords, note by note. In **Pad** mode each held pad note's filter follows its own key's pressure. In **Rhythm** mode each hit of a pressed key's note is brighter and louder (FM sounds get deeper modulation).
 - On-screen keyboard (click and drag), computer keys `A W S E D F T G Y H U J K O L P ;`, `Z`/`X` to change octave, `Space` to play or stop
 - MIDI in, with a channel filter or omni
 - Built-in synth (wave, cutoff, volume) and/or MIDI out on any channel, timestamped for tight timing
