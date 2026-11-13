@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=111" />
-  <link rel="stylesheet" href="mac.css?v=111" />
+  <link rel="stylesheet" href="styles.css?v=113" />
+  <link rel="stylesheet" href="mac.css?v=113" />
 </head>
 <body>
   <main class="device">
@@ -729,15 +729,14 @@
       </div>
       <div class="row">
         <label class="field">MIDI In <select id="midi-in"><option value="">None</option></select></label>
-        <label class="field" title="The channel that plays the Keyboard / arpeggiator. Omni: every channel not claimed by a module below.">Keys / Arp In Ch
-          <select id="midi-in-ch"><option value="-1">Omni</option></select>
-        </label>
         <label class="field">MIDI Out <select id="midi-out"><option value="">None</option></select></label>
         <label class="field">Out Ch <select id="midi-out-ch"></select></label>
         <span id="midi-status" class="status"></span>
       </div>
       <div class="row">
-        <span class="row-label" title="Play each module live from its own MIDI channel (a channel set here goes only to that module)">MIDI In</span>
+        <span class="row-label" title="Play each module live from its own MIDI channel (a channel set here goes only to that module)">In channels</span>
+        <label class="field" title="The channel that plays the Keyboard and arpeggiator (held notes, latch, sustain pedal). Omni: every channel not claimed by another module. Off: the arp ignores MIDI.">Arp
+          <select id="midi-in-ch"><option value="-1">Omni</option><option value="-2">Off</option></select></label>
         <label class="field" title="Play the chord synth (its analog or FM sound) live and polyphonically: notes hold until you let go">Chord synth
           <select id="midi-in-chord"><option value="-1">Off</option></select></label>
         <label class="field" title="Play the mono synth live: the last note held sounds; overlapping notes slide (legato)">Mono synth
@@ -750,6 +749,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=111"></script>
+  <script type="module" src="src/app.js?v=113"></script>
 </body>
 </html>
