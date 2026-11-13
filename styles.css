@@ -963,3 +963,28 @@ button.armed { background: var(--brick, #c4502f); border-color: var(--brick, #c4
 .score-part .part-info { color: var(--ink-3); font-size: 12px; font-style: italic; }
 .score.off .score-parts { opacity: 0.6; }
 #score-panel.dragover { outline: 2px dashed var(--mod); outline-offset: -4px; }
+
+/* ---------- MIDI Learn ---------- */
+.learn-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 30;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 8px 12px;
+  background: var(--brick);
+  color: #fff;
+  font-size: 14px;
+}
+.learn-bar button { min-height: 26px; padding: 1px 10px; }
+body.midi-learn main input[type="range"],
+body.midi-learn main input[type="checkbox"],
+body.midi-learn main select,
+body.midi-learn main button[aria-pressed] { outline: 2px dashed color-mix(in srgb, var(--brick) 70%, transparent); outline-offset: 2px; cursor: crosshair; }
+body.midi-learn .cc-armed { outline: 3px solid var(--brick) !important; outline-offset: 2px; animation: cc-blink 0.6s steps(2) infinite; }
+@keyframes cc-blink { 50% { outline-color: transparent; } }
+.cc-mapped { box-shadow: 0 0 0 2px color-mix(in srgb, var(--brick) 55%, transparent); }

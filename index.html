@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=114" />
-  <link rel="stylesheet" href="mac.css?v=114" />
+  <link rel="stylesheet" href="styles.css?v=117" />
+  <link rel="stylesheet" href="mac.css?v=117" />
 </head>
 <body>
   <main class="device">
@@ -27,6 +27,7 @@
       <h1>arp<span>·</span>seq<small>arpeggiator, sequencer &amp; rhythm machine</small></h1>
       <div class="top-right">
       <div class="seg theme-switch" id="theme-switch" role="radiogroup" aria-label="Theme"></div>
+      <button id="midi-learn" class="help-toggle" aria-pressed="false" title="MIDI Learn: click a control, then move a knob, fader or button on your MIDI controller to assign it">MIDI Learn</button>
       <button id="help-toggle" class="help-toggle" aria-pressed="false" title="Show or hide the explanations in every window">Help</button>
       <div class="seg fold-all" role="group" aria-label="Windows">
         <button id="collapse-all" title="Fold every window down to its header">Collapse all</button>
@@ -47,6 +48,12 @@
       </div>
       </div>
     </header>
+
+    <div id="learn-bar" class="learn-bar" hidden>
+      <b>MIDI Learn</b> <span id="learn-msg"></span>
+      <button id="learn-clear">Clear all</button>
+      <button id="learn-done">Done</button>
+    </div>
 
     <nav class="dock" aria-label="Transport and window shortcuts">
       <div class="dock-transport">
@@ -753,6 +760,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=114"></script>
+  <script type="module" src="src/app.js?v=117"></script>
 </body>
 </html>

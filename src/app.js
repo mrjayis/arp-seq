@@ -8,25 +8,25 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=114';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=114';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=114';
-import { Midi } from './midi.js?v=114';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=114';
+} from './core.js?v=117';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=117';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=117';
+import { Midi } from './midi.js?v=117';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=117';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=114';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=114';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=114';
+} from './percussion.js?v=117';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=117';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=117';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices,
-} from './breaks.js?v=114';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=114';
+} from './breaks.js?v=117';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=117';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=114';
+} from './mono.js?v=117';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -63,6 +63,7 @@ const settings = {
   midiInMono: -1,
   midiInDrums: -1,
   midiInBreak: -1,
+  midiMap: {}, // MIDI Learn: {'ch:cc': control key ('#id' or '@aria-label')}
   aftertouch: true, // polyphonic aftertouch / channel pressure shapes the synths
   aftertouchDepth: 70, // %
   midiOut: '',
@@ -196,7 +197,7 @@ const DEFAULTS = structuredClone(settings);
 // Settings that belong to this device or this moment, not to a scene.
 const DEVICE_KEYS = [
   'theme', 'themeV2', 'collapsed', 'showHelp', 'midiIn', 'midiInCh', 'midiOut', 'midiOutCh', 'volume', 'synthOn',
-  'midiInChord', 'midiInMono', 'midiInDrums', 'midiInBreak', 'aftertouch', 'aftertouchDepth',
+  'midiInChord', 'midiInMono', 'midiInDrums', 'midiInBreak', 'aftertouch', 'aftertouchDepth', 'midiMap',
   'sync', 'baseOctave', 'chordRoot', 'monoKbOctave',
 ];
 // Live scene recall: each part of the page registers how to re-read its settings,
@@ -1102,6 +1103,8 @@ const midi = new Midi({
     }
     const type = status & 0xf0;
     const ch = status & 0x0f;
+    // MIDI Learn: a CC that's being learned, or one that's mapped to a control.
+    if (type === 0xb0 && handleCc(ch, d1, d2)) return;
     // A channel claimed by a module goes only to that module.
     const isOn = type === 0x90 && d2 > 0;
     const isOff = type === 0x80 || (type === 0x90 && d2 === 0);
@@ -3381,6 +3384,147 @@ onRecall(() => {
   renderMonoSteps();
 });
 
+// ---------------------------------------------------------------- MIDI Learn
+// Click MIDI Learn, click a control, move a knob or fader: that CC now drives it.
+// Controls are found by id, or by their aria-label (sliders built in code).
+let learning = false;
+let learnArmed = null; // the control waiting for a CC
+if (!settings.midiMap || typeof settings.midiMap !== 'object') settings.midiMap = {};
+
+const LEARNABLE = 'main input[type="range"], main input[type="checkbox"], main select, main button[aria-pressed], .dock input, .dock button';
+function controlKey(el) {
+  if (el.id) return `#${el.id}`;
+  const label = el.getAttribute('aria-label');
+  return label ? `@${label}` : null;
+}
+function controlFor(key) {
+  if (key.startsWith('#')) return document.getElementById(key.slice(1));
+  return document.querySelector(`[aria-label="${CSS.escape(key.slice(1))}"]`);
+}
+/** A control's name for people: its aria-label, its label's own words, its panel's title for On/Off. */
+function controlName(el) {
+  const own = el.getAttribute('aria-label');
+  if (own) return own;
+  const label = el.closest('label');
+  const words = label ? [...label.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent.trim()).join(' ').trim() : '';
+  if (words) return words;
+  const panel = el.closest('.panel')?.querySelector('h2')?.textContent;
+  return panel ? `${panel} ${el.textContent.trim()}` : el.id;
+}
+
+/** The mapping (ch:cc) for a control, if any. */
+const mappingOf = (key) => Object.keys(settings.midiMap).find((k) => settings.midiMap[k] === key) || null;
+
+function renderLearn() {
+  document.body.classList.toggle('midi-learn', learning);
+  $('midi-learn').setAttribute('aria-pressed', String(learning));
+  $('learn-bar').hidden = !learning;
+  document.querySelectorAll('.cc-mapped, .cc-armed').forEach((el) => {
+    el.classList.remove('cc-mapped', 'cc-armed');
+    delete el.dataset.cc;
+  });
+  for (const [cc, key] of Object.entries(settings.midiMap)) {
+    const el = controlFor(key);
+    if (!el) continue;
+    el.classList.add('cc-mapped');
+    const [ch, n] = cc.split(':');
+    el.dataset.cc = `CC ${n} · ch ${Number(ch) + 1}`;
+    if (!el.title.includes('MIDI: ')) el.title = `${el.title ? `${el.title} · ` : ''}MIDI: ${el.dataset.cc}`;
+  }
+  learnArmed?.classList.add('cc-armed');
+  const n = Object.keys(settings.midiMap).length;
+  $('learn-msg').textContent = learnArmed
+    ? `Now move a knob, fader or button on your controller for "${controlName(learnArmed)}". Click it again to clear its mapping.`
+    : `Click a control, then move a knob, fader or button. ${n} mapped.`;
+}
+
+function setLearning(on) {
+  learning = on;
+  learnArmed = null;
+  renderLearn();
+}
+
+// While learning, clicking a control arms it instead of using it.
+for (const type of ['pointerdown', 'click', 'mousedown']) {
+  document.addEventListener(type, (e) => {
+    if (!learning) return;
+    const el = e.target.closest(LEARNABLE);
+    if (!el || el.id === 'midi-learn' || el.closest('#learn-bar')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (type !== 'click') return;
+    const key = controlKey(el);
+    if (!key) return;
+    if (learnArmed === el) {
+      // Second click: forget this control's mapping.
+      const cc = mappingOf(key);
+      if (cc) delete settings.midiMap[cc];
+      learnArmed = null;
+      save();
+    } else learnArmed = el;
+    renderLearn();
+  }, true);
+}
+document.addEventListener('keydown', (e) => { if (learning && e.key === 'Escape') setLearning(false); }, true);
+$('midi-learn').addEventListener('click', () => setLearning(!learning));
+$('learn-done').addEventListener('click', () => setLearning(false));
+confirmClick($('learn-clear'), () => {
+  settings.midiMap = {};
+  learnArmed = null;
+  save();
+  renderLearn();
+}, { ask: 'Sure? Clear all', needed: () => Object.keys(settings.midiMap).length > 0 });
+
+const ccLast = new Map(); // for buttons: only the press (crossing 64) counts
+
+/** A control change: learn it, or move whatever it's mapped to. True if it was used. */
+function handleCc(ch, cc, value) {
+  const id = `${ch}:${cc}`;
+  if (learning && learnArmed) {
+    const key = controlKey(learnArmed);
+    for (const k of Object.keys(settings.midiMap)) if (settings.midiMap[k] === key) delete settings.midiMap[k]; // one CC per control
+    settings.midiMap[id] = key;
+    learnArmed = null;
+    save();
+    renderLearn();
+    return true;
+  }
+  const key = settings.midiMap[id];
+  if (!key) return false;
+  const el = controlFor(key);
+  if (!el || el.disabled) return true;
+  const was = ccLast.get(id) ?? 0;
+  ccLast.set(id, value);
+  const x = value / 127;
+  if (el.type === 'range') {
+    const min = Number(el.min || 0);
+    const max = Number(el.max || 100);
+    const step = Number(el.step) || 1;
+    const v = Math.round((min + x * (max - min)) / step) * step;
+    if (Number(el.value) === v) return true;
+    el.value = String(v);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  } else if (el.tagName === 'SELECT') {
+    const options = [...el.options].filter((o) => !o.disabled && !o.hidden);
+    const pick = options[Math.min(options.length - 1, Math.round(x * (options.length - 1)))];
+    if (!pick || pick.value === el.value) return true;
+    el.value = pick.value;
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  } else if (el.type === 'checkbox') {
+    if (el.checked === value >= 64) return true;
+    el.checked = value >= 64;
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  } else if (el.hasAttribute('aria-pressed') && el.closest('.seg, .len') === null && /^(On|Off)$/.test(el.textContent.trim())) {
+    // On/Off switches follow the CC: on at 64 and up.
+    if ((el.getAttribute('aria-pressed') === 'true') !== value >= 64) el.click();
+  } else if (value >= 64 && was < 64) {
+    el.click(); // any other button: a press
+  }
+  return true;
+}
+renderLearn();
+
 // ---------------------------------------------------------------- score player
 // MIDI files you load, kept in this browser; the chosen one plays part by part through
 // the synths, locked to the clock (24 pulses per quarter, mapped from the file's ticks).
@@ -4513,4 +4657,5 @@ onRecall(() => {
 });
 buildChordPads();
 buildKeyboard();
+renderLearn(); // mark mapped controls built during boot (the sequencer steps)
 requestAnimationFrame(frame);

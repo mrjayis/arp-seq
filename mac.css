@@ -424,3 +424,7 @@
 :root[data-theme="mac"] .drum-grid .cell.ev-drop { background-image: linear-gradient(to top right, transparent calc(50% - 1px), #000 calc(50% - 1px) calc(50% + 1px), transparent calc(50% + 1px)); opacity: 0.6; }
 :root[data-theme="mac"] .trow.evolved { box-shadow: inset 3px 0 0 #000; }
 :root[data-theme="mac"] .trow.evolved::after { background: #000; color: #fff; border-radius: 0; font: 10px/14px var(--chicago); }
+:root[data-theme="mac"] .learn-bar { background: #000; color: #fff; font: 12px/18px var(--chicago); }
+:root[data-theme="mac"] .learn-bar button { background: #fff; color: #000; border: 1px solid #fff; border-radius: 6px; font: 12px var(--chicago); }
+:root[data-theme="mac"] body.midi-learn .cc-armed { outline-color: #000 !important; }
+:root[data-theme="mac"] .cc-mapped { box-shadow: 0 0 0 2px #fff, 0 0 0 3px #000; }
