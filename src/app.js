@@ -8,25 +8,25 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=118';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=118';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=118';
-import { Midi } from './midi.js?v=118';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=118';
+} from './core.js?v=119';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=119';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=119';
+import { Midi } from './midi.js?v=119';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=119';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=118';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=118';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=118';
+} from './percussion.js?v=119';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=119';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=119';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices,
-} from './breaks.js?v=118';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=118';
+} from './breaks.js?v=119';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=119';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=118';
+} from './mono.js?v=119';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -736,10 +736,10 @@ function playChord(step) {
       if (press) v.pressure(press, step.time);
       v.release(step.time + gateLen);
     } else if (sound) {
-      synth.play(note, hitVel, step.time, gateLen, {
+      trackHit(synth.play(note, hitVel, step.time, gateLen, {
         ...filterOpts, cutoff: Math.min(16000, filterOpts.cutoff * Math.pow(2, 2 * press)),
         layers, level: settings.chordLevel / 100, out: chorus.input,
-      });
+      }), press);
     }
     sendMidi(midiNote, velocity);
   }
@@ -1014,6 +1014,31 @@ const pressureAmount = (v) => (settings.aftertouch ? (v / 127) * (settings.after
 const arpPressure = new Map(); // held key -> aftertouch amount (Arp channel)
 let arpChannelPressure = 0;
 /** Aftertouch for an arp note: its own key's pressure (any octave of it), else channel pressure. */
+// ---- chord synth filter turned while notes are held
+const chordHits = []; // analog rhythm hits still sounding: {voice, press}
+function trackHit(voice, press = 0) {
+  if (!voice) return;
+  const now = ctx.currentTime;
+  while (chordHits.length && chordHits[0].voice.end <= now) chordHits.shift();
+  chordHits.push({ voice, press });
+}
+
+/** Cutoff, Resonance or Brightness moved: everything the chord synth is holding follows. */
+function applyChordFilter() {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  const q = settings.chordResonance;
+  const bright = settings.fmBright / 100;
+  const each = (v, press = 0) => {
+    v?.setFilter?.(Math.min(16000, settings.chordCutoff * Math.pow(2, 2 * press)), q, t);
+    v?.setBright?.(bright, t);
+  };
+  for (const v of padVoices.values()) each(v); // pad (aftertouch stays on top, through the filter's detune)
+  for (const v of liveChord.values()) each(v); // chords played on the chord synth's channel
+  while (chordHits.length && chordHits[0].voice.end <= t) chordHits.shift();
+  for (const h of chordHits) each(h.voice, h.press); // rhythm hits still ringing
+}
+
 /** Aftertouch for a chord-layer note: the pressure on the key it comes from (the chord's Octave undone). */
 const chordPressure = (chordNote) => arpPressureFor(chordNote - 12 * settings.chordOctave);
 
@@ -1462,7 +1487,7 @@ bindSelect('chord-sound', 'chordSound', [['analog', 'Analog'], ['ep', 'FM E.Pian
   renderChordSound();
   if (ctx && padVoices.size) updatePad(ctx.currentTime); // swap a held pad over to the new sound
 });
-bindRange('fm-bright', 'fmBright', (v) => `${v}%`);
+bindRange('fm-bright', 'fmBright', (v) => `${v}%`, applyChordFilter);
 bindRange('fm-bell', 'fmBell', (v) => `${v}%`);
 bindLog('fm-decay', 'fmDecay', 200, 10000, (v) => (v < 1000 ? `${v} ms` : `${(v / 1000).toFixed(2)} s`));
 /** FM sounds show their own row and grey out the analog voice, PWM and filter. */
@@ -1505,8 +1530,8 @@ function renderChordMode() {
   $('pad-glide').closest('label').classList.toggle('dim', !settings.chordFollowSeq);
 }
 onRecall(renderChordMode)();
-bindCutoff('chord-cutoff', 'chordCutoff');
-bindRange('chord-res', 'chordResonance', (v) => v.toFixed(1));
+bindCutoff('chord-cutoff', 'chordCutoff', applyChordFilter);
+bindRange('chord-res', 'chordResonance', (v) => v.toFixed(1), applyChordFilter);
 bindRange('chorus-mix', 'chordChorusMix', (v) => `${v}%`, applyChorusMix);
 /** The chorus's pitch wobble beats against pure intervals, so Pure tuning takes it out. */
 function applyChorusMix() { chorus?.setMix(pure() ? 0 : settings.chordChorusMix / 100); }
