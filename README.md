@@ -192,6 +192,11 @@ A shared delay and reverb, with a **send** from each source (Arp, Chords, Drums)
 - **Reverb:** convolution with a generated, decorrelated stereo tail that darkens as it decays. **Size** is the time to −60 dB (0.3–8 s), plus **Pre-delay** and **Tone**.
 
 ### Input / output
+- **MIDI Learn** (button at the top): every control you can assign gets a dashed outline. Click one (it blinks), then move a knob, fader or button on your controller, and that CC (on its channel) now drives the control. Click an armed control again to remove its mapping; **Clear all** removes every mapping; **Done** or Esc finishes. Mapped controls keep a ring around them, and their tooltip shows the CC.
+  - **Sliders** follow the CC across their whole range, and **menus** step through their choices.
+  - **Checkboxes** and **On/Off** switches turn on at 64 and up.
+  - **Other buttons** (Latch, Tap, Rest, a sequencer length…) press when the CC goes past 64, so a controller button triggers them.
+  - Mappings are saved on this device and don't change with scenes. A mapped CC is used only for its control.
 - **MIDI In per module** (Sound & MIDI window): each module can be played live from its own MIDI channel. A channel set for a module goes only to that module. **Arp** (first in the row) plays the keyboard and arpeggiator: **Omni** gets every channel no other module has claimed, a channel number takes just that channel, and **Off** has the arp ignore MIDI.
   - **Chord synth:** plays live and polyphonically with the chord layer's analog or FM sound, holding until you let go. Just tuning sweetens what you hold.
   - **Mono synth:** last-note priority, like the real thing. Overlapping notes slide (legato), and letting go of the top note goes back to the one still held.
