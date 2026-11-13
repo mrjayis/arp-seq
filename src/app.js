@@ -8,25 +8,25 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=110';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=110';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=110';
-import { Midi } from './midi.js?v=110';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=110';
+} from './core.js?v=111';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=111';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=111';
+import { Midi } from './midi.js?v=111';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=111';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=110';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=110';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=110';
+} from './percussion.js?v=111';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=111';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=111';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices,
-} from './breaks.js?v=110';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=110';
+} from './breaks.js?v=111';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=111';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=110';
+} from './mono.js?v=111';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -58,6 +58,11 @@ const settings = {
   volume: 50,
   midiIn: '',
   midiInCh: -1,
+  // MIDI In channel per module (-1 = off): a claimed channel plays only that module.
+  midiInChord: -1,
+  midiInMono: -1,
+  midiInDrums: -1,
+  midiInBreak: -1,
   midiOut: '',
   midiOutCh: 0,
   baseOctave: 3,
@@ -189,6 +194,7 @@ const DEFAULTS = structuredClone(settings);
 // Settings that belong to this device or this moment, not to a scene.
 const DEVICE_KEYS = [
   'theme', 'themeV2', 'collapsed', 'showHelp', 'midiIn', 'midiInCh', 'midiOut', 'midiOutCh', 'volume', 'synthOn',
+  'midiInChord', 'midiInMono', 'midiInDrums', 'midiInBreak',
   'sync', 'baseOctave', 'chordRoot', 'monoKbOctave',
 ];
 // Live scene recall: each part of the page registers how to re-read its settings,
@@ -375,6 +381,7 @@ function tonicPc() {
  */
 function chordRoot() {
   let notes = engine.notes.map((n) => n.note);
+  if (!notes.length && liveChord.size) notes = [...liveChord.keys()]; // chords played on the chord synth's channel
   if (!notes.length && scoreSounding.length) notes = scoreSounding.map((s) => s.n); // the score's own harmony
   if (settings.progOn && progIndex >= 0) {
     const slot = settings.progression[progIndex];
@@ -980,6 +987,82 @@ function noteOff(note) {
 }
 
 // ---------------------------------------------------------------- MIDI
+// ---- MIDI In per module: each synth can be played live from its own channel.
+const liveChord = new Map(); // note -> voice (chord synth, held until note off)
+const liveMono = []; // notes held on the mono synth's channel, last one sounding
+
+const liveNow = () => { ensureAudio(); return ctx.currentTime + 0.005; };
+
+const MIDI_IN_MODULES = [
+  ['midiInChord', {
+    on(note, vel) {
+      const t = liveNow();
+      if (!synth || !settings.synthOn) return;
+      liveChord.get(note)?.release(t);
+      liveChord.set(note, null); // in the chord before it's tuned, so it tunes with the rest
+      const voice = settings.chordSound !== 'analog'
+        ? synth.fmVoice(tuned(note), vel, t, { ...fmOptions(), out: chorus.input })
+        : synth.padVoice(tuned(note), vel, t, {
+          layers: chordLayers(), cutoff: settings.chordCutoff, resonance: settings.chordResonance,
+          level: settings.chordLevel / 100, out: chorus.input, attack: 0.008, release: 0.35,
+        });
+      liveChord.set(note, voice);
+    },
+    off(note) {
+      liveChord.get(note)?.release(liveNow());
+      liveChord.delete(note);
+    },
+    all() { const t = liveNow(); for (const v of liveChord.values()) v?.release(t); liveChord.clear(); },
+  }],
+  ['midiInMono', {
+    // Last-note priority, like a mono synth: overlapping notes slide (legato) without retriggering.
+    on(note, vel) {
+      const t = liveNow();
+      const legato = liveMono.length > 0;
+      const i = liveMono.indexOf(note);
+      if (i >= 0) liveMono.splice(i, 1);
+      liveMono.push(note);
+      if (monoSynth && settings.synthOn) monoSynth.noteOn(tuned(note), t, { legato, velocity: vel / 127 });
+    },
+    off(note) {
+      const i = liveMono.indexOf(note);
+      if (i < 0) return;
+      const wasTop = i === liveMono.length - 1;
+      liveMono.splice(i, 1);
+      if (!monoSynth || !settings.synthOn) return;
+      const t = liveNow();
+      if (!liveMono.length) monoSynth.noteOff(t);
+      else if (wasTop) monoSynth.noteOn(tuned(liveMono[liveMono.length - 1]), t, { legato: true }); // back to the held note
+    },
+    all() { liveMono.length = 0; if (monoSynth) monoSynth.noteOff(liveNow()); },
+  }],
+  ['midiInDrums', {
+    // General MIDI drum notes play the kit's matching sounds (as set in its mixer).
+    on(note, vel) {
+      const voice = kitVoices().find((v) => v.gm === note);
+      if (!voice || !drums) { ensureAudio(); if (!voice) return; }
+      const { level, tune } = rowMix(voice.id);
+      if (drums && level > 0) drums.play(voice.id, liveNow(), (vel / 127) * 1.2 * (level / 100), tune);
+    },
+    off() {},
+  }],
+  ['midiInBreak', {
+    // C1 (36) plays slice 1, C♯1 slice 2, and so on: finger-drum the break.
+    on(note, vel) {
+      const slice = note - 36;
+      const t = liveNow();
+      if (!breakPlayer || !breakBuffer || slice < 0 || slice >= breakPoints.length) return;
+      breakPlayer.trigger(t, {
+        offset: breakPoints[slice],
+        duration: (slice + 1 < breakPoints.length ? breakPoints[slice + 1] : breakBuffer.duration) - breakPoints[slice],
+        rate: fitRate(breakBuffer.duration, settings.breakBars, currentBpm(), settings.breakPitch, settings.breakFit),
+        gain: vel / 127,
+      });
+    },
+    off() {},
+  }],
+];
+
 const midi = new Midi({
   onMessage: (data, stamp) => {
     const [status, d1, d2] = data;
@@ -993,6 +1076,16 @@ const midi = new Midi({
     }
     const type = status & 0xf0;
     const ch = status & 0x0f;
+    // A channel claimed by a module goes only to that module.
+    const isOn = type === 0x90 && d2 > 0;
+    const isOff = type === 0x80 || (type === 0x90 && d2 === 0);
+    for (const [key, play] of MIDI_IN_MODULES) {
+      if (settings[key] !== ch) continue;
+      if (isOn) play.on(d1, d2);
+      else if (isOff) play.off(d1);
+      else if (type === 0xb0 && (d1 === 123 || d1 === 120)) play.all?.(); // all notes / sound off
+      return;
+    }
     if (settings.midiInCh >= 0 && ch !== settings.midiInCh) return;
     if (type === 0x90 && d2 > 0) noteOn(d1, d2);
     else if (type === 0x80 || (type === 0x90 && d2 === 0)) noteOff(d1);
@@ -1175,6 +1268,22 @@ for (let c = 1; c <= 16; c++) {
   $('midi-out-ch').add(new Option(String(c), String(c - 1)));
 }
 bindSelect('midi-in-ch', 'midiInCh');
+for (const [id, key] of [['midi-in-chord', 'midiInChord'], ['midi-in-mono', 'midiInMono'], ['midi-in-drums', 'midiInDrums'], ['midi-in-break', 'midiInBreak']]) {
+  for (let c = 1; c <= 16; c++) $(id).add(new Option(String(c), String(c - 1)));
+  bindSelect(id, key, null, () => {
+    // Letting go of a channel: silence anything it was holding.
+    for (const [k, play] of MIDI_IN_MODULES) if (k === key) play.all?.();
+    renderMidiInClash();
+  });
+}
+/** Warn when the arp's In Ch is Omni or the same as a module's: those notes go to the module, not the arp. */
+function renderMidiInClash() {
+  const taken = MIDI_IN_MODULES.map(([k]) => settings[k]).filter((c) => c >= 0);
+  const dup = taken.length !== new Set(taken).size;
+  $('midi-in-note').textContent = dup ? 'Two modules share a channel: the first one listed gets it.'
+    : taken.includes(settings.midiInCh) ? 'The arp shares a channel with a module: the module gets those notes.' : '';
+}
+renderMidiInClash();
 midi.outChannel = settings.midiOutCh;
 bindSelect('midi-out-ch', 'midiOutCh', null, (ch) => { midi.allNotesOff(); midi.outChannel = ch; });
 $('midi-in').addEventListener('change', () => {
@@ -1186,7 +1295,8 @@ $('midi-out').addEventListener('change', () => {
 
 midi.init().then((ok) => {
   $('midi-status').textContent = ok ? '' : 'Web MIDI unavailable — use Chrome/Edge/Firefox over http(s).';
-  for (const id of ['midi-in', 'midi-out', 'midi-in-ch', 'midi-out-ch', 'osc2-midi-ch', 'chord-midi-ch', 'drum-midi-ch', 'clock-out']) $(id).disabled = !ok;
+  for (const id of ['midi-in', 'midi-out', 'midi-in-ch', 'midi-out-ch', 'osc2-midi-ch', 'chord-midi-ch', 'drum-midi-ch', 'clock-out',
+    'midi-in-chord', 'midi-in-mono', 'midi-in-drums', 'midi-in-break']) $(id).disabled = !ok;
   if (!ok) $('sync').querySelector('[value="external"]').disabled = true;
 });
 
