@@ -8,25 +8,25 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=130';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=130';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=130';
-import { Midi } from './midi.js?v=130';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=130';
+} from './core.js?v=132';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=132';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=132';
+import { Midi } from './midi.js?v=132';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=132';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=130';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=130';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=130';
+} from './percussion.js?v=132';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=132';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=132';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices,
-} from './breaks.js?v=130';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=130';
+} from './breaks.js?v=132';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=132';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=130';
+} from './mono.js?v=132';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -322,7 +322,7 @@ function ensureAudio() {
       sends.harm[src].gain.value = 0;
       buses[src].connect(sends.harm[src]).connect(harmIn);
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=130', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=132', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -3986,13 +3986,14 @@ function harmLabels() {
   };
 }
 const hm = () => harmWorkletMode();
-const fmtSt = (v) => `${v > 0 ? '+' : ''}${v.toFixed(1)} st`;
 const fmtSpread = (v) => (hm() === 4 ? `${(v * 0.1).toFixed(1)} ms` : hm() >= 5 ? `${Math.round(v)}%` : `${v} ¢`);
 const fmtGrain = (v) => (hm() === 5 ? `${(1000 / (v * 10)).toFixed(1)}/s` : hm() === 6 ? `${((v * 40) / 1000).toFixed(1)} s` : `${v} ms`);
-const fmtMicro = (v) => `${v > 0 ? '+' : ''}${(v / 10).toFixed(1)}%`;
+// Pitch shown as the H949 shows it: a ratio (×0.500 an octave down … ×2.000 an octave up).
+const fmtRatio = (st) => `×${Math.pow(2, st / 12).toFixed(3)}`;
+const fmtMicro = (v) => `×${(1 + v / 1000).toFixed(3)}`;
 const harmControls = [];
 for (const [id, key, fmt] of [
-  ['harm-pitch', 'harmPitch', fmtSt], ['harm-micro', 'harmMicro', fmtMicro], ['harm-spread', 'harmSpread', fmtSpread],
+  ['harm-pitch', 'harmPitch', fmtRatio], ['harm-micro', 'harmMicro', fmtMicro], ['harm-spread', 'harmSpread', fmtSpread],
   ['harm-delay', 'harmDelay', (v) => `${v} ms`], ['harm-feedback', 'harmFeedback', (v) => `${v}%`],
   ['harm-grain', 'harmGrain', fmtGrain], ['harm-level', 'harmLevel', (v) => `${v}%`],
   ['harm-delay-level', 'harmDelayLevel', (v) => `${v}%`],
