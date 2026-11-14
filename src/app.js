@@ -8,25 +8,25 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=133';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=133';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=133';
-import { Midi } from './midi.js?v=133';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=133';
+} from './core.js?v=134';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=134';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=134';
+import { Midi } from './midi.js?v=134';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=134';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=133';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=133';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=133';
+} from './percussion.js?v=134';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=134';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=134';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices,
-} from './breaks.js?v=133';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=133';
+} from './breaks.js?v=134';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=134';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=133';
+} from './mono.js?v=134';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -144,9 +144,10 @@ const settings = {
   reverbSendChords: 35,
   reverbSendDrums: 15,
   delaySendBass: 20,
-  delaySendsPre: false, // the effects' sends: before the section faders (true) or after
-  reverbSendsPre: false,
-  harmSendsPre: false,
+  // Each send: before the section's fader (pre) or after it — e.g. delayPreDrums.
+  delayPreArp: false, delayPreChords: false, delayPreDrums: false, delayPreBass: false,
+  reverbPreArp: false, reverbPreChords: false, reverbPreDrums: false, reverbPreBass: false,
+  harmPreArp: false, harmPreChords: false, harmPreDrums: false, harmPreBass: false,
   // Harmonizer (H949-style pitch shifter with feedback), a send effect like the delay and reverb.
   harmFunc: 'pitch', // the Function button: 'pitch' (Pitch Change group) or 'delay' (Delay group)
   harmPitchMode: 0, // 0 Norm, 1 Extend, 2 μPC, 3 Reverse
@@ -340,7 +341,7 @@ function ensureAudio() {
         sends[fx][src] = { pre, post };
       }
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=133', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=134', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -3903,7 +3904,7 @@ function setSend(fx, src) {
   const s = sends[fx]?.[src];
   if (!s) return;
   const amount = settings[`${fx}Send${SEND_SOURCES[src]}`] / 100;
-  const pre = !!settings[`${fx}SendsPre`];
+  const pre = !!settings[`${fx}Pre${SEND_SOURCES[src]}`];
   const now = ctx.currentTime;
   s.pre.gain.setTargetAtTime(pre ? amount : 0, now, 0.02);
   s.post.gain.setTargetAtTime(pre ? 0 : amount, now, 0.02);
@@ -3912,7 +3913,7 @@ function setSend(fx, src) {
 function audible(section) {
   const level = section === 'drums' ? settings.drumLevel : settings[FADER_LEVELS[section]];
   if (level > 0) return true;
-  return ['delay', 'reverb', 'harm'].some((fx) => settings[`${fx}SendsPre`] && settings[`${fx}Send${SEND_SOURCES[section]}`] > 0);
+  return ['delay', 'reverb', 'harm'].some((fx) => settings[`${fx}Pre${SEND_SOURCES[section]}`] && settings[`${fx}Send${SEND_SOURCES[section]}`] > 0);
 }
 
 function applyFx() {
@@ -3932,16 +3933,32 @@ function applyFx() {
 }
 bindSelect('delay-time', 'delayTime', DELAY_TIMES.map((d) => [d, d]), applyFx);
 bindRange('delay-feedback', 'delayFeedback', (v) => `${v}%`, applyFx);
+// A "Pre" switch on every send: taken before the section's Level (pre-fader) or after it.
 for (const fx of ['delay', 'reverb', 'harm']) {
-  const box = $(`${fx}-pre`);
-  const key = `${fx}SendsPre`;
-  box.checked = !!settings[key];
-  box.addEventListener('change', () => {
-    settings[key] = box.checked;
-    if (fx === 'harm') applyHarm(); else applyFx();
-    save();
-  });
-  onRecall(() => { box.checked = !!settings[key]; });
+  // Older saves had one switch per effect: it now applies to each of that effect's sends.
+  if (settings[`${fx}SendsPre`] !== undefined) {
+    for (const src of Object.values(SEND_SOURCES)) settings[`${fx}Pre${src}`] = !!settings[`${fx}SendsPre`];
+    delete settings[`${fx}SendsPre`];
+  }
+  for (const src of Object.values(SEND_SOURCES)) {
+    const key = `${fx}Pre${src}`;
+    const slider = $(`${fx}-send-${src.toLowerCase()}`);
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.id = `${fx}-pre-${src.toLowerCase()}`;
+    box.checked = !!settings[key];
+    const label = document.createElement('label');
+    label.className = 'check pre-send';
+    label.title = `Pre-fader: take this send before the ${src === 'Drums' ? 'percussion and break' : src.toLowerCase()} Level, so turning that down (even to 0) doesn't change what goes to the effect. Off: after it (post-fader).`;
+    label.append(box, ' Pre');
+    slider.closest('label').after(label);
+    box.addEventListener('change', () => {
+      settings[key] = box.checked;
+      if (fx === 'harm') applyHarm(); else applyFx();
+      save();
+    });
+    onRecall(() => { box.checked = !!settings[key]; });
+  }
 }
 bindLog('delay-tone', 'delayTone', 300, 12000, formatHz, applyFx);
 $('delay-pingpong').checked = settings.delayPingPong;
