@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=119" />
-  <link rel="stylesheet" href="mac.css?v=119" />
+  <link rel="stylesheet" href="styles.css?v=120" />
+  <link rel="stylesheet" href="mac.css?v=120" />
 </head>
 <body>
   <main class="device">
@@ -180,6 +180,9 @@
         <label class="field slider">Timbre <output id="arp-timbre-val"></output>
           <input id="arp-timbre" type="range" min="0" max="100" title="Wavefolding of the sine core" />
         </label>
+        <label class="field slider" title="This voice's own volume (the Arpeggiator's Level sets both voices together on top)">Level <output id="osc1-level-val"></output>
+          <input id="osc1-level" type="range" min="0" max="100" value="100" />
+        </label>
       </div>
       <div class="row">
         <label class="field">Gate
@@ -227,7 +230,7 @@
         <label class="field slider">Detune <output id="osc2-detune-val"></output>
           <input id="osc2-detune" type="range" min="-50" max="50" value="0" />
         </label>
-        <label class="field slider">Level <output id="osc2-level-val"></output>
+        <label class="field slider" title="This voice's own volume (the Arpeggiator's Level sets both voices together on top)">Level <output id="osc2-level-val"></output>
           <input id="osc2-level" type="range" min="0" max="100" value="70" />
         </label>
         <label class="field">MIDI Out Ch
@@ -760,6 +763,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=119"></script>
+  <script type="module" src="src/app.js?v=120"></script>
 </body>
 </html>
