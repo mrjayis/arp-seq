@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=128" />
-  <link rel="stylesheet" href="mac.css?v=128" />
+  <link rel="stylesheet" href="styles.css?v=130" />
+  <link rel="stylesheet" href="mac.css?v=130" />
 </head>
 <body>
   <main class="device">
@@ -737,20 +737,34 @@
       </div>
       <div class="row">
         <span class="row-label" title="An H949-style Harmonizer: a pitch shifter whose output feeds back through a short delay, so each repeat is shifted again (spirals, staircases, shimmer), plus micro-pitch widening">Harmonizer</span>
-        <label class="field" title="Pitch: the harmonizer (deglitched = smoother splices, reverse = backwards grains, random = scattered splices). Delay: a plain delay. Flange: a swept short delay. Repeat: loops the last stretch of sound (switch to another mode to let go).">Mode <select id="harm-mode"></select></label>
+        <div class="field" title="FUNCTION: the Pitch Change group (Norm, Extend, μPC, Reverse) or the Delay group (Delay, Random, Flange, Reverse)">Function
+          <div class="seg" id="harm-func" role="group" aria-label="Harmonizer function">
+            <button data-func="pitch" aria-label="Harmonizer function Pitch change">Pitch change</button><button data-func="delay" aria-label="Harmonizer function Delay">Delay</button>
+          </div></div>
+        <div class="field" title="Pitch change: Norm splices ~25 ms segments; Extend sets the segment length; μPC is micro pitch change in 0.1% steps (doubling); Reverse plays reversed segments, pitch-shifted. Delay: Delay is a plain delay; Random varies it randomly over 0–25 ms (double-tracking); Flange sweeps it against a fixed 12.5 ms; Reverse plays reversed segments.">Mode
+          <div class="seg" id="harm-modes" role="group" aria-label="Harmonizer mode"></div></div>
+        <div class="field" title="ALGORITHM: two ways of splicing the pitch-changed audio. 2 is smoother (fewer glitches) but a little more chorused.">Algorithm
+          <div class="seg" id="harm-alg" role="group" aria-label="Harmonizer algorithm">
+            <button data-alg="1" aria-label="Harmonizer algorithm 1">1</button><button data-alg="2" aria-label="Harmonizer algorithm 2">2</button>
+          </div></div>
+        <button id="harm-repeat" aria-pressed="false" title="REPEAT: capture the last Delay (Segment) of sound and loop it, at the Pitch ratio (and backwards in Reverse). Press again to let go.">Repeat</button>
         <label class="field">Preset <select id="harm-preset"><option value="">Load…</option></select></label>
-        <label class="field slider" title="How far the harmonizer shifts, in semitones (−12 to +12)">Pitch <output id="harm-pitch-val"></output>
+        <label class="field slider" title="Pitch ratio, in semitones (±12)">Pitch <output id="harm-pitch-val"></output>
           <input id="harm-pitch" type="range" min="-12" max="12" step="0.1" /></label>
-        <label class="field slider" title="Micro-pitch: left and right shifted apart by this many cents, for width">Spread <output id="harm-spread-val"></output>
+        <label class="field slider" title="μPC: micro pitch change, ±3% in 0.1% steps">μPC <output id="harm-micro-val"></output>
+          <input id="harm-micro" type="range" min="-30" max="30" step="1" /></label>
+        <label class="field slider" title="Left and right pulled apart: in cents (pitch modes), or in time/phase (delay modes)">Spread <output id="harm-spread-val"></output>
           <input id="harm-spread" type="range" min="0" max="50" /></label>
-        <label class="field slider" title="Time before the shifted sound (and between repeats with feedback)">Delay <output id="harm-delay-val"></output>
+        <label class="field slider" title="Delay before the processed sound (up to half a second), and between repeats with feedback. In the Reverse modes: the length of the reversed segments.">Delay <output id="harm-delay-val"></output>
           <input id="harm-delay" type="range" min="0" max="500" /></label>
-        <label class="field slider" title="Regeneration: the shifted sound goes round again, shifted again each time">Feedback <output id="harm-feedback-val"></output>
+        <label class="field slider" title="FEEDBACK: part of the output goes back to the input, shifted again each time round">Feedback <output id="harm-feedback-val"></output>
           <input id="harm-feedback" type="range" min="0" max="90" /></label>
-        <label class="field slider" title="The splice window: short = grainy and glitchy, long = smoother but more chorused">Grain <output id="harm-grain-val"></output>
-          <input id="harm-grain" type="range" min="10" max="150" /></label>
-        <label class="field slider" title="How loud the harmonizer comes back">Level <output id="harm-level-val"></output>
+        <label class="field slider" title="Extend: the splice segment length. Random: how fast the delay wanders. Flange: the sweep time.">Grain <output id="harm-grain-val"></output>
+          <input id="harm-grain" type="range" min="5" max="150" /></label>
+        <label class="field slider" title="MAIN output: the processed (pitch-changed / flanged / reversed) sound">Main level <output id="harm-level-val"></output>
           <input id="harm-level" type="range" min="0" max="100" /></label>
+        <label class="field slider" title="DELAY output: the plain delayed signal, alongside the Main output (e.g. a harmony plus a slapback)">Delay level <output id="harm-delay-level-val"></output>
+          <input id="harm-delay-level" type="range" min="0" max="100" /></label>
         <label class="field slider">Arp send <output id="harm-send-arp-val"></output>
           <input id="harm-send-arp" type="range" min="0" max="100" /></label>
         <label class="field slider">Chords send <output id="harm-send-chords-val"></output>
@@ -796,6 +810,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=128"></script>
+  <script type="module" src="src/app.js?v=130"></script>
 </body>
 </html>
