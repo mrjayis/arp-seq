@@ -8,25 +8,25 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=132';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=132';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=132';
-import { Midi } from './midi.js?v=132';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=132';
+} from './core.js?v=133';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=133';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=133';
+import { Midi } from './midi.js?v=133';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=133';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=132';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=132';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=132';
+} from './percussion.js?v=133';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=133';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=133';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices,
-} from './breaks.js?v=132';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=132';
+} from './breaks.js?v=133';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=133';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=132';
+} from './mono.js?v=133';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -144,6 +144,9 @@ const settings = {
   reverbSendChords: 35,
   reverbSendDrums: 15,
   delaySendBass: 20,
+  delaySendsPre: false, // the effects' sends: before the section faders (true) or after
+  reverbSendsPre: false,
+  harmSendsPre: false,
   // Harmonizer (H949-style pitch shifter with feedback), a send effect like the delay and reverb.
   harmFunc: 'pitch', // the Function button: 'pitch' (Pitch Change group) or 'delay' (Delay group)
   harmPitchMode: 0, // 0 Norm, 1 Extend, 2 μPC, 3 Reverse
@@ -281,7 +284,8 @@ let drums = null;
 let chorus = null; // chord layer effect
 // Each source plays into its own bus; the buses feed the mix and the effect sends.
 const buses = {};
-const sends = { delay: {}, reverb: {}, harm: {} };
+const sends = { delay: {}, reverb: {}, harm: {} }; // each send: {pre, post} gains (one is used)
+const faders = {}; // each section's Level, after its solo gate
 let harmIn = null; // sends mix here, into the Harmonizer worklet once it has loaded
 let harmOut = null;
 let harmNode = null;
@@ -297,48 +301,57 @@ function ensureAudio() {
     synth.wave = settings.wave;
     synth.cutoff = settings.cutoff;
     synth.setVolume(settings.volume / 100);
-    buses.arp = ctx.createGain();
-    buses.chords = ctx.createGain();
-    buses.drums = ctx.createGain();
-    buses.arp.connect(synth.master);
-    buses.chords.connect(synth.master);
+    // Each section: its solo gate (buses[x]) → its fader (the section's Level) → the mix.
+    // Effect sends tap either after the fader (post) or, with Pre-fader on, before it
+    // (after the solo gate, so soloing still works).
+    for (const k of ['arp', 'chords', 'bass', 'perc', 'break']) {
+      buses[k] = ctx.createGain();
+      faders[k] = ctx.createGain();
+    }
+    buses.drums = ctx.createGain(); // percussion + break after their faders
+    buses.drumsPre = ctx.createGain(); // percussion + break before them
+    buses.arp.connect(faders.arp).connect(synth.master);
+    buses.chords.connect(faders.chords).connect(synth.master);
+    buses.bass.connect(faders.bass).connect(synth.master);
+    buses.perc.connect(faders.perc).connect(buses.drums);
+    buses.break.connect(faders.break).connect(buses.drums);
+    buses.perc.connect(buses.drumsPre);
+    buses.break.connect(buses.drumsPre);
     buses.drums.connect(synth.out);
-    buses.bass = ctx.createGain();
-    buses.bass.connect(synth.master);
+    const taps = {
+      post: { arp: faders.arp, chords: faders.chords, bass: faders.bass, drums: buses.drums },
+      pre: { arp: buses.arp, chords: buses.chords, bass: buses.bass, drums: buses.drumsPre },
+    };
+    applyFaders();
     delayFx = new Delay(ctx, synth.master);
     reverbFx = new Reverb(ctx, synth.master);
-    for (const [fx, node] of [['delay', delayFx], ['reverb', reverbFx]]) {
-      for (const src of ['arp', 'chords', 'drums', 'bass']) {
-        sends[fx][src] = ctx.createGain();
-        buses[src].connect(sends[fx][src]).connect(node.input);
-      }
-    }
     // Harmonizer: the sends are wired now; the worklet joins when its module has loaded.
     harmIn = ctx.createGain();
     harmOut = ctx.createGain();
     harmOut.connect(synth.master);
-    for (const src of ['arp', 'chords', 'drums', 'bass']) {
-      sends.harm[src] = ctx.createGain();
-      sends.harm[src].gain.value = 0;
-      buses[src].connect(sends.harm[src]).connect(harmIn);
+    for (const [fx, input] of [['delay', delayFx.input], ['reverb', reverbFx.input], ['harm', harmIn]]) {
+      for (const src of ['arp', 'chords', 'drums', 'bass']) {
+        const pre = ctx.createGain();
+        const post = ctx.createGain();
+        pre.gain.value = 0;
+        post.gain.value = 0;
+        taps.pre[src].connect(pre).connect(input);
+        taps.post[src].connect(post).connect(input);
+        sends[fx][src] = { pre, post };
+      }
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=132', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=133', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
     }).catch(() => { /* no AudioWorklet: the harmonizer stays silent */ });
     applyFx();
-    // The percussion and the break share the drum bus, so each gets its own solo gate into it.
-    buses.perc = ctx.createGain();
-    buses.break = ctx.createGain();
-    buses.perc.connect(buses.drums);
-    buses.break.connect(buses.drums);
     applySolo(true);
     drums = new DrumSynth(ctx, buses.perc);
     monoSynth = new MonoSynth(ctx, buses.bass);
     applyMono();
     breakPlayer = new BreakPlayer(ctx, buses.break);
-    breakPlayer.setLevel(settings.breakLevel / 100);
+    breakPlayer.setLevel(1); // its Level is the break fader
     if (breakBuffer) breakPlayer.setBuffer(breakBuffer);
     decodeAllSamples();
     chorus = new Chorus(ctx, buses.chords);
@@ -346,7 +359,7 @@ function ensureAudio() {
     chorus.setRate(settings.chordChorusRate);
     chorus.setDepth(settings.chordChorusDepth / 100);
     synth.setPwmRate(settings.chordPwmRate);
-    drums.setLevel(settings.drumLevel / 100);
+    drums.setLevel(1); // its Level is the percussion fader
   }
   if (ctx.state === 'suspended') ctx.resume();
   return ctx;
@@ -368,7 +381,7 @@ function westVoice(n) {
       lpg: settings.osc2Lpg,
       resonance: settings.osc2Resonance,
       detune: pure() ? 0 : settings.osc2Detune,
-      level: (settings.osc2Level / 100) * (settings.arpLevel / 100),
+      level: settings.osc2Level / 100, // (the Arpeggiator Level is the arp fader)
       attack: settings.arpAttack / 1000,
       release: settings.arpRelease / 1000,
     };
@@ -383,7 +396,7 @@ function westVoice(n) {
     timbre: settings.arpTimbre / 100,
     lpg: settings.lpgMode,
     resonance: settings.arpResonance,
-    level: (settings.osc1Level / 100) * (settings.arpLevel / 100),
+    level: settings.osc1Level / 100, // (the Arpeggiator Level is the arp fader)
   };
 }
 
@@ -530,7 +543,7 @@ function playVoice(note, note2, velocity, time, gateLen, modNote, press = 0) {
     if (settings.osc2Sound === 'bass') {
       // Upright bass: each note rings on until the next one (a bassist's legato), gate or not.
       synth.playBass(tuned(note2), velocity, time, Math.max(gateLen, settings.bassDecay / 1000), {
-        level: (settings.osc2Level / 100) * (settings.arpLevel / 100), out: buses.arp, mono: 'osc2',
+        level: settings.osc2Level / 100, out: buses.arp, mono: 'osc2',
         tone: Math.min(1, settings.bassTone / 100 + press * 0.5), decay: settings.bassDecay / 1000,
       });
     } else synth.playWest(tuned(note2), velocity, time, gateLen, { ...bright(westVoice(2)), out: buses.arp });
@@ -620,7 +633,7 @@ function chordLayers() {
 function fmOptions() {
   return {
     kind: settings.chordSound === 'ep' ? 'ep' : 'pad',
-    level: settings.chordLevel / 100,
+    level: 1, // (the chord Level is the chord fader)
     bright: settings.fmBright / 100,
     bell: settings.fmBell / 100,
     decay: settings.fmDecay / 1000,
@@ -634,7 +647,7 @@ function releasePads(time) {
 }
 
 function updatePad(time) {
-  if (!synth || !settings.synthOn || !settings.chordOn || settings.chordMode !== 'pad' || settings.chordLevel <= 0) {
+  if (!synth || !settings.synthOn || !settings.chordOn || settings.chordMode !== 'pad' || !audible('chords')) {
     if (padVoices.size) releasePads(time);
     return;
   }
@@ -659,14 +672,14 @@ function updatePad(time) {
     const voice = n.sub
       ? synth.padVoice(n.note, n.velocity, time, {
         ...common, wave: settings.chordSub, out: buses.chords,
-        level: (settings.chordLevel / 100) * (settings.chordSubLevel / 100) * 1.4,
+        level: (settings.chordSubLevel / 100) * 1.4,
       })
       : settings.chordSound !== 'analog'
         ? synth.fmVoice(n.note, n.velocity, time, {
           ...fmOptions(), attack: common.attack, release: common.release, out: chorus.input,
         })
         : synth.padVoice(n.note, n.velocity, time, {
-          ...common, layers: chordLayers(), level: settings.chordLevel / 100, out: chorus.input,
+          ...common, layers: chordLayers(), level: 1, out: chorus.input,
         });
     // A note joining mid-sequence starts where the others are (and in tune with the chord).
     voice.note = n.note;
@@ -757,7 +770,7 @@ function playChord(step) {
     { wave: settings.chordWave2, gain: g2, detune: pure() ? 0 : settings.chordDetune2, pulse },
   ];
   const filterOpts = { cutoff: settings.chordCutoff, resonance: settings.chordResonance };
-  const sound = settings.synthOn && synth && settings.chordLevel > 0;
+  const sound = settings.synthOn && synth && audible('chords');
   const sendMidi = (note, velocity) => {
     if (settings.chordMidiCh < 0) return;
     midi.noteOn(note, velocity, on, settings.chordMidiCh);
@@ -783,7 +796,7 @@ function playChord(step) {
     } else if (sound) {
       trackHit(synth.play(note, hitVel, step.time, gateLen, {
         ...filterOpts, cutoff: Math.min(16000, filterOpts.cutoff * Math.pow(2, 2 * press)),
-        layers, level: settings.chordLevel / 100, out: chorus.input,
+        layers, level: 1, out: chorus.input,
       }), press);
     }
     sendMidi(midiNote, velocity);
@@ -796,7 +809,7 @@ function playChord(step) {
         ...filterOpts,
         wave: settings.chordSub,
         out: buses.chords,
-        level: (settings.chordLevel / 100) * (settings.chordSubLevel / 100) * 1.4,
+        level: (settings.chordSubLevel / 100) * 1.4,
       });
     }
     sendMidi(sub.note - 12, sub.velocity);
@@ -940,7 +953,7 @@ function playDrums(step) {
     const rowLevel = level / 100;
     // Humanize: each hit its own small push or drag and level.
     const t = settings.humanize > 0 ? human(step).time : step.time;
-    if (drums && settings.drumLevel > 0 && rowLevel > 0) drums.play(id, t, humanLevel(gain, 1.5) * rowLevel, rowTune);
+    if (drums && audible('drums') && rowLevel > 0) drums.play(id, t, humanLevel(gain, 1.5) * rowLevel, rowTune);
     if (settings.drumMidiCh >= 0) {
       const { gm } = voices.find((v) => v.id === id);
       midi.noteOn(gm, Math.min(127, Math.round(gain * 127)), toPerfMs(t), settings.drumMidiCh);
@@ -1111,7 +1124,7 @@ const MIDI_IN_MODULES = [
         ? synth.fmVoice(tuned(note), vel, t, { ...fmOptions(), out: chorus.input })
         : synth.padVoice(tuned(note), vel, t, {
           layers: chordLayers(), cutoff: settings.chordCutoff, resonance: settings.chordResonance,
-          level: settings.chordLevel / 100, out: chorus.input, attack: 0.008, release: 0.35,
+          level: 1, out: chorus.input, attack: 0.008, release: 0.35,
         });
       liveChord.set(note, voice);
     },
@@ -1509,7 +1522,7 @@ function showPwm() {
   ['chord-width', 'chord-pwm-depth', 'chord-pwm-rate'].forEach((id) => { $(id).disabled = off; });
   $('pwm-note').textContent = off ? 'Set Wave 1 or Wave 2 to Square to use PWM.' : '';
 }
-bindRange('arp-level', 'arpLevel', (v) => `${v}%`);
+bindRange('arp-level', 'arpLevel', (v) => `${v}%`, applyFaders);
 bindRange('osc1-level', 'osc1Level', (v) => `${v}%`);
 bindSelect('osc2-sound', 'osc2Sound', [['west', 'West-coast'], ['bass', 'Upright bass']], renderOsc2Sound);
 bindRange('bass-tone', 'bassTone', (v) => `${v}%`);
@@ -1573,7 +1586,7 @@ onRecall(() => { $('chord-sub-level').disabled = settings.chordSub === 'off'; })
 for (let o = -2; o <= 2; o++) $('chord-octave').add(new Option(o > 0 ? `+${o}` : String(o), String(o)));
 bindSelect('chord-octave', 'chordOctave');
 bindRange('chord-gate', 'chordGate', (v) => `${v}%`);
-bindRange('chord-level', 'chordLevel', (v) => `${v}%`);
+bindRange('chord-level', 'chordLevel', (v) => `${v}%`, applyFaders);
 bindSelect('chord-mode', 'chordMode', [['rhythm', 'Rhythm'], ['pad', 'Pad (always on)']], () => {
   renderChordMode();
   if (ctx && (playing || padVoices.size)) updatePad(ctx.currentTime); // start only while playing; always allow release
@@ -2043,7 +2056,7 @@ function buildDrums() {
     renderDrumGrid();
     save();
   });
-  bindRange('drum-level', 'drumLevel', (v) => `${v}%`, (v) => drums?.setLevel(v / 100));
+  bindRange('drum-level', 'drumLevel', (v) => `${v}%`, applyFaders);
   for (let c = 1; c <= 16; c++) $('drum-midi-ch').add(new Option(String(c), String(c - 1)));
   bindSelect('drum-midi-ch', 'drumMidiCh', null, () => midi.allNotesOff());
 }
@@ -2972,7 +2985,7 @@ $('break-roll-hold').checked = settings.breakRollHold;
 $('break-roll-hold').addEventListener('change', () => { settings.breakRollHold = $('break-roll-hold').checked; save(); });
 onRecall(() => { $('break-roll-hold').checked = settings.breakRollHold; });
 bindRange('break-pitch', 'breakPitch', (v) => `${v > 0 ? '+' : ''}${v.toFixed(1)} st`);
-bindRange('break-level', 'breakLevel', (v) => `${v}%`, (v) => breakPlayer?.setLevel(v / 100));
+bindRange('break-level', 'breakLevel', (v) => `${v}%`, applyFaders);
 bindRange('break-evolve', 'breakEvolve', (v) => (v ? `${v}%` : 'off'));
 document.querySelectorAll('[data-gen]').forEach((b) => b.addEventListener('click', () => {
   const steps = settings.breakSteps;
@@ -3190,6 +3203,7 @@ for (const [k, v] of Object.entries(MONO_DEFAULTS)) if (settings[k] === undefine
 
 function monoParams() {
   const p = Object.fromEntries(MONO_PARAMS.map(([key, name, conv]) => [name, conv ? conv(settings[key]) : settings[key]]));
+  p.level = 1; // its Level is the bass fader
   if (pure()) p.vibrato = 0; // Pure tuning: a steady pitch
   return p;
 }
@@ -3480,7 +3494,7 @@ bindRange('mono-vibrato', 'monoVibrato', pct, applyMono);
 bindRange('mono-lfo-filter', 'monoLfoFilter', pct, applyMono);
 bindSelect('mono-porta', 'monoPorta', Object.entries(PORTA_MODES), applyMono);
 bindLog('mono-glide', 'monoGlide', 10, 1000, ms, applyMono);
-bindRange('mono-level', 'monoLevel', pct, applyMono);
+bindRange('mono-level', 'monoLevel', pct, applyFaders);
 
 renderMonoPanel();
 renderMonoSteps();
@@ -3775,7 +3789,7 @@ function playScoreNote({ voice, part, note, at, dur, vel }) {
   } else {
     synth.play(tuned(note), velocity, t, dur, {
       cutoff: settings.chordCutoff, resonance: settings.chordResonance,
-      layers: chordLayers(), level: settings.chordLevel / 100, out: chorus.input,
+      layers: chordLayers(), level: 1, out: chorus.input,
     });
   }
 }
@@ -3876,6 +3890,31 @@ function updateDelayTime() {
   delayFx?.setTime(delaySeconds(settings.delayTime, lastDelayBpm));
 }
 let reverbTimer;
+// ---- section faders and pre/post-fader sends
+const SEND_SOURCES = { arp: 'Arp', chords: 'Chords', drums: 'Drums', bass: 'Bass' };
+const FADER_LEVELS = { arp: 'arpLevel', chords: 'chordLevel', bass: 'monoLevel', perc: 'drumLevel', break: 'breakLevel' };
+/** Each section's Level is its fader. */
+function applyFaders() {
+  if (!ctx || !faders.arp) return;
+  for (const [k, key] of Object.entries(FADER_LEVELS)) faders[k].gain.setTargetAtTime(settings[key] / 100, ctx.currentTime, 0.015);
+}
+/** One send's level, from before or after the fader as its effect is set (Pre-fader). */
+function setSend(fx, src) {
+  const s = sends[fx]?.[src];
+  if (!s) return;
+  const amount = settings[`${fx}Send${SEND_SOURCES[src]}`] / 100;
+  const pre = !!settings[`${fx}SendsPre`];
+  const now = ctx.currentTime;
+  s.pre.gain.setTargetAtTime(pre ? amount : 0, now, 0.02);
+  s.post.gain.setTargetAtTime(pre ? 0 : amount, now, 0.02);
+}
+/** Should a section play at all? Yes if you can hear it, or a pre-fader send is taking it. */
+function audible(section) {
+  const level = section === 'drums' ? settings.drumLevel : settings[FADER_LEVELS[section]];
+  if (level > 0) return true;
+  return ['delay', 'reverb', 'harm'].some((fx) => settings[`${fx}SendsPre`] && settings[`${fx}Send${SEND_SOURCES[section]}`] > 0);
+}
+
 function applyFx() {
   if (!delayFx) return;
   updateDelayTime();
@@ -3887,16 +3926,23 @@ function applyFx() {
   // Rebuilding the impulse is heavy, so wait for the slider to settle.
   clearTimeout(reverbTimer);
   reverbTimer = setTimeout(() => reverbFx.setSize(settings.reverbSize / 1000), 120);
-  const now = ctx.currentTime;
   for (const fx of ['delay', 'reverb']) {
-    for (const src of ['arp', 'chords', 'drums', 'bass']) {
-      const key = `${fx}Send${src[0].toUpperCase()}${src.slice(1)}`;
-      sends[fx][src].gain.setTargetAtTime(settings[key] / 100, now, 0.02);
-    }
+    for (const src of ['arp', 'chords', 'drums', 'bass']) setSend(fx, src);
   }
 }
 bindSelect('delay-time', 'delayTime', DELAY_TIMES.map((d) => [d, d]), applyFx);
 bindRange('delay-feedback', 'delayFeedback', (v) => `${v}%`, applyFx);
+for (const fx of ['delay', 'reverb', 'harm']) {
+  const box = $(`${fx}-pre`);
+  const key = `${fx}SendsPre`;
+  box.checked = !!settings[key];
+  box.addEventListener('change', () => {
+    settings[key] = box.checked;
+    if (fx === 'harm') applyHarm(); else applyFx();
+    save();
+  });
+  onRecall(() => { box.checked = !!settings[key]; });
+}
 bindLog('delay-tone', 'delayTone', 300, 12000, formatHz, applyFx);
 $('delay-pingpong').checked = settings.delayPingPong;
 onRecall(() => { $('delay-pingpong').checked = settings.delayPingPong; applyFx(); updateDelayTime(); });
@@ -3936,10 +3982,7 @@ function applyHarm() {
     set('delayOut', settings.harmDelayLevel / 100);
   }
   harmOut.gain.setTargetAtTime(settings.harmLevel / 100, now, 0.02);
-  for (const src of ['arp', 'chords', 'drums', 'bass']) {
-    const key = `harmSend${src[0].toUpperCase()}${src.slice(1)}`;
-    sends.harm[src].gain.setTargetAtTime(settings[key] / 100, now, 0.02);
-  }
+  for (const src of ['arp', 'chords', 'drums', 'bass']) setSend('harm', src);
 }
 
 // Older saves had one Mode menu (0 Pitch … 6 Repeat): carry it over once.
@@ -4915,8 +4958,7 @@ onRecall(() => {
   renderLengthButtons();
   renderOsc2();
   if (synth) { synth.wave = settings.wave; synth.cutoff = settings.cutoff; }
-  drums?.setLevel(settings.drumLevel / 100);
-  breakPlayer?.setLevel(settings.breakLevel / 100);
+  applyFaders();
   renderKeyState();
 });
 buildChordPads();
