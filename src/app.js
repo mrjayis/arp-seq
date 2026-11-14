@@ -8,25 +8,25 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=128';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=128';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=128';
-import { Midi } from './midi.js?v=128';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=128';
+} from './core.js?v=130';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=130';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=130';
+import { Midi } from './midi.js?v=130';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=130';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=128';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=128';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=128';
+} from './percussion.js?v=130';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=130';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=130';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices,
-} from './breaks.js?v=128';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=128';
+} from './breaks.js?v=130';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=130';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=128';
+} from './mono.js?v=130';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -145,13 +145,19 @@ const settings = {
   reverbSendDrums: 15,
   delaySendBass: 20,
   // Harmonizer (H949-style pitch shifter with feedback), a send effect like the delay and reverb.
-  harmMode: 0, // 0 Pitch, 1 Deglitched, 2 Reverse, 3 Random, 4 Delay, 5 Flange, 6 Repeat
+  harmFunc: 'pitch', // the Function button: 'pitch' (Pitch Change group) or 'delay' (Delay group)
+  harmPitchMode: 0, // 0 Norm, 1 Extend, 2 μPC, 3 Reverse
+  harmDelayMode: 4, // 4 Delay, 5 Random, 6 Flange, 7 Reverse
+  harmAlgorithm: 1, // splicing: 1 or 2 (smoother)
+  harmRepeat: false,
+  harmMicro: 8, // μPC: pitch ratio in 0.1% steps (8 = +0.8%)
+  harmDelayLevel: 0, // %: the Delay output (plain delayed signal)
   harmPitch: 7, // semitones
   harmSpread: 0, // cents between left and right
   harmDelay: 80, // ms
   harmFeedback: 45, // %
-  harmGrain: 60, // ms: the splice window
-  harmLevel: 80, // %: return level
+  harmGrain: 60, // ms: Extend's segment length, or Random/Flange rate
+  harmLevel: 80, // %: the Main output (processed)
   harmSendArp: 0,
   harmSendChords: 0,
   harmSendDrums: 25,
@@ -316,7 +322,7 @@ function ensureAudio() {
       sends.harm[src].gain.value = 0;
       buses[src].connect(sends.harm[src]).connect(harmIn);
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=128', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=130', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -3899,19 +3905,35 @@ bindLog('reverb-size', 'reverbSize', 300, 8000, (ms) => `${(ms / 1000).toFixed(1
 bindRange('reverb-pre', 'reverbPre', (v) => `${v} ms`, applyFx);
 bindLog('reverb-tone', 'reverbTone', 300, 12000, formatHz, applyFx);
 
-// ---- Harmonizer (H949-style)
+// ---- Harmonizer (H949-style), laid out like the H949's front panel: the Function button
+// picks the Pitch Change group or the Delay group, each with four modes; Algorithm 1/2;
+// Repeat; Feedback; and separate Main (processed) and Delay (plain delayed) output levels.
+const HARM_GROUPS = {
+  pitch: [[0, 'Norm'], [1, 'Extend'], [2, 'μPC'], [3, 'Reverse']],
+  delay: [[4, 'Delay'], [5, 'Random'], [6, 'Flange'], [7, 'Reverse']],
+};
+/** The worklet mode for the Function and mode switches. */
+const harmWorkletMode = () => (settings.harmFunc === 'delay' ? settings.harmDelayMode : settings.harmPitchMode);
+/** μPC: 0.1% steps of pitch ratio, as semitones. */
+const microSemis = () => 12 * Math.log2(1 + settings.harmMicro / 1000);
+
 function applyHarm() {
   if (!ctx || !harmOut) return;
   const now = ctx.currentTime;
   if (harmNode) {
-    const set = (name, v) => harmNode.parameters.get(name).setTargetAtTime(v, now, 0.02);
-    // The mode switches at once (a glide would pass through the modes in between).
-    harmNode.parameters.get('mode').setValueAtTime(settings.harmMode, now);
-    set('pitch', settings.harmPitch);
+    const p = (name) => harmNode.parameters.get(name);
+    const set = (name, v) => p(name).setTargetAtTime(v, now, 0.02);
+    // Switches change at once (a glide would pass through the modes in between).
+    p('mode').setValueAtTime(harmWorkletMode(), now);
+    p('algorithm').setValueAtTime(settings.harmAlgorithm, now);
+    p('repeat').setValueAtTime(settings.harmRepeat ? 1 : 0, now);
+    set('pitch', settings.harmPitchMode === 2 && settings.harmFunc === 'pitch' ? microSemis() : settings.harmPitch);
     set('spread', settings.harmSpread);
     set('delay', settings.harmDelay / 1000);
     set('feedback', settings.harmFeedback / 100);
     set('grain', settings.harmGrain / 1000);
+    set('main', 1);
+    set('delayOut', settings.harmDelayLevel / 100);
   }
   harmOut.gain.setTargetAtTime(settings.harmLevel / 100, now, 0.02);
   for (const src of ['arp', 'chords', 'drums', 'bass']) {
@@ -3919,53 +3941,61 @@ function applyHarm() {
     sends.harm[src].gain.setTargetAtTime(settings[key] / 100, now, 0.02);
   }
 }
-const HARM_PRESETS = {
-  'Micro-pitch wide': { harmPitch: 0, harmSpread: 18, harmDelay: 12, harmFeedback: 0, harmGrain: 40 },
-  'Fifth up spiral': { harmPitch: 7, harmSpread: 0, harmDelay: 80, harmFeedback: 45, harmGrain: 60 },
-  'Octave up shimmer': { harmPitch: 12, harmSpread: 6, harmDelay: 140, harmFeedback: 40, harmGrain: 80 },
-  'Octave down thunder': { harmPitch: -12, harmSpread: 0, harmDelay: 60, harmFeedback: 30, harmGrain: 90 },
-  'Rising staircase': { harmPitch: 1, harmSpread: 0, harmDelay: 110, harmFeedback: 75, harmGrain: 50 },
-  'Falling staircase': { harmPitch: -1, harmSpread: 0, harmDelay: 110, harmFeedback: 75, harmGrain: 50 },
-  'Glitch': { harmMode: 0, harmPitch: 3, harmSpread: 10, harmDelay: 35, harmFeedback: 60, harmGrain: 12 },
-  'Reverse shimmer': { harmMode: 2, harmPitch: 12, harmSpread: 8, harmDelay: 120, harmFeedback: 35, harmGrain: 90 },
-  'Random scatter': { harmMode: 3, harmPitch: 0, harmSpread: 20, harmDelay: 40, harmFeedback: 40, harmGrain: 70 },
-  'Slapback': { harmMode: 4, harmDelay: 95, harmFeedback: 10, harmSpread: 30 },
-  'Tape-ish echo': { harmMode: 4, harmDelay: 320, harmFeedback: 55, harmSpread: 60 },
-  'Jet flange': { harmMode: 5, harmDelay: 8, harmFeedback: 70, harmGrain: 100, harmSpread: 25 },
-  'Repeat a beat': { harmMode: 6, harmDelay: 250, harmPitch: 0 },
-};
-// What each control does in each mode: [label, applies?] for Pitch, Spread, Delay, Feedback, Grain.
-const HARM_MODES = [
-  ['Pitch', { pitch: 'Pitch', spread: 'Spread', delay: 'Delay', feedback: 'Feedback', grain: 'Grain' }],
-  ['Pitch · Deglitched', { pitch: 'Pitch', spread: 'Spread', delay: 'Delay', feedback: 'Feedback', grain: 'Grain' }],
-  ['Pitch · Reverse', { pitch: 'Pitch', spread: 'Spread', delay: 'Delay', feedback: 'Feedback', grain: 'Grain' }],
-  ['Pitch · Random', { pitch: 'Pitch', spread: 'Spread', delay: 'Delay', feedback: 'Feedback', grain: 'Scatter' }],
-  ['Delay', { pitch: null, spread: 'L/R offset', delay: 'Delay', feedback: 'Feedback', grain: null }],
-  ['Flange', { pitch: null, spread: 'L/R phase', delay: 'Depth', feedback: 'Feedback', grain: 'Sweep' }],
-  ['Repeat (loop)', { pitch: 'Speed', spread: null, delay: 'Loop length', feedback: null, grain: null }],
-];
-function renderHarmMode() {
-  const labels = HARM_MODES[settings.harmMode]?.[1] || HARM_MODES[0][1];
-  for (const [name, text] of Object.entries(labels)) {
-    const field = $(`harm-${name}`).closest('label');
-    if (!field.dataset.base) field.dataset.base = field.firstChild.textContent.trim(); // the name as written
-    field.firstChild.textContent = `${text || field.dataset.base} `;
-    field.classList.toggle('dim', !text);
-  }
-  for (const [id, key, fmt] of harmControls) $(`${id}-val`).textContent = fmt(settings[key]);
+
+// Older saves had one Mode menu (0 Pitch … 6 Repeat): carry it over once.
+if (settings.harmMode !== undefined) {
+  const old = Number(settings.harmMode) || 0;
+  delete settings.harmMode;
+  settings.harmFunc = [4, 5].includes(old) ? 'delay' : 'pitch';
+  settings.harmPitchMode = old === 2 ? 3 : 0;
+  settings.harmDelayMode = old === 5 ? 6 : old === 3 ? 5 : 4;
+  settings.harmAlgorithm = old === 1 ? 2 : 1;
+  settings.harmRepeat = old === 6;
 }
-const harmControls = [];
+if (!['pitch', 'delay'].includes(settings.harmFunc)) settings.harmFunc = 'pitch';
+for (const [k, v] of Object.entries({ harmPitchMode: 0, harmDelayMode: 4, harmAlgorithm: 1, harmRepeat: false, harmMicro: 8, harmDelayLevel: 0 })) {
+  if (settings[k] === undefined) settings[k] = v;
+}
+
+const HARM_PRESETS = {
+  'Micro-pitch double': { harmFunc: 'pitch', harmPitchMode: 2, harmMicro: 8, harmSpread: 12, harmDelay: 15, harmFeedback: 0, harmDelayLevel: 0 },
+  'Fifth up spiral': { harmFunc: 'pitch', harmPitchMode: 0, harmPitch: 7, harmSpread: 0, harmDelay: 80, harmFeedback: 45 },
+  'Octave up shimmer': { harmFunc: 'pitch', harmPitchMode: 1, harmPitch: 12, harmSpread: 6, harmDelay: 140, harmFeedback: 40, harmGrain: 80, harmAlgorithm: 2 },
+  'Octave down thunder': { harmFunc: 'pitch', harmPitchMode: 1, harmPitch: -12, harmDelay: 60, harmFeedback: 30, harmGrain: 90, harmAlgorithm: 2 },
+  'Rising staircase': { harmFunc: 'pitch', harmPitchMode: 0, harmPitch: 1, harmDelay: 110, harmFeedback: 75 },
+  'Falling staircase': { harmFunc: 'pitch', harmPitchMode: 0, harmPitch: -1, harmDelay: 110, harmFeedback: 75 },
+  'Glitch': { harmFunc: 'pitch', harmPitchMode: 1, harmPitch: 3, harmSpread: 10, harmDelay: 35, harmFeedback: 60, harmGrain: 8, harmAlgorithm: 1 },
+  'Reverse shimmer': { harmFunc: 'pitch', harmPitchMode: 3, harmPitch: 12, harmSpread: 8, harmDelay: 250, harmFeedback: 35 },
+  'Backwards': { harmFunc: 'delay', harmDelayMode: 7, harmDelay: 300, harmFeedback: 20 },
+  'Double-track': { harmFunc: 'delay', harmDelayMode: 5, harmDelay: 20, harmGrain: 40, harmFeedback: 0, harmSpread: 50, harmDelayLevel: 0 },
+  'Slapback': { harmFunc: 'delay', harmDelayMode: 4, harmDelay: 95, harmFeedback: 10, harmSpread: 30 },
+  'Jet flange': { harmFunc: 'delay', harmDelayMode: 6, harmFeedback: 70, harmGrain: 100, harmSpread: 25 },
+  'Harmony + slap': { harmFunc: 'pitch', harmPitchMode: 0, harmPitch: 7, harmDelay: 90, harmFeedback: 0, harmDelayLevel: 60 },
+};
+
+// What each knob does in each mode (null = not used: dimmed).
+function harmLabels() {
+  const m = harmWorkletMode();
+  const reverse = m === 3 || m === 7;
+  return {
+    pitch: m === 2 ? null : m >= 4 ? null : 'Pitch',
+    micro: m === 2 ? 'μPC' : null,
+    spread: m >= 4 ? (m === 4 ? 'L/R offset' : m === 5 ? 'L/R spread' : m === 6 ? 'L/R phase' : null) : 'Spread',
+    delay: reverse ? 'Segment' : 'Delay',
+    grain: m === 1 ? 'Segment' : m === 5 || m === 6 ? 'Rate' : null,
+  };
+}
+const hm = () => harmWorkletMode();
 const fmtSt = (v) => `${v > 0 ? '+' : ''}${v.toFixed(1)} st`;
-// Readouts in the units the current mode uses.
-const hm = () => settings.harmMode;
-const fmtSpread = (v) => (hm() === 4 ? `${(v * 0.1).toFixed(1)} ms` : hm() === 5 ? `${Math.round(v / 2)}%` : `${v} ¢`);
-const fmtDelay = (v) => (hm() === 5 ? `${Math.min(v, 15)} ms` : `${v} ms`);
-const fmtGrain = (v) => (hm() === 5 ? `${((v * 20) / 1000).toFixed(1)} s` : `${v} ms`);
-const fmtPitch = (v) => (hm() === 6 ? `${Math.pow(2, v / 12).toFixed(2)}×` : fmtSt(v));
+const fmtSpread = (v) => (hm() === 4 ? `${(v * 0.1).toFixed(1)} ms` : hm() >= 5 ? `${Math.round(v)}%` : `${v} ¢`);
+const fmtGrain = (v) => (hm() === 5 ? `${(1000 / (v * 10)).toFixed(1)}/s` : hm() === 6 ? `${((v * 40) / 1000).toFixed(1)} s` : `${v} ms`);
+const fmtMicro = (v) => `${v > 0 ? '+' : ''}${(v / 10).toFixed(1)}%`;
+const harmControls = [];
 for (const [id, key, fmt] of [
-  ['harm-pitch', 'harmPitch', fmtPitch], ['harm-spread', 'harmSpread', fmtSpread],
-  ['harm-delay', 'harmDelay', fmtDelay], ['harm-feedback', 'harmFeedback', (v) => `${v}%`],
+  ['harm-pitch', 'harmPitch', fmtSt], ['harm-micro', 'harmMicro', fmtMicro], ['harm-spread', 'harmSpread', fmtSpread],
+  ['harm-delay', 'harmDelay', (v) => `${v} ms`], ['harm-feedback', 'harmFeedback', (v) => `${v}%`],
   ['harm-grain', 'harmGrain', fmtGrain], ['harm-level', 'harmLevel', (v) => `${v}%`],
+  ['harm-delay-level', 'harmDelayLevel', (v) => `${v}%`],
 ]) {
   bindRange(id, key, fmt, applyHarm);
   harmControls.push([id, key, fmt]);
@@ -3973,22 +4003,58 @@ for (const [id, key, fmt] of [
 for (const src of ['Arp', 'Chords', 'Drums', 'Bass']) {
   bindRange(`harm-send-${src.toLowerCase()}`, `harmSend${src}`, (v) => `${v}%`, applyHarm);
 }
-bindSelect('harm-mode', 'harmMode', HARM_MODES.map(([label], i) => [String(i), label]), () => { renderHarmMode(); applyHarm(); });
-onRecall(renderHarmMode)();
+
+/** Draw the switches, relabel and dim the knobs for the current mode, refresh the readouts. */
+function renderHarm() {
+  for (const b of $('harm-func').querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.func === settings.harmFunc));
+  const modes = $('harm-modes');
+  modes.replaceChildren();
+  const current = harmWorkletMode();
+  for (const [m, label] of HARM_GROUPS[settings.harmFunc]) {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.setAttribute('aria-pressed', String(m === current));
+    b.setAttribute('aria-label', `Harmonizer ${settings.harmFunc} mode ${label}`);
+    b.addEventListener('click', () => {
+      if (settings.harmFunc === 'delay') settings.harmDelayMode = m; else settings.harmPitchMode = m;
+      renderHarm();
+      applyHarm();
+      save();
+    });
+    modes.append(b);
+  }
+  for (const b of $('harm-alg').querySelectorAll('button')) b.setAttribute('aria-pressed', String(Number(b.dataset.alg) === settings.harmAlgorithm));
+  $('harm-repeat').setAttribute('aria-pressed', String(!!settings.harmRepeat));
+  const labels = harmLabels();
+  for (const [name, text] of Object.entries(labels)) {
+    const field = $(`harm-${name}`).closest('label');
+    if (!field.dataset.base) field.dataset.base = field.firstChild.textContent.trim();
+    field.firstChild.textContent = `${text || field.dataset.base} `;
+    field.classList.toggle('dim', !text);
+  }
+  // μPC replaces the Pitch knob; the other modes hide the μPC one.
+  $('harm-micro').closest('label').hidden = harmWorkletMode() !== 2;
+  $('harm-pitch').closest('label').hidden = harmWorkletMode() === 2;
+  for (const [id, key, fmt] of harmControls) $(`${id}-val`).textContent = fmt(settings[key]);
+}
+for (const b of $('harm-func').querySelectorAll('button')) {
+  b.addEventListener('click', () => { settings.harmFunc = b.dataset.func; renderHarm(); applyHarm(); save(); });
+}
+for (const b of $('harm-alg').querySelectorAll('button')) {
+  b.addEventListener('click', () => { settings.harmAlgorithm = Number(b.dataset.alg); renderHarm(); applyHarm(); save(); });
+}
+$('harm-repeat').addEventListener('click', () => { settings.harmRepeat = !settings.harmRepeat; renderHarm(); applyHarm(); save(); });
+onRecall(renderHarm)();
+
 const harmPreset = $('harm-preset');
 for (const name of Object.keys(HARM_PRESETS)) harmPreset.add(new Option(name, name));
 harmPreset.addEventListener('change', () => {
   const p = HARM_PRESETS[harmPreset.value];
   harmPreset.value = '';
   if (!p) return;
-  // Presets that don't name a mode are pitch presets.
-  Object.assign(settings, { harmMode: 0 }, p);
-  $('harm-mode').value = String(settings.harmMode);
-  renderHarmMode();
-  for (const [id, key, fmt] of harmControls) {
-    $(id).value = settings[key];
-    $(`${id}-val`).textContent = fmt(settings[key]);
-  }
+  Object.assign(settings, { harmRepeat: false, harmAlgorithm: 1, harmDelayLevel: 0 }, p);
+  for (const [id, key] of harmControls) $(id).value = settings[key];
+  renderHarm();
   applyHarm();
   save();
 });
