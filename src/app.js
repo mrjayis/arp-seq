@@ -8,25 +8,25 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=123';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=123';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=123';
-import { Midi } from './midi.js?v=123';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=123';
+} from './core.js?v=124';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=124';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=124';
+import { Midi } from './midi.js?v=124';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=124';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=123';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=123';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=123';
+} from './percussion.js?v=124';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=124';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=124';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices,
-} from './breaks.js?v=123';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=123';
+} from './breaks.js?v=124';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=124';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=123';
+} from './mono.js?v=124';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -144,6 +144,17 @@ const settings = {
   reverbSendChords: 35,
   reverbSendDrums: 15,
   delaySendBass: 20,
+  // Harmonizer (H949-style pitch shifter with feedback), a send effect like the delay and reverb.
+  harmPitch: 7, // semitones
+  harmSpread: 0, // cents between left and right
+  harmDelay: 80, // ms
+  harmFeedback: 45, // %
+  harmGrain: 60, // ms: the splice window
+  harmLevel: 80, // %: return level
+  harmSendArp: 0,
+  harmSendChords: 0,
+  harmSendDrums: 25,
+  harmSendBass: 0,
   reverbSendBass: 5,
   chordOctave: 0,
   chordGate: 80,
@@ -263,7 +274,10 @@ let drums = null;
 let chorus = null; // chord layer effect
 // Each source plays into its own bus; the buses feed the mix and the effect sends.
 const buses = {};
-const sends = { delay: {}, reverb: {} };
+const sends = { delay: {}, reverb: {}, harm: {} };
+let harmIn = null; // sends mix here, into the Harmonizer worklet once it has loaded
+let harmOut = null;
+let harmNode = null;
 let delayFx = null;
 let reverbFx = null;
 let playing = false;
@@ -292,6 +306,20 @@ function ensureAudio() {
         buses[src].connect(sends[fx][src]).connect(node.input);
       }
     }
+    // Harmonizer: the sends are wired now; the worklet joins when its module has loaded.
+    harmIn = ctx.createGain();
+    harmOut = ctx.createGain();
+    harmOut.connect(synth.master);
+    for (const src of ['arp', 'chords', 'drums', 'bass']) {
+      sends.harm[src] = ctx.createGain();
+      sends.harm[src].gain.value = 0;
+      buses[src].connect(sends.harm[src]).connect(harmIn);
+    }
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=124', import.meta.url)).then(() => {
+      harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
+      harmIn.connect(harmNode).connect(harmOut);
+      applyHarm();
+    }).catch(() => { /* no AudioWorklet: the harmonizer stays silent */ });
     applyFx();
     // The percussion and the break share the drum bus, so each gets its own solo gate into it.
     buses.perc = ctx.createGain();
@@ -3869,6 +3897,61 @@ $('delay-pingpong').addEventListener('change', () => { settings.delayPingPong = 
 bindLog('reverb-size', 'reverbSize', 300, 8000, (ms) => `${(ms / 1000).toFixed(1)} s`, applyFx);
 bindRange('reverb-pre', 'reverbPre', (v) => `${v} ms`, applyFx);
 bindLog('reverb-tone', 'reverbTone', 300, 12000, formatHz, applyFx);
+
+// ---- Harmonizer (H949-style)
+function applyHarm() {
+  if (!ctx || !harmOut) return;
+  const now = ctx.currentTime;
+  if (harmNode) {
+    const set = (name, v) => harmNode.parameters.get(name).setTargetAtTime(v, now, 0.02);
+    set('pitch', settings.harmPitch);
+    set('spread', settings.harmSpread);
+    set('delay', settings.harmDelay / 1000);
+    set('feedback', settings.harmFeedback / 100);
+    set('grain', settings.harmGrain / 1000);
+  }
+  harmOut.gain.setTargetAtTime(settings.harmLevel / 100, now, 0.02);
+  for (const src of ['arp', 'chords', 'drums', 'bass']) {
+    const key = `harmSend${src[0].toUpperCase()}${src.slice(1)}`;
+    sends.harm[src].gain.setTargetAtTime(settings[key] / 100, now, 0.02);
+  }
+}
+const HARM_PRESETS = {
+  'Micro-pitch wide': { harmPitch: 0, harmSpread: 18, harmDelay: 12, harmFeedback: 0, harmGrain: 40 },
+  'Fifth up spiral': { harmPitch: 7, harmSpread: 0, harmDelay: 80, harmFeedback: 45, harmGrain: 60 },
+  'Octave up shimmer': { harmPitch: 12, harmSpread: 6, harmDelay: 140, harmFeedback: 40, harmGrain: 80 },
+  'Octave down thunder': { harmPitch: -12, harmSpread: 0, harmDelay: 60, harmFeedback: 30, harmGrain: 90 },
+  'Rising staircase': { harmPitch: 1, harmSpread: 0, harmDelay: 110, harmFeedback: 75, harmGrain: 50 },
+  'Falling staircase': { harmPitch: -1, harmSpread: 0, harmDelay: 110, harmFeedback: 75, harmGrain: 50 },
+  'Glitch': { harmPitch: 3, harmSpread: 10, harmDelay: 35, harmFeedback: 60, harmGrain: 12 },
+};
+const harmControls = [];
+const fmtSt = (v) => `${v > 0 ? '+' : ''}${v.toFixed(1)} st`;
+for (const [id, key, fmt] of [
+  ['harm-pitch', 'harmPitch', fmtSt], ['harm-spread', 'harmSpread', (v) => `${v} ¢`],
+  ['harm-delay', 'harmDelay', (v) => `${v} ms`], ['harm-feedback', 'harmFeedback', (v) => `${v}%`],
+  ['harm-grain', 'harmGrain', (v) => `${v} ms`], ['harm-level', 'harmLevel', (v) => `${v}%`],
+]) {
+  bindRange(id, key, fmt, applyHarm);
+  harmControls.push([id, key, fmt]);
+}
+for (const src of ['Arp', 'Chords', 'Drums', 'Bass']) {
+  bindRange(`harm-send-${src.toLowerCase()}`, `harmSend${src}`, (v) => `${v}%`, applyHarm);
+}
+const harmPreset = $('harm-preset');
+for (const name of Object.keys(HARM_PRESETS)) harmPreset.add(new Option(name, name));
+harmPreset.addEventListener('change', () => {
+  const p = HARM_PRESETS[harmPreset.value];
+  harmPreset.value = '';
+  if (!p) return;
+  Object.assign(settings, p);
+  for (const [id, key, fmt] of harmControls) {
+    $(id).value = settings[key];
+    $(`${id}-val`).textContent = fmt(settings[key]);
+  }
+  applyHarm();
+  save();
+});
 for (const fx of ['delay', 'reverb']) {
   for (const src of ['Arp', 'Chords', 'Drums', 'Bass']) {
     bindRange(`${fx}-send-${src.toLowerCase()}`, `${fx}Send${src}`, (v) => `${v}%`, applyFx);

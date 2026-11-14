@@ -193,6 +193,10 @@ A shared delay and reverb, with a **send** from each source (Arp, Chords, Drums)
 - **Delay:** **Time** synced to the tempo (1/16 – 1/2, including dotted and triplet values; it follows tempo changes and MIDI clock). **Feedback** sets each echo's level relative to the last. **Tone** darkens the repeats, and **Ping-pong** bounces echoes left/right.
 - **Reverb:** convolution with a generated, decorrelated stereo tail that darkens as it decays. **Size** is the time to −60 dB (0.3–8 s), plus **Pre-delay** and **Tone**.
 
+- **Harmonizer** (H949-style): a pitch shifter whose output feeds back through a short delay, so each repeat is shifted again. That gives spirals, rising and falling staircases, shimmer, and micro-pitch widening, great on percussion. Like the delay and reverb it's a send effect: **Drums send** (the percussion and the breakbeat) starts at 25%, the others at 0.
+  - **Pitch** ±12 semitones (in tenths). **Spread** shifts left and right apart by up to 50 cents for the micro-pitch stereo spread. **Delay** (0–500 ms) is the time before the shifted sound and between repeats. **Feedback** sets how many times it goes round, shifted again each time. **Grain** is the splice window: short is grainy and glitchy, long is smoother. **Level** is how loud it comes back.
+  - **Presets:** Micro-pitch wide, Fifth up spiral, Octave up shimmer, Octave down thunder, Rising and Falling staircase, and Glitch.
+  - It works like the original, by splicing a short delay line. Two read heads sweep through it and crossfade, which gives it a little of the hardware's grainy character.
 ### Input / output
 - **MIDI Learn** (button at the top): every control you can assign gets a dashed outline. Click one (it blinks), then move a knob, fader or button on your controller, and that CC (on its channel) now drives the control. Click an armed control again to remove its mapping; **Clear all** removes every mapping; **Done** or Esc finishes. Mapped controls keep a ring around them, and their tooltip shows the CC.
   - **Sliders** follow the CC across their whole range, and **menus** step through their choices.

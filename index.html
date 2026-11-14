@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=123" />
-  <link rel="stylesheet" href="mac.css?v=123" />
+  <link rel="stylesheet" href="styles.css?v=124" />
+  <link rel="stylesheet" href="mac.css?v=124" />
 </head>
 <body>
   <main class="device">
@@ -687,7 +687,7 @@
 
     <section class="panel fx" aria-label="Effects">
       <h2>Effects</h2>
-      <p class="hint">A shared delay and reverb. Each sound source has its own <b>send</b> into each one.</p>
+      <p class="hint">A shared delay, reverb and harmonizer. Each sound source has its own <b>send</b> into each one.</p>
       <div class="row">
         <span class="row-label">Delay</span>
         <label class="field">Time <select id="delay-time" title="Synced to the tempo"></select></label>
@@ -735,6 +735,30 @@
           <input id="reverb-send-bass" type="range" min="0" max="100" />
         </label>
       </div>
+      <div class="row">
+        <span class="row-label" title="An H949-style Harmonizer: a pitch shifter whose output feeds back through a short delay, so each repeat is shifted again (spirals, staircases, shimmer), plus micro-pitch widening">Harmonizer</span>
+        <label class="field">Preset <select id="harm-preset"><option value="">Load…</option></select></label>
+        <label class="field slider" title="How far the harmonizer shifts, in semitones (−12 to +12)">Pitch <output id="harm-pitch-val"></output>
+          <input id="harm-pitch" type="range" min="-12" max="12" step="0.1" /></label>
+        <label class="field slider" title="Micro-pitch: left and right shifted apart by this many cents, for width">Spread <output id="harm-spread-val"></output>
+          <input id="harm-spread" type="range" min="0" max="50" /></label>
+        <label class="field slider" title="Time before the shifted sound (and between repeats with feedback)">Delay <output id="harm-delay-val"></output>
+          <input id="harm-delay" type="range" min="0" max="500" /></label>
+        <label class="field slider" title="Regeneration: the shifted sound goes round again, shifted again each time">Feedback <output id="harm-feedback-val"></output>
+          <input id="harm-feedback" type="range" min="0" max="90" /></label>
+        <label class="field slider" title="The splice window: short = grainy and glitchy, long = smoother but more chorused">Grain <output id="harm-grain-val"></output>
+          <input id="harm-grain" type="range" min="10" max="150" /></label>
+        <label class="field slider" title="How loud the harmonizer comes back">Level <output id="harm-level-val"></output>
+          <input id="harm-level" type="range" min="0" max="100" /></label>
+        <label class="field slider">Arp send <output id="harm-send-arp-val"></output>
+          <input id="harm-send-arp" type="range" min="0" max="100" /></label>
+        <label class="field slider">Chords send <output id="harm-send-chords-val"></output>
+          <input id="harm-send-chords" type="range" min="0" max="100" /></label>
+        <label class="field slider" title="The percussion and the breakbeat">Drums send <output id="harm-send-drums-val"></output>
+          <input id="harm-send-drums" type="range" min="0" max="100" /></label>
+        <label class="field slider">Bass send <output id="harm-send-bass-val"></output>
+          <input id="harm-send-bass" type="range" min="0" max="100" /></label>
+      </div>
     </section>
 
     <section class="panel io" aria-label="Sound and MIDI">
@@ -771,6 +795,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=123"></script>
+  <script type="module" src="src/app.js?v=124"></script>
 </body>
 </html>
