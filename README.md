@@ -194,8 +194,14 @@ A shared delay and reverb, with a **send** from each source (Arp, Chords, Drums)
 - **Reverb:** convolution with a generated, decorrelated stereo tail that darkens as it decays. **Size** is the time to −60 dB (0.3–8 s), plus **Pre-delay** and **Tone**.
 
 - **Harmonizer** (H949-style): a pitch shifter whose output feeds back through a short delay, so each repeat is shifted again. That gives spirals, rising and falling staircases, shimmer, and micro-pitch widening, great on percussion. Like the delay and reverb it's a send effect: **Drums send** (the percussion and the breakbeat) starts at 25%, the others at 0.
+  - **Mode:**
+    - **Pitch:** the harmonizer. **Pitch · Deglitched** has longer, smoother splices for cleaner harmonies. **Pitch · Reverse** reads each grain backwards at the new pitch. **Pitch · Random** lands each splice at a random point, so **Grain** becomes **Scatter**.
+    - **Delay:** a plain delay with feedback, where **L/R offset** delays the right side up to 10 ms more.
+    - **Flange:** a short delay swept by a slow triangle. **Depth** goes up to 15 ms, **Sweep** is the time for one sweep, **L/R phase** offsets the right side's sweep, and Feedback makes it a jet.
+    - **Repeat:** loops the last **Loop length** of sound for as long as it's selected. **Speed** (the Pitch control) speeds it up or slows it down. Choose another mode to let go.
+    - Controls a mode doesn't use are dimmed, and the labels and readouts change to what they do in that mode.
   - **Pitch** ±12 semitones (in tenths). **Spread** shifts left and right apart by up to 50 cents for the micro-pitch stereo spread. **Delay** (0–500 ms) is the time before the shifted sound and between repeats. **Feedback** sets how many times it goes round, shifted again each time. **Grain** is the splice window: short is grainy and glitchy, long is smoother. **Level** is how loud it comes back.
-  - **Presets:** Micro-pitch wide, Fifth up spiral, Octave up shimmer, Octave down thunder, Rising and Falling staircase, and Glitch.
+  - **Presets:** Micro-pitch wide, Fifth up spiral, Octave up shimmer, Octave down thunder, Rising and Falling staircase, Glitch, Reverse shimmer, Random scatter, Slapback, Tape-ish echo, Jet flange, and Repeat a beat.
   - It works like the original, by splicing a short delay line. Two read heads sweep through it and crossfade, which gives it a little of the hardware's grainy character.
 ### Input / output
 - **MIDI Learn** (button at the top): every control you can assign gets a dashed outline. Click one (it blinks), then move a knob, fader or button on your controller, and that CC (on its channel) now drives the control. Click an armed control again to remove its mapping; **Clear all** removes every mapping; **Done** or Esc finishes. Mapped controls keep a ring around them, and their tooltip shows the CC.

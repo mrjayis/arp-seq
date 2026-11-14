@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=124" />
-  <link rel="stylesheet" href="mac.css?v=124" />
+  <link rel="stylesheet" href="styles.css?v=128" />
+  <link rel="stylesheet" href="mac.css?v=128" />
 </head>
 <body>
   <main class="device">
@@ -737,6 +737,7 @@
       </div>
       <div class="row">
         <span class="row-label" title="An H949-style Harmonizer: a pitch shifter whose output feeds back through a short delay, so each repeat is shifted again (spirals, staircases, shimmer), plus micro-pitch widening">Harmonizer</span>
+        <label class="field" title="Pitch: the harmonizer (deglitched = smoother splices, reverse = backwards grains, random = scattered splices). Delay: a plain delay. Flange: a swept short delay. Repeat: loops the last stretch of sound (switch to another mode to let go).">Mode <select id="harm-mode"></select></label>
         <label class="field">Preset <select id="harm-preset"><option value="">Load…</option></select></label>
         <label class="field slider" title="How far the harmonizer shifts, in semitones (−12 to +12)">Pitch <output id="harm-pitch-val"></output>
           <input id="harm-pitch" type="range" min="-12" max="12" step="0.1" /></label>
@@ -795,6 +796,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=124"></script>
+  <script type="module" src="src/app.js?v=128"></script>
 </body>
 </html>
