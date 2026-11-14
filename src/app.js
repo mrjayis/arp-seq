@@ -8,25 +8,25 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=120';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=120';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=120';
-import { Midi } from './midi.js?v=120';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=120';
+} from './core.js?v=123';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=123';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=123';
+import { Midi } from './midi.js?v=123';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=123';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=120';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=120';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=120';
+} from './percussion.js?v=123';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=123';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=123';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices,
-} from './breaks.js?v=120';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=120';
+} from './breaks.js?v=123';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=123';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=120';
+} from './mono.js?v=123';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -103,6 +103,9 @@ const settings = {
   breakRollHold: true, // a roll keeps going until the next filled row (Polyend style); off = one step
   breakTrim: { start: 0, end: 1 }, // the part of the loaded break that's used (fractions of the file)
   arpLevel: 100, // %: overall level of the arp (both voices)
+  osc2Sound: 'west', // 'west' (the west-coast voice) | 'bass' (upright bass)
+  bassTone: 45, // %
+  bassDecay: 2200, // ms: how long a low E rings
   osc1Level: 100, // %: oscillator 1's own level (oscillator 2 has osc2Level)
   arpOn: true, // off: the arp and sequencer keep stepping (chords can follow) but play nothing
   chordOn: true,
@@ -489,7 +492,13 @@ function playVoice(note, note2, velocity, time, gateLen, modNote, press = 0) {
   midi.noteOff(note, off);
   if (note2 === null) return;
   if (settings.synthOn && synth && settings.osc2Level > 0) {
-    synth.playWest(tuned(note2), velocity, time, gateLen, { ...bright(westVoice(2)), out: buses.arp });
+    if (settings.osc2Sound === 'bass') {
+      // Upright bass: each note rings on until the next one (a bassist's legato), gate or not.
+      synth.playBass(tuned(note2), velocity, time, Math.max(gateLen, settings.bassDecay / 1000), {
+        level: (settings.osc2Level / 100) * (settings.arpLevel / 100), out: buses.arp, mono: 'osc2',
+        tone: Math.min(1, settings.bassTone / 100 + press * 0.5), decay: settings.bassDecay / 1000,
+      });
+    } else synth.playWest(tuned(note2), velocity, time, gateLen, { ...bright(westVoice(2)), out: buses.arp });
   }
   if (settings.osc2MidiCh >= 0) {
     midi.noteOn(note2, velocity, on, settings.osc2MidiCh);
@@ -1467,6 +1476,24 @@ function showPwm() {
 }
 bindRange('arp-level', 'arpLevel', (v) => `${v}%`);
 bindRange('osc1-level', 'osc1Level', (v) => `${v}%`);
+bindSelect('osc2-sound', 'osc2Sound', [['west', 'West-coast'], ['bass', 'Upright bass']], renderOsc2Sound);
+bindRange('bass-tone', 'bassTone', (v) => `${v}%`);
+bindLog('bass-decay', 'bassDecay', 300, 6000, (v) => (v < 1000 ? `${v} ms` : `${(v / 1000).toFixed(1)} s`));
+/** The upright bass has its own Tone and Decay; the west-coast controls don't apply to it. */
+function renderOsc2Sound() {
+  const bass = settings.osc2Sound === 'bass';
+  $('osc2-panel').classList.toggle('bass', bass);
+  $('bass-row').hidden = !bass;
+}
+onRecall(renderOsc2Sound)();
+// Choosing the bass by hand: put it in a bass register if it's still up with the arp.
+$('osc2-sound').addEventListener('change', () => {
+  if (settings.osc2Sound === 'bass' && settings.osc2Transpose > -12) {
+    settings.osc2Transpose = -12;
+    $('osc2-transpose').value = '-12';
+    save();
+  }
+});
 bindSelect('tuning', 'tuning', Object.entries(TUNINGS), () => {
   clearSweet();
   applyPure();

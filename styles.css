@@ -988,3 +988,6 @@ body.midi-learn main button[aria-pressed] { outline: 2px dashed color-mix(in srg
 body.midi-learn .cc-armed { outline: 3px solid var(--brick) !important; outline-offset: 2px; animation: cc-blink 0.6s steps(2) infinite; }
 @keyframes cc-blink { 50% { outline-color: transparent; } }
 .cc-mapped { box-shadow: 0 0 0 2px color-mix(in srgb, var(--brick) 55%, transparent); }
+
+/* Oscillator 2 as an upright bass: the west-coast controls don't apply. */
+.osc2.bass .west-only, .osc2.bass .west-row { opacity: 0.4; }

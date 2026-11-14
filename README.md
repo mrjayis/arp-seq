@@ -154,6 +154,7 @@ The Latin kit:
 - Each arpeggiated note moves the sequencer one step. A new chord resets both the arp and the sequencer to the start.
 
 ### Oscillator 2
+- **Sound: West-coast / Upright bass.** **Upright bass** turns oscillator 2 into a plucked double bass. The note starts a touch sharp and settles (the pluck), there's a soft finger noise, and its brightness fades as it rings. Each note rings on until the next one, like a bassist's legato, or until it dies away (low notes ring longest). **Tone** goes from dark and thumpy to bright and twangy (aftertouch brightens it too), and **Decay** sets how long a low E rings. Choosing it drops oscillator 2 an octave if it's still up with the arp, and you can set Transpose further down. It keeps following the sequence (Same or Inverted), Level, mute-step slides and just intonation. The west-coast controls don't apply and are dimmed.
 - A second voice plays on every arpeggiated note, using the same sequencer step as oscillator 1:
   - **Same:** plays the step's offset as it is (doubles the sequence)
   - **Inverted:** plays the offset flipped around the arp note, so +12 becomes −12 and +7 becomes −7
