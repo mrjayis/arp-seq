@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=134" />
-  <link rel="stylesheet" href="mac.css?v=134" />
+  <link rel="stylesheet" href="styles.css?v=135" />
+  <link rel="stylesheet" href="mac.css?v=135" />
 </head>
 <body>
   <main class="device">
@@ -749,8 +749,8 @@
           </div></div>
         <button id="harm-repeat" aria-pressed="false" title="REPEAT: capture the last Delay (Segment) of sound and loop it, at the Pitch ratio (and backwards in Reverse). Press again to let go.">Repeat</button>
         <label class="field">Preset <select id="harm-preset"><option value="">Load…</option></select></label>
-        <label class="field slider" title="Pitch ratio, continuous: ×0.500 (an octave down) to ×1.000 (unchanged) to ×2.000 (an octave up). ×1.498 is a fifth up, ×0.749 a fifth down.">Pitch <output id="harm-pitch-val"></output>
-          <input id="harm-pitch" type="range" min="-12" max="12" step="0.01" /></label>
+        <label class="field slider" title="Pitch ratio, continuous: ×0.250 (two octaves down) through ×0.500 (one down) and ×1.000 (unchanged) to ×2.000 (an octave up). ×1.498 is a fifth up, ×0.749 a fifth down.">Pitch <output id="harm-pitch-val"></output>
+          <input id="harm-pitch" type="range" min="-24" max="12" step="0.01" /></label>
         <label class="field slider" title="μPC: micro pitch change, a fine ratio from ×0.970 to ×1.030 in 0.1% steps (for doubling)">μPC <output id="harm-micro-val"></output>
           <input id="harm-micro" type="range" min="-30" max="30" step="1" /></label>
         <label class="field slider" title="Left and right pulled apart: in cents (pitch modes), or in time/phase (delay modes)">Spread <output id="harm-spread-val"></output>
@@ -810,6 +810,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=134"></script>
+  <script type="module" src="src/app.js?v=135"></script>
 </body>
 </html>
