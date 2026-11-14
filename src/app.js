@@ -8,25 +8,25 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=119';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=119';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=119';
-import { Midi } from './midi.js?v=119';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=119';
+} from './core.js?v=120';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=120';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=120';
+import { Midi } from './midi.js?v=120';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=120';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=119';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=119';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=119';
+} from './percussion.js?v=120';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=120';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=120';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices,
-} from './breaks.js?v=119';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=119';
+} from './breaks.js?v=120';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=120';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=119';
+} from './mono.js?v=120';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -103,6 +103,7 @@ const settings = {
   breakRollHold: true, // a roll keeps going until the next filled row (Polyend style); off = one step
   breakTrim: { start: 0, end: 1 }, // the part of the loaded break that's used (fractions of the file)
   arpLevel: 100, // %: overall level of the arp (both voices)
+  osc1Level: 100, // %: oscillator 1's own level (oscillator 2 has osc2Level)
   arpOn: true, // off: the arp and sequencer keep stepping (chords can follow) but play nothing
   chordOn: true,
   chordRate: '1/8',
@@ -344,7 +345,7 @@ function westVoice(n) {
     timbre: settings.arpTimbre / 100,
     lpg: settings.lpgMode,
     resonance: settings.arpResonance,
-    level: settings.arpLevel / 100,
+    level: (settings.osc1Level / 100) * (settings.arpLevel / 100),
   };
 }
 
@@ -1465,6 +1466,7 @@ function showPwm() {
   $('pwm-note').textContent = off ? 'Set Wave 1 or Wave 2 to Square to use PWM.' : '';
 }
 bindRange('arp-level', 'arpLevel', (v) => `${v}%`);
+bindRange('osc1-level', 'osc1Level', (v) => `${v}%`);
 bindSelect('tuning', 'tuning', Object.entries(TUNINGS), () => {
   clearSweet();
   applyPure();
