@@ -991,3 +991,6 @@ body.midi-learn .cc-armed { outline: 3px solid var(--brick) !important; outline-
 
 /* Oscillator 2 as an upright bass: the west-coast controls don't apply. */
 .osc2.bass .west-only, .osc2.bass .west-row { opacity: 0.4; }
+
+/* A harmonizer control the current mode doesn't use. */
+.field.dim { opacity: 0.4; }
