@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=120" />
-  <link rel="stylesheet" href="mac.css?v=120" />
+  <link rel="stylesheet" href="styles.css?v=123" />
+  <link rel="stylesheet" href="mac.css?v=123" />
 </head>
 <body>
   <main class="device">
@@ -217,7 +217,8 @@
         <div class="field">Sequence
           <div class="seg" id="osc2-mode" role="radiogroup" aria-label="Oscillator 2 sequence"></div>
         </div>
-        <label class="field">Wave
+        <label class="field" title="West-coast: the same kind of voice as Oscillator 1. Upright bass: a plucked double bass that rings on until the next note.">Sound <select id="osc2-sound"></select></label>
+        <label class="field west-only">Wave
           <select id="osc2-wave">
             <option value="sawtooth">Saw</option>
             <option value="square">Square</option>
@@ -237,7 +238,14 @@
           <select id="osc2-midi-ch" title="Send oscillator 2 to its own MIDI channel"><option value="-1">Off</option></select>
         </label>
       </div>
-      <div class="row">
+      <div class="row" id="bass-row" hidden>
+        <span class="row-label">Bass</span>
+        <label class="field slider" title="Dark and thumpy (left) to bright and twangy (right). Aftertouch brightens it too.">Tone <output id="bass-tone-val"></output>
+          <input id="bass-tone" type="range" min="0" max="100" /></label>
+        <label class="field slider" title="How long a low E rings when left alone (higher notes ring a little shorter)">Decay <output id="bass-decay-val"></output>
+          <input id="bass-decay" type="range" min="0" max="1000" step="1" /></label>
+      </div>
+      <div class="row west-row">
         <label class="field slider">Shape <output id="osc2-shape-val"></output>
           <input id="osc2-shape" type="range" min="0" max="100" title="Sine (left) to the selected wave (right)" />
         </label>
@@ -763,6 +771,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=120"></script>
+  <script type="module" src="src/app.js?v=123"></script>
 </body>
 </html>

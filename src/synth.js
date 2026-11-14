@@ -509,6 +509,112 @@ export class Synth {
    * re-striking it (a fast 6 ms glide, so there is no click). Returns false when
    * the line's last note has already finished.
    */
+  /** Harmonics of a plucked string: strong low partials, falling away fast (warm, round). */
+  get bassWave() {
+    if (!this._bassWave) {
+      const n = 24;
+      const real = new Float32Array(n);
+      const imag = new Float32Array(n);
+      for (let k = 1; k < n; k++) imag[k] = (k % 2 ? 1 : 0.75) / Math.pow(k, 1.7);
+      this._bassWave = this.ctx.createPeriodicWave(real, imag);
+    }
+    return this._bassWave;
+  }
+
+  /** A short burst of noise, shared: the finger on the string. */
+  get pluckNoise() {
+    if (!this._pluckNoise) {
+      const len = Math.round(this.ctx.sampleRate * 0.04);
+      const buf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
+      this._pluckNoise = buf;
+    }
+    return this._pluckNoise;
+  }
+
+  /**
+   * Upright (double) bass: a plucked string. The note starts a hair sharp and settles
+   * (the pluck), with a short finger noise; its brightness fades as it rings, and low
+   * notes ring longer than high ones. It rings until `duration` is over or, on a `mono`
+   * line, until the next note (like a bassist moving to the next note).
+   * opts: {level, out, mono, tone 0..1 (dark–bright), decay s (how long a low E rings)}
+   */
+  playBass(note, velocity, time, duration, { level = 1, out = this.master, mono = null, tone = 0.5, decay = 2.2 } = {}) {
+    const ctx = this.ctx;
+    const t0 = Math.max(time, ctx.currentTime);
+    const freq = mtof(note);
+    const vel = velocity / 127;
+    const ring = Math.max(0.25, decay * Math.pow(2, -(note - 28) / 18)); // E1 rings longest
+    const tOff = t0 + Math.max(0.05, Math.min(duration, ring * 1.5));
+    const end = tOff + 0.25;
+    const peak = Math.pow(vel, 1.2) * 0.5 * level;
+
+    const string = ctx.createOscillator();
+    string.setPeriodicWave(this.bassWave);
+    const body = ctx.createOscillator(); // the wood's low sine
+    body.type = 'sine';
+    for (const o of [string, body]) {
+      o.frequency.setValueAtTime(freq * Math.pow(2, (14 + 10 * vel) / 1200), t0); // the pluck pulls it sharp
+      o.frequency.exponentialRampToValueAtTime(freq, t0 + 0.05);
+    }
+    const bodyGain = ctx.createGain();
+    bodyGain.gain.value = 0.55;
+    const filter = ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.Q.value = 0.8;
+    const bright = Math.min(6000, freq * (5 + 12 * tone * (0.5 + vel)));
+    const dark = Math.min(2500, freq * (2 + 3 * tone));
+    filter.frequency.setValueAtTime(bright, t0);
+    filter.frequency.setTargetAtTime(dark, t0 + 0.01, 0.18 + 0.2 * tone);
+    const amp = ctx.createGain();
+    amp.gain.setValueAtTime(0, t0);
+    amp.gain.linearRampToValueAtTime(peak, t0 + 0.004);
+    amp.gain.setTargetAtTime(peak * 0.55, t0 + 0.004, 0.06); // the initial thump settles
+    amp.gain.setTargetAtTime(0, t0 + 0.08, ring / 4);
+    amp.gain.cancelScheduledValues(tOff);
+    amp.gain.setTargetAtTime(0, tOff, 0.05); // the player damps the string
+    string.connect(filter);
+    body.connect(bodyGain).connect(filter);
+    // The finger: a soft click of filtered noise at the start.
+    const click = ctx.createBufferSource();
+    click.buffer = this.pluckNoise;
+    const clickF = ctx.createBiquadFilter();
+    clickF.type = 'bandpass';
+    clickF.frequency.value = 700 + 900 * tone;
+    clickF.Q.value = 0.9;
+    const clickG = ctx.createGain();
+    clickG.gain.value = peak * (0.25 + 0.35 * tone);
+    click.connect(clickF).connect(clickG);
+    const choke = ctx.createGain();
+    filter.connect(amp).connect(choke).connect(out);
+    clickG.connect(choke);
+    const oscs = [string, body];
+    if (mono) {
+      this.monoLines.get(mono)?.cut(t0);
+      this.monoLines.set(mono, {
+        start: t0, end, freq, oscs, modOsc: null, modGain: null, modType: null, modFreq: 0, modDepth: 0,
+        cut: (at) => {
+          const from = Math.max(t0, at - 0.004);
+          choke.gain.setValueAtTime(1, from);
+          choke.gain.linearRampToValueAtTime(0, Math.max(from + 0.001, at));
+          for (const o of oscs) { try { o.stop(at + 0.01); } catch { /* stopped */ } }
+        },
+      });
+    }
+    click.start(t0);
+    for (const o of oscs) {
+      o.start(t0);
+      o.stop(end);
+      const voice = { osc: o, amp };
+      this.voices.add(voice);
+      o.onended = () => {
+        this.voices.delete(voice);
+        if (o === string) { amp.disconnect(); choke.disconnect(); }
+      };
+    }
+  }
+
   retune(mono, note, at, modNote = null) {
     const line = this.monoLines.get(mono);
     if (!line || at <= line.start || at >= line.end) return false;
