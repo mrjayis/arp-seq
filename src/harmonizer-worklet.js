@@ -40,6 +40,7 @@ class Harmonizer extends AudioWorkletProcessor {
     this.buf = new Float32Array(this.size);
     this.w = 0;
     this.phase = [0, 0];
+    this.off = [[0, 0], [0, 0]]; // per channel, per tap: splice alignment (samples)
     this.fb = 0;
     this.damp = 0;
     this.lfo = 0;
@@ -58,16 +59,63 @@ class Harmonizer extends AudioWorkletProcessor {
     return this.at(this.w - d);
   }
 
+  /**
+   * Deglitching: when a tap is about to come back in (its gain is zero), look a few ms
+   * around where it lands for the point whose waveform best matches what the other tap
+   * is playing, so the two crossfade in phase instead of cancelling.
+   */
+  align(nominal, other, win) {
+    const span = Math.min(Math.floor(win * 0.3), Math.floor(0.012 * sampleRate));
+    const len = Math.max(32, Math.floor(0.004 * sampleRate));
+    const score = (d) => {
+      const at = nominal + d;
+      if (at < 2 || at + len >= this.size) return -Infinity;
+      let sum = 0;
+      let energy = 1e-9;
+      for (let k = 0; k < len; k += 4) {
+        const a = this.read(at + k);
+        sum += a * this.read(other + k);
+        energy += a * a;
+      }
+      return sum / Math.sqrt(energy);
+    };
+    // Coarse scan every 4 samples, then the best spot refined to the sample.
+    let best = 0;
+    let bestScore = -Infinity;
+    for (let d = -span; d <= span; d += 4) {
+      const sc = score(d);
+      if (sc > bestScore) { bestScore = sc; best = d; }
+    }
+    for (let d = best - 3; d <= best + 3; d++) {
+      const sc = score(d);
+      if (sc > bestScore) { bestScore = sc; best = d; }
+    }
+    return best;
+  }
+
   /** Two read taps sweeping a window and crossfading: pitch change by splicing. */
-  splice(c, ratio, win, pre, reverse, smooth) {
-    let ph = this.phase[c] + (reverse ? 1 + ratio : 1 - ratio) / win;
+  splice(c, ratio, win, pre, reverse, smooth, deglitch) {
+    const prev = this.phase[c];
+    let ph = prev + (reverse ? 1 + ratio : 1 - ratio) / win;
     ph -= Math.floor(ph);
     this.phase[c] = ph;
     const ph2 = (ph + 0.5) % 1;
+    const off = this.off[c];
+    if (deglitch) {
+      // Tap 1 restarts where ph wraps; tap 2 where ph crosses ½ (that's where each is silent).
+      const step = (reverse ? 1 + ratio : 1 - ratio) / win;
+      const wrapped1 = step > 0 ? ph < prev : ph > prev;
+      const crossed2 = step > 0 ? prev < 0.5 && ph >= 0.5 : prev >= 0.5 && ph < 0.5;
+      if (wrapped1) off[0] = this.align(pre + 1 + ph * win, pre + 1 + ph2 * win + off[1], win);
+      if (crossed2) off[1] = this.align(pre + 1 + ph2 * win, pre + 1 + ph * win + off[0], win);
+    } else {
+      off[0] = 0;
+      off[1] = 0;
+    }
     let g1 = Math.sin(Math.PI * ph) ** 2;
     let g2 = 1 - g1;
     if (smooth) { g1 = Math.sqrt(g1) * 0.77; g2 = Math.sqrt(g2) * 0.77; } // equal power, level-matched
-    return this.read(pre + 1 + ph * win) * g1 + this.read(pre + 1 + ph2 * win) * g2;
+    return this.read(pre + 1 + ph * win + off[0]) * g1 + this.read(pre + 1 + ph2 * win + off[1]) * g2;
   }
 
   process(inputs, outputs, params) {
@@ -125,8 +173,10 @@ class Harmonizer extends AudioWorkletProcessor {
         this.damp += 0.35 * (this.fb - this.damp);
         this.buf[this.w] = x + Math.tanh(this.damp * fbAmt);
         if (pitchMode || mode === 7) {
-          yl = this.splice(0, ratios[0], win, readPre, reverse, smooth);
-          yr = this.splice(1, ratios[1], win, readPre, reverse, smooth);
+          // Deglitch (splice alignment) in the forward pitch modes; reverse keeps raw splices.
+          const deglitch = !reverse;
+          yl = this.splice(0, ratios[0], win, readPre, reverse, smooth, deglitch);
+          yr = this.splice(1, ratios[1], win, readPre, reverse, smooth, deglitch);
         } else if (mode === 4) {
           yl = this.read(pre + 1);
           yr = this.read(pre + 1 + spread * 0.0001 * sampleRate);
