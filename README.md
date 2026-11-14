@@ -189,7 +189,7 @@ A drum break cut into slices and re-sequenced tracker style, for jungle, drum & 
 - **Mixing:** it plays on the drum bus, so the drum delay/reverb sends apply. It has its own **Level** and follows the clock and swing.
 
 ### Effects
-- **Pre-fader sends:** each effect (Delay, Reverb, Harmonizer) has a **Pre-fader** switch. Off (the default), its sends follow each section's Level, as before. On, they're taken before the Level, so turning a section down, even to 0, leaves its effect sound untouched (for example drums heard only through the harmonizer). A section at Level 0 keeps playing while a pre-fader send needs it. Solo still applies to pre-fader sends.
+- **Pre-fader sends:** every send (each section into Delay, Reverb and the Harmonizer) has its own **Pre** switch. Off (the default), the send follows the section's Level. On, it's taken before the Level, so turning the section down, even to 0, leaves that send untouched (for example drums heard only through the harmonizer, while their reverb still follows the fader). A section at Level 0 keeps playing while a pre-fader send needs it. Solo still applies to pre-fader sends.
 A shared delay and reverb, with a **send** from each source (Arp, Chords, Drums) into each one.
 - **Delay:** **Time** synced to the tempo (1/16 – 1/2, including dotted and triplet values; it follows tempo changes and MIDI clock). **Feedback** sets each echo's level relative to the last. **Tone** darkens the repeats, and **Ping-pong** bounces echoes left/right.
 - **Reverb:** convolution with a generated, decorrelated stereo tail that darkens as it decays. **Size** is the time to −60 dB (0.3–8 s), plus **Pre-delay** and **Tone**.
