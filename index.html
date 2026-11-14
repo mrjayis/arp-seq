@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=132" />
-  <link rel="stylesheet" href="mac.css?v=132" />
+  <link rel="stylesheet" href="styles.css?v=133" />
+  <link rel="stylesheet" href="mac.css?v=133" />
 </head>
 <body>
   <main class="device">
@@ -698,6 +698,7 @@
           <input id="delay-tone" type="range" min="0" max="1000" title="Darker repeats to the left" />
         </label>
         <label class="check"><input id="delay-pingpong" type="checkbox" /> Ping-pong</label>
+        <label class="check" title="Pre-fader: the delay sends are taken before each section's Level, so a section turned down (even to 0) still feeds the delay. Off: after the Level (post-fader)."><input id="delay-pre" type="checkbox" /> Pre-fader</label>
         <label class="field slider">Arp send <output id="delay-send-arp-val"></output>
           <input id="delay-send-arp" type="range" min="0" max="100" />
         </label>
@@ -722,6 +723,7 @@
         <label class="field slider">Tone <output id="reverb-tone-val"></output>
           <input id="reverb-tone" type="range" min="0" max="1000" />
         </label>
+        <label class="check" title="Pre-fader: the reverb sends are taken before each section's Level, so a section turned down (even to 0) still feeds the reverb. Off: after the Level (post-fader)."><input id="reverb-pre" type="checkbox" /> Pre-fader</label>
         <label class="field slider">Arp send <output id="reverb-send-arp-val"></output>
           <input id="reverb-send-arp" type="range" min="0" max="100" />
         </label>
@@ -765,6 +767,7 @@
           <input id="harm-level" type="range" min="0" max="100" /></label>
         <label class="field slider" title="DELAY output: the plain delayed signal, alongside the Main output (e.g. a harmony plus a slapback)">Delay level <output id="harm-delay-level-val"></output>
           <input id="harm-delay-level" type="range" min="0" max="100" /></label>
+        <label class="check" title="Pre-fader: the harmonizer sends are taken before each section's Level, so a section turned down (even to 0) still feeds the harmonizer. Off: after the Level (post-fader)."><input id="harm-pre" type="checkbox" /> Pre-fader</label>
         <label class="field slider">Arp send <output id="harm-send-arp-val"></output>
           <input id="harm-send-arp" type="range" min="0" max="100" /></label>
         <label class="field slider">Chords send <output id="harm-send-chords-val"></output>
@@ -810,6 +813,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=132"></script>
+  <script type="module" src="src/app.js?v=133"></script>
 </body>
 </html>
