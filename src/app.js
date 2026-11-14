@@ -8,25 +8,25 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=137';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=137';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=137';
-import { Midi } from './midi.js?v=137';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=137';
+} from './core.js?v=138';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=138';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=138';
+import { Midi } from './midi.js?v=138';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=138';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=137';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=137';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=137';
+} from './percussion.js?v=138';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=138';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=138';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices,
-} from './breaks.js?v=137';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=137';
+} from './breaks.js?v=138';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=138';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=137';
+} from './mono.js?v=138';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -341,7 +341,7 @@ function ensureAudio() {
         sends[fx][src] = { pre, post };
       }
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=137', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=138', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -3951,7 +3951,12 @@ for (const fx of ['delay', 'reverb', 'harm']) {
     label.className = 'check pre-send';
     label.title = `Pre-fader: take this send before the ${src === 'Drums' ? 'percussion and break' : src.toLowerCase()} Level, so turning that down (even to 0) doesn't change what goes to the effect. Off: after it (post-fader).`;
     label.append(box, ' Pre');
-    slider.closest('label').after(label);
+    // Keep the send and its Pre switch together, so they wrap as one on narrow screens.
+    const field = slider.closest('label');
+    const pair = document.createElement('div');
+    pair.className = 'send-pair';
+    field.before(pair);
+    pair.append(field, label);
     box.addEventListener('change', () => {
       settings[key] = box.checked;
       if (fx === 'harm') applyHarm(); else applyFx();
