@@ -751,3 +751,23 @@ export function autoTonic(slots) {
   }
   return best.tonic;
 }
+
+// ---- Arr: an automatic arranger that mutes sections at random.
+
+/**
+ * Which of the `active` sections to mute for the next stretch. Each is muted with
+ * probability `chance`, but one muted last time is likelier to come back (and one that
+ * played last time a little likelier to drop out), and at least `minPlaying` keep
+ * playing (all of them when there are no more than that). Returns a Set of keys.
+ */
+export function arrangeMutes(active, prevMuted = new Set(), rng = Math.random, { chance = 0.4, minPlaying = 2 } = {}) {
+  const keys = [...active];
+  if (keys.length <= minPlaying) return new Set();
+  const muted = new Set(keys.filter((k) => rng() < (prevMuted.has(k) ? chance * 0.5 : chance * 1.15)));
+  // Too many out: bring back random ones until enough are playing.
+  while (keys.length - muted.size < minPlaying) {
+    const out = [...muted];
+    muted.delete(out[Math.floor(rng() * out.length)]);
+  }
+  return muted;
+}

@@ -1077,3 +1077,10 @@ body.midi-learn .cc-armed { outline: 3px solid var(--brick) !important; outline-
   .trow { grid-template-columns: 24px 38px 34px 32px 34px 28px 38px minmax(0, 1fr); gap: 1px; }
   .trow select, .trow input { padding-left: 1px; padding-right: 1px; }
 }
+
+/* ---------- Arr (automatic arranger) ---------- */
+.dock-transport { flex-wrap: wrap; }
+#arr[aria-pressed="true"] { background: var(--brick); border-color: var(--brick); color: #fff; }
+.arr-bars { min-height: 28px; font-size: 13px; padding: 2px 4px; }
+main > .panel.arr-muted > h2, main > .panel.arr-muted > .seq-head > h2 { opacity: 0.4; text-decoration: line-through; }
+.dock-nav button.arr-muted { opacity: 0.4; text-decoration: line-through; }
