@@ -8,25 +8,25 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=142';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=142';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=142';
-import { Midi } from './midi.js?v=142';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=142';
+} from './core.js?v=143';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=143';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=143';
+import { Midi } from './midi.js?v=143';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=143';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=142';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=142';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=142';
+} from './percussion.js?v=143';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=143';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=143';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=142';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=142';
+} from './breaks.js?v=143';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=143';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=142';
+} from './mono.js?v=143';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -341,7 +341,7 @@ function ensureAudio() {
         sends[fx][src] = { pre, post };
       }
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=142', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=143', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -2736,7 +2736,8 @@ function drawTrimOverview() {
   const canvas = $('break-trim-view');
   if (!canvas.clientWidth) return;
   const dpr = window.devicePixelRatio || 1;
-  const w = canvas.clientWidth;
+  // Size from the space around the canvas, never from the canvas itself (which could feed back).
+  const w = Math.min(canvas.parentElement.clientWidth || 0, canvas.clientWidth || Infinity);
   const h = canvas.clientHeight || 28;
   if (canvas.width !== w * dpr || canvas.height !== h * dpr) { canvas.width = w * dpr; canvas.height = h * dpr; }
   const g = canvas.getContext('2d');
@@ -2843,7 +2844,8 @@ function drawBreak() {
   const canvas = $('break-wave');
   if (!canvas.clientWidth) return; // folded or hidden: nothing to draw (redrawn when reopened)
   const dpr = window.devicePixelRatio || 1;
-  const w = Math.max(200, canvas.clientWidth);
+  // Size from the space around the canvas, never from the canvas itself (which could feed back).
+  const w = Math.max(200, Math.min(canvas.parentElement.clientWidth || 0, canvas.clientWidth || Infinity));
   const h = canvas.clientHeight || 96;
   if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
     canvas.width = w * dpr;
