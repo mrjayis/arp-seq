@@ -1184,6 +1184,10 @@ input.fader[type="range"]::-webkit-slider-thumb {
 }
 input.fader[type="range"]::-moz-range-track { width: 6px; background: #333; border-radius: 3px; }
 input.fader[type="range"]::-moz-range-thumb { width: 32px; height: 18px; border-radius: 3px; border: 1px solid #222; background: #ddd8cc; }
+.strip-on { min-width: 0; min-height: 24px; width: 56px; padding: 0; font-size: 12px; font-weight: 700; margin-bottom: 4px; }
+.strip-on[aria-pressed="true"] { background: #3fae5a; border-color: #3fae5a; color: #fff; }
+.strip.off .strip-name { opacity: .5; }
+@media (max-width: 600px) { .strip-on { width: 52px; } }
 .strip-btns { display: flex; gap: 4px; }
 .strip-btns button { min-width: 0; min-height: 26px; width: 26px; padding: 0; font-weight: 700; font-size: 12px; }
 .strip-btns .mute[aria-pressed="true"] { background: #d64533; border-color: #d64533; color: #fff; }
