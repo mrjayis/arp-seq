@@ -274,5 +274,6 @@ The Arpeggiator (both voices), Chord Rhythm (with its pad and sub), Mono Synth, 
 - **Strips:** Arp, Chords, Mono, Drums and Break have a fader each, which is the same control as that window's Level slider. Moving one moves the other.
 - **Returns:** Delay, Reverb and Harm have return faders. Master is the main Volume.
 - **Meters:** each strip has a level meter with a peak marker, running from −60 to 0 dB. The readout above the fader shows the percentage and its dB value.
+- **On/Off:** each track strip has an On button. It is the same switch as that window's On, so the two stay in step. A track that's off has its name dimmed.
 - **M and S:** **M** mutes a strip. Mutes are saved with scenes. **S** is the same solo as the window's S button.
 - **Reset:** double-click a fader to put it back to its default.

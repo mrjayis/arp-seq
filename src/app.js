@@ -8,25 +8,25 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=156';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=156';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=156';
-import { Midi } from './midi.js?v=156';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=156';
+} from './core.js?v=158';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=158';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=158';
+import { Midi } from './midi.js?v=158';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=158';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=156';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=156';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=156';
+} from './percussion.js?v=158';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=158';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=158';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=156';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=156';
+} from './breaks.js?v=158';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=158';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=156';
+} from './mono.js?v=158';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -348,7 +348,7 @@ function ensureAudio() {
         sends[fx][src] = { pre, post };
       }
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=156', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=158', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -5232,11 +5232,11 @@ for (const [id, collapse] of [['collapse-all', true], ['expand-all', false]]) {
 // same setting as the window's own Level slider, so the two always agree.
 if (!settings.mixMute || typeof settings.mixMute !== 'object') settings.mixMute = {};
 const MIX_STRIPS = [
-  { key: 'arp', name: 'Arp', input: 'arp-level', node: () => faders.arp, solo: 'arp' },
-  { key: 'chords', name: 'Chords', input: 'chord-level', node: () => faders.chords, solo: 'chords' },
-  { key: 'bass', name: 'Mono', input: 'mono-level', node: () => faders.bass, solo: 'bass' },
-  { key: 'perc', name: 'Drums', input: 'drum-level', node: () => faders.perc, solo: 'perc' },
-  { key: 'break', name: 'Break', input: 'break-level', node: () => faders.break, solo: 'break' },
+  { key: 'arp', name: 'Arp', input: 'arp-level', on: 'arp-on', node: () => faders.arp, solo: 'arp' },
+  { key: 'chords', name: 'Chords', input: 'chord-level', on: 'chord-on', node: () => faders.chords, solo: 'chords' },
+  { key: 'bass', name: 'Mono', input: 'mono-level', on: 'mono-on', node: () => faders.bass, solo: 'bass' },
+  { key: 'perc', name: 'Drums', input: 'drum-level', on: 'drum-on', node: () => faders.perc, solo: 'perc' },
+  { key: 'break', name: 'Break', input: 'break-level', on: 'break-on', node: () => faders.break, solo: 'break' },
   { key: 'delay', name: 'Delay', setting: 'delayReturn', fx: 'delay', node: () => delayFx?.out, sep: true },
   { key: 'reverb', name: 'Reverb', setting: 'reverbReturn', fx: 'reverb', node: () => reverbFx?.out },
   { key: 'harm', name: 'Harm', input: 'harm-level', fx: 'harm', node: () => harmOut },
@@ -5295,6 +5295,7 @@ function buildMixer() {
         <div class="meter"><div class="meter-fill"></div><div class="meter-peak"></div></div>
         <input class="fader" type="range" min="0" max="100" step="1" aria-label="${s.name} fader" />
       </div>
+      ${s.on ? `<button class="strip-on" aria-pressed="false" aria-label="Turn ${s.name} on or off">Off</button>` : ''}
       <div class="strip-btns">
         <button class="mute" aria-pressed="false" aria-label="Mute ${s.name}">M</button>
         ${s.solo ? `<button class="solo" aria-pressed="false" aria-label="Solo ${s.name}">S</button>` : ''}
@@ -5303,6 +5304,7 @@ function buildMixer() {
     fader.value = String(stripValue(s));
     fader.addEventListener('input', () => { setStripValue(s, Number(fader.value)); renderStripValue(s, strip); });
     fader.addEventListener('dblclick', () => { fader.value = s.master ? '50' : s.key === 'delay' || s.key === 'reverb' ? '100' : '80'; fader.dispatchEvent(new Event('input')); });
+    strip.querySelector('.strip-on')?.addEventListener('click', () => { $(s.on).click(); renderMixer(); });
     strip.querySelector('.mute').addEventListener('click', () => { toggleStripMute(s); renderMixer(); });
     strip.querySelector('.solo')?.addEventListener('click', (e) => {
       soloButtons[s.solo]?.dispatchEvent(new MouseEvent('click', { altKey: e.altKey }));
@@ -5329,6 +5331,13 @@ function renderMixer() {
     const muted = stripMuted(s);
     strip.querySelector('.mute').setAttribute('aria-pressed', String(muted));
     strip.classList.toggle('muted', muted);
+    const onBtn = strip.querySelector('.strip-on');
+    if (onBtn) {
+      const on = $(s.on).getAttribute('aria-pressed') === 'true';
+      onBtn.setAttribute('aria-pressed', String(on));
+      onBtn.textContent = on ? 'On' : 'Off';
+      strip.classList.toggle('off', !on);
+    }
     const solo = strip.querySelector('.solo');
     if (solo) solo.setAttribute('aria-pressed', String(soloed.has(s.solo)));
     strip.classList.toggle('silenced', !!s.solo && ((soloed.size > 0 && !soloed.has(s.solo)) || arrMuted.has(s.solo)));
