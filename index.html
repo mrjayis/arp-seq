@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=138" />
-  <link rel="stylesheet" href="mac.css?v=138" />
+  <link rel="stylesheet" href="styles.css?v=141" />
+  <link rel="stylesheet" href="mac.css?v=141" />
 </head>
 <body>
   <main class="device">
@@ -644,6 +644,7 @@
         <button id="break-load">Load break…</button>
         <input id="break-file" type="file" accept="audio/*,.wav,.aif,.aiff" hidden />
         <button id="break-demo" title="A synthesized two-bar break">Demo break</button>
+        <button id="break-pads" title="MPC-style pads: play the slices live, and record them into the tracker">Pads</button>
         <span class="status" id="break-status"></span>
         <span class="break-gen">
           <button data-gen="order" title="The slices in their original order">In order</button>
@@ -666,6 +667,21 @@
       <canvas id="break-wave" class="break-wave" title="Click a slice to put it on the selected row · Shift-click or long-press to switch a slice off or on · drop a break here to load it"></canvas>
       <div id="break-rows" class="tracker"></div>
     </section>
+
+    <div id="pads" class="pads-overlay" hidden role="dialog" aria-label="Breakbeat pads">
+      <div class="pads-box brk">
+        <div class="pads-head">
+          <b>Pads</b>
+          <button id="pad-rec" aria-pressed="false" title="Record: pad hits are written into the tracker on the nearest step (starts the break if it isn't running)">● Rec</button>
+          <button id="pad-erase" title="Hold to erase: every row the playhead passes is cleared (or hold Delete)">Erase</button>
+          <button id="pad-undo" title="Take back the last recorded hit or erased row">Undo</button>
+          <button id="pad-bank" hidden title="Switch between slices 1–16 and 17–32">Bank A</button>
+          <button id="pad-close" title="Close the pads (Esc)">Close</button>
+        </div>
+        <div id="pad-grid" class="pad-grid"></div>
+        <p class="pads-tip">Keys: 1234 / QWER / ASDF / ZXCV · hold Delete to erase</p>
+      </div>
+    </div>
 
     <section class="panel song" id="song-panel" aria-label="Song">
       <div class="seq-head">
@@ -810,6 +826,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=138"></script>
+  <script type="module" src="src/app.js?v=141"></script>
 </body>
 </html>

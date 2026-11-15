@@ -359,3 +359,26 @@ export function fadeEdges(data, samples) {
   }
   return data;
 }
+
+// ---- live pads: which tracker step a hit belongs to
+
+/**
+ * The step a live hit at `time` should be written to: the scheduled step whose start is
+ * nearest (`steps` = [{time, idx}], recent and upcoming). null if none is within half a
+ * step (`stepDur`) of the hit.
+ */
+export function nearestStep(time, steps, stepDur) {
+  let best = null;
+  for (const s of steps) {
+    const d = Math.abs(s.time - time);
+    if (d <= stepDur / 2 + 1e-9 && (!best || d < best.d)) best = { d, idx: s.idx, time: s.time };
+  }
+  return best ? { idx: best.idx, time: best.time } : null;
+}
+
+/** MPC layout: pad 1 is bottom-left, 13–16 the top row. Returns pad numbers (0-based) in screen order. */
+export function mpcOrder() {
+  const out = [];
+  for (let row = 3; row >= 0; row--) for (let col = 0; col < 4; col++) out.push(row * 4 + col);
+  return out;
+}

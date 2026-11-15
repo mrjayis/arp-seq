@@ -197,3 +197,14 @@ test('switched-off slices are never picked by Randomize or Evolve', () => {
     assert.ok([2, 5].includes(r.slice));
   }
 });
+
+import { nearestStep, mpcOrder } from '../src/breaks.js';
+
+test('a live pad hit goes to the nearest step, early or late', () => {
+  const steps = [{ time: 1.0, idx: 4 }, { time: 1.125, idx: 5 }, { time: 1.25, idx: 6 }];
+  assert.deepEqual(nearestStep(1.01, steps, 0.125), { idx: 4, time: 1.0 }); // a little late
+  assert.deepEqual(nearestStep(1.11, steps, 0.125), { idx: 5, time: 1.125 }); // a little early: the next step
+  assert.equal(nearestStep(2, steps, 0.125), null); // nowhere near
+  assert.deepEqual(mpcOrder().slice(0, 4), [12, 13, 14, 15]); // the top row on screen is pads 13–16
+  assert.deepEqual(mpcOrder().slice(12), [0, 1, 2, 3]); // the bottom row is pads 1–4
+});
