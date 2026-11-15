@@ -8,26 +8,26 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=169';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=169';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=169';
-import { Midi } from './midi.js?v=169';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=169';
+} from './core.js?v=170';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=170';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=170';
+import { Midi } from './midi.js?v=170';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=170';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=169';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=169';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=169';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=169';
+} from './percussion.js?v=170';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=170';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=170';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=170';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=169';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=169';
+} from './breaks.js?v=170';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=170';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=169';
+} from './mono.js?v=170';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -351,7 +351,7 @@ function ensureAudio() {
         sends[fx][src] = { pre, post };
       }
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=169', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=170', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -1949,12 +1949,19 @@ function loadIrealSong(song) {
     + (slots.length > used.length ? ` (the first ${MAX_PROGRESSION} of ${slots.length})` : '')
     + (song.bpm > 0 ? `, at its ${song.bpm} BPM.` : '. Press Play.');
 }
-$('ireal-btn').addEventListener('click', () => {
+function showIrealBox(open) {
   const box = $('ireal-box');
-  box.hidden = !box.hidden;
-  $('ireal-btn').setAttribute('aria-pressed', String(!box.hidden));
-  if (!box.hidden) renderIrealList();
-});
+  box.hidden = !open;
+  $('ireal-btn').setAttribute('aria-pressed', String(open));
+  // While it's open the window is drawn normally: Safari can miss a window growing while
+  // it skips off-screen windows (content-visibility).
+  $('prog-panel').style.contentVisibility = open ? 'visible' : '';
+  if (!open) return;
+  renderIrealList();
+  // It opens under the button, which may be at the bottom of the screen: bring it into view.
+  requestAnimationFrame(() => box.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
+}
+$('ireal-btn').addEventListener('click', () => showIrealBox($('ireal-box').hidden));
 $('ireal-open').addEventListener('click', () => $('ireal-file').click());
 $('ireal-file').addEventListener('change', async () => {
   const file = $('ireal-file').files[0];
@@ -1978,8 +1985,7 @@ $('prog-panel').addEventListener('drop', async (e) => {
   const file = e.dataTransfer?.files?.[0];
   if (!file) return;
   e.preventDefault();
-  $('ireal-box').hidden = false;
-  $('ireal-btn').setAttribute('aria-pressed', 'true');
+  showIrealBox(true);
   importIreal(await file.text(), file.name);
 });
 try {
