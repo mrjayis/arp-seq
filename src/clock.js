@@ -1,7 +1,7 @@
 // Clock sources. Both emit 24-PPQN pulses via onPulse(time, pulseIndex, pulseDuration),
 // where `time` is in the same domain as getTime() (AudioContext seconds in the app).
 
-import { PPQN } from './core.js?v=164';
+import { PPQN } from './core.js?v=166';
 
 /** Look-ahead scheduler driven by an internal tempo. */
 export class InternalClock {
@@ -36,7 +36,15 @@ export class InternalClock {
   /** Schedule every pulse that falls inside the look-ahead window. Call often. */
   pump() {
     if (!this.running) return;
-    const horizon = this.getTime() + this.lookahead;
+    const now = this.getTime();
+    const horizon = now + this.lookahead;
+    // After a stall (the phone slept, the tab was frozen) don't play every missed pulse at
+    // once: skip whole pulses to now, so the music carries on in time from here.
+    if (this.nextTime < now - 0.25) {
+      const missed = Math.floor((now - this.nextTime) / this.pulseDuration);
+      this.pulse += missed;
+      this.nextTime += missed * this.pulseDuration;
+    }
     while (this.nextTime < horizon) {
       this.onPulse(this.nextTime, this.pulse, this.pulseDuration);
       this.pulse++;

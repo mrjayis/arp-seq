@@ -8,25 +8,25 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=164';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=164';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=164';
-import { Midi } from './midi.js?v=164';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=164';
+} from './core.js?v=166';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=166';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=166';
+import { Midi } from './midi.js?v=166';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=166';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=164';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=164';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=164';
+} from './percussion.js?v=166';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=166';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=166';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=164';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=164';
+} from './breaks.js?v=166';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=166';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=164';
+} from './mono.js?v=166';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -348,7 +348,7 @@ function ensureAudio() {
         sends[fx][src] = { pre, post };
       }
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=164', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=166', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -369,9 +369,29 @@ function ensureAudio() {
     synth.setPwmRate(settings.chordPwmRate);
     drums.setLevel(1); // its Level is the percussion fader
   }
-  if (ctx.state === 'suspended') ctx.resume();
+  // Safari's state after a phone lock or a call is "interrupted", not "suspended".
+  if (ctx.state !== 'running' && ctx.state !== 'closed') ctx.resume().catch(() => {});
   return ctx;
 }
+
+// ---- waking the sound after the phone sleeps
+// iOS stops the audio when the screen turns off (or a call comes in) and only lets it
+// resume from a touch. So: try when the page comes back, and again on the first touch.
+try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch { /* older Safari */ }
+function wakeAudio() {
+  if (!ctx) return;
+  if (ctx.state === 'closed') { // the page was frozen and the browser shut the audio down: start afresh
+    save(true);
+    location.reload();
+    return;
+  }
+  if (ctx.state !== 'running') ctx.resume().catch(() => {});
+  if (playing && settings.sync === 'internal') timerWorker.postMessage(25); // restart its timer too
+}
+for (const type of ['pointerdown', 'touchend', 'keydown']) document.addEventListener(type, wakeAudio, true);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) wakeAudio(); });
+window.addEventListener('pageshow', wakeAudio);
+window.addEventListener('focus', wakeAudio);
 
 const audioTime = () => (ctx ? ctx.currentTime : performance.now() / 1000);
 // Map AudioContext time to performance.now() ms for timestamped MIDI output.
@@ -4777,6 +4797,8 @@ function showTuning(nowMs) {
 }
 
 function frame() {
+  // A second driver for the clock, in case the timer worker was stopped while the phone slept.
+  if (playing && settings.sync === 'internal') internalClock.pump();
   const now = audioTime();
   showTuning(performance.now());
   while (uiEvents.length && uiEvents[0].time <= now) {
