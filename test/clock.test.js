@@ -15,6 +15,23 @@ test('internal clock schedules 24 PPQN pulses inside the look-ahead window', () 
   pulses.forEach(([, p], i) => assert.equal(p, i));
 });
 
+test('after a stall the internal clock skips to now instead of playing every missed pulse', () => {
+  let now = 0;
+  const pulses = [];
+  const c = new InternalClock({ getTime: () => now, onPulse: (t, p) => pulses.push([t, p]), bpm: 120, lookahead: 0.1, startDelay: 0 });
+  c.start();
+  c.pump();
+  const before = pulses.length;
+  now = 10; // the phone slept for ten seconds
+  c.pump();
+  const burst = pulses.slice(before);
+  assert.ok(burst.length <= 8, `played ${burst.length} pulses at once`);
+  assert.ok(burst.every(([t]) => t >= now - 0.25)); // nothing in the past
+  // Still on the grid, and counting the time that passed: pulse n is at n × pulse length.
+  for (const [t, p] of burst) assert.ok(Math.abs(t - p * c.pulseDuration) < 1e-9);
+  assert.ok(burst[0][1] >= 470); // about 480 pulses in 10 s at 120 BPM
+});
+
 test('pulseToStep fires on rate boundaries with swing on off-beats', () => {
   const pd = 60 / (120 * 24);
   const steps = [];
