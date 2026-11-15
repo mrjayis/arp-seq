@@ -542,6 +542,11 @@ input[type="range"]::-moz-range-thumb {
   touch-action: none;
 }
 .break-gen { display: flex; gap: 6px; margin-left: auto; flex-wrap: wrap; }
+/* The waveform is drawn only when it changes; the slice playing now is a box laid over it. */
+.break-wave-box { position: relative; margin-bottom: 10px; }
+.break-now { position: absolute; top: 1.5px; bottom: 1.5px; left: 0; width: 0; pointer-events: none;
+  background: var(--mod); opacity: 0.28; }
+.break-now[hidden] { display: none; }
 .break-wave {
   display: block;
   width: 100%;
@@ -550,7 +555,6 @@ input[type="range"]::-moz-range-thumb {
   height: 96px;
   border: 1.5px solid var(--line);
   cursor: crosshair;
-  margin-bottom: 10px;
 }
 .tracker { display: grid; grid-template-columns: 1fr; gap: 2px 18px; }
 .tracker.two-col { grid-template-columns: 1fr 1fr; grid-template-rows: repeat(var(--trows, 17), auto); grid-auto-flow: column; }
@@ -774,6 +778,9 @@ input[type="range"]::-moz-range-thumb {
   background: var(--brick);
 }
 main > .panel { scroll-margin-top: var(--dock-h, 100px); }
+/* Windows scrolled out of sight aren't laid out or painted, so playback's moving
+   highlights cost nothing there. The estimate is replaced by each window's real height once seen. */
+main > .panel:not(.transport) { content-visibility: auto; contain-intrinsic-size: auto 520px; }
 
 /* ---------- collapsible windows ---------- */
 h2.collapsible { cursor: pointer; user-select: none; }
@@ -1139,12 +1146,13 @@ main > .panel.arr-muted > h2, main > .panel.arr-muted > .seq-head > h2 { opacity
 .strip.muted .strip-body, .strip.silenced .strip-body { opacity: 0.4; }
 /* The meter: green to amber to red, −60 to 0 dB. */
 .meter { position: relative; flex: 0 0 8px; width: 8px; border-radius: 2px; background: color-mix(in srgb, var(--ink) 18%, transparent); overflow: hidden; }
-.meter-fill {
-  position: absolute; left: 0; right: 0; bottom: 0; height: 0;
-  background: linear-gradient(to top, #2fae5b 0 70%, #e0b030 70% 90%, #d64533 90%);
-  background-size: 100% 200px; background-position: bottom;
-}
-.meter-peak { position: absolute; left: 0; right: 0; height: 2px; background: var(--ink); bottom: 0; }
+/* Moved only by transforms, so a running meter never relays out the page: the fill slides
+   down out of the meter, and its gradient slides back up by the same amount so the colours stay put. */
+.meter-fill { position: absolute; inset: 0; overflow: hidden; transform: translateY(100%); will-change: transform; }
+.meter-grad { position: absolute; inset: 0; transform: translateY(-100%); will-change: transform;
+  background: linear-gradient(to top, #2fae5b 0 70%, #e0b030 70% 90%, #d64533 90%); }
+.meter-peak { position: absolute; inset: 0; will-change: transform; }
+.meter-peak::before { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--ink); }
 .meter.hot { box-shadow: 0 0 0 1.5px #d64533; }
 /* The fader: a long vertical slot with a proper cap. */
 input.fader[type="range"] {

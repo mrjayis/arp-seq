@@ -8,25 +8,25 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=158';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=158';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=158';
-import { Midi } from './midi.js?v=158';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=158';
+} from './core.js?v=164';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=164';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=164';
+import { Midi } from './midi.js?v=164';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=164';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=158';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=158';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=158';
+} from './percussion.js?v=164';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=164';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=164';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=158';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=158';
+} from './breaks.js?v=164';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=164';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=158';
+} from './mono.js?v=164';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -348,7 +348,7 @@ function ensureAudio() {
         sends[fx][src] = { pre, post };
       }
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=158', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=164', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -2867,13 +2867,13 @@ function drawBreak() {
   const field = css.getPropertyValue('--field').trim() || '#fff';
   g.fillStyle = field;
   g.fillRect(0, 0, w, h);
-  if (!breakBuffer) return;
+  if (!breakBuffer) { showBreakNow(); return; }
   const dur = breakBuffer.duration;
   const xOf = (t) => (t / dur) * w;
   const span = (k) => [xOf(breakPoints[k]), xOf(k + 1 < breakPoints.length ? breakPoints[k + 1] : dur)];
   // Highlight the slice on the selected row and the slice playing now.
   const sel = settings.breakPattern[breakSelected]?.slice;
-  for (const [slice, alpha] of [[sel, 0.12], [breakNowSlice, 0.28]]) {
+  for (const [slice, alpha] of [[sel, 0.12]]) {
     if (slice === null || slice === undefined || slice >= breakPoints.length) continue;
     const [x0, x1] = span(slice);
     g.globalAlpha = alpha;
@@ -2921,7 +2921,27 @@ function drawBreak() {
     g.stroke();
     const [x0, x1] = span(k);
     if (x1 - x0 > 12) { g.fillStyle = mod; g.fillText(String(k + 1), x + 3, 11); }
-  });
+  });  breakNowShown = ''; // the slices may have moved
+  showBreakNow();
+}
+
+/** The slice playing now: a box over the waveform, so the waveform needn't be redrawn every step. */
+let breakNowShown = '';
+function showBreakNow() {
+  const box = $('break-now');
+  const k = breakNowSlice;
+  const ok = breakBuffer && k !== null && k !== undefined && k < breakPoints.length;
+  const dur = ok ? breakBuffer.duration : 1;
+  const t0 = ok ? breakPoints[k] / dur : 0;
+  const t1 = ok ? (k + 1 < breakPoints.length ? breakPoints[k + 1] : breakBuffer.duration) / dur : 0;
+  const key = ok ? `${t0}|${t1}` : '';
+  if (key === breakNowShown) return;
+  breakNowShown = key;
+  box.hidden = !ok;
+  if (!ok) return;
+  // Inside the canvas's 1.5px border.
+  box.style.left = `calc(1.5px + (100% - 3px) * ${t0})`;
+  box.style.width = `calc((100% - 3px) * ${t1 - t0})`;
 }
 
 function buildBreakRows() {
@@ -3039,7 +3059,7 @@ function showBreakStep(step, slice, change = '') {
   if (step >= 0) breakRowEls[step]?.classList.add('now');
   if (slice !== null && slice !== undefined) breakNowSlice = slice;
   if (step < 0) breakNowSlice = null;
-  drawBreak();
+  showBreakNow();
 }
 
 function renderBreakPanel() {
@@ -3501,7 +3521,7 @@ function renderMonoSteps() {
 }
 
 function showMonoStep(i) {
-  monoStepEls.forEach((el) => el.classList.remove('now'));
+  if (monoNowStep !== i) monoStepEls[monoNowStep]?.classList.remove('now');
   monoNowStep = i;
   if (i >= 0) monoStepEls[i]?.classList.add('now');
   // Light the little keyboard's key for the note now sounding (ties keep the last one).
@@ -5192,6 +5212,21 @@ document.querySelectorAll('main > .panel').forEach((panel) => {
   chip.addEventListener('click', () => {
     if (panel.classList.contains('collapsed')) { setCollapsed(panel, false); save(); }
     panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // Windows not yet seen are laid out with an estimated height until they come into view,
+    // so a long jump can stop short: once the scroll settles, finish it in one step.
+    let done = false;
+    const settle = () => {
+      if (done) return;
+      done = true;
+      window.removeEventListener('scrollend', settle);
+      const dock = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--dock-h')) || 0;
+      const off = () => Math.abs(panel.getBoundingClientRect().top - dock) > 2;
+      // Twice: the windows passed over can still change height as they render.
+      if (off()) panel.scrollIntoView({ block: 'start' });
+      requestAnimationFrame(() => requestAnimationFrame(() => { if (off()) panel.scrollIntoView({ block: 'start' }); }));
+    };
+    window.addEventListener('scrollend', settle);
+    setTimeout(settle, 1200);
   });
   const onBtn = panel.querySelector('button[id$="-on"]');
   if (onBtn) {
@@ -5292,7 +5327,7 @@ function buildMixer() {
       <div class="strip-name">${s.name}</div>
       <div class="strip-db"></div>
       <div class="strip-body">
-        <div class="meter"><div class="meter-fill"></div><div class="meter-peak"></div></div>
+        <div class="meter"><div class="meter-fill"><div class="meter-grad"></div></div><div class="meter-peak"></div></div>
         <input class="fader" type="range" min="0" max="100" step="1" aria-label="${s.name} fader" />
       </div>
       ${s.on ? `<button class="strip-on" aria-pressed="false" aria-label="Turn ${s.name} on or off">Off</button>` : ''}
@@ -5344,6 +5379,19 @@ function renderMixer() {
   }
 }
 
+/** A strip's meter parts, looked up once per build of the console. */
+let meterCache = new Map();
+function meterEls(key) {
+  let ui = meterCache.get(key);
+  if (ui && ui.meter.isConnected) return ui;
+  const strip = $('mixer-strips').querySelector(`.strip[data-key="${key}"]`);
+  if (!strip) return null;
+  const meter = strip.querySelector('.meter');
+  ui = { meter, fill: meter.querySelector('.meter-fill'), grad: meter.querySelector('.meter-grad'), peak: meter.querySelector('.meter-peak'), fillAt: -1, holdAt: -1, hot: false };
+  meterCache.set(key, ui);
+  return ui;
+}
+
 /** Meters: a peak level per strip, read from an analyser on its output. */
 function meterLoop() {
   if ($('mixer').hidden) { mixRaf = 0; return; }
@@ -5357,8 +5405,8 @@ function meterLoop() {
       m = { an, data: new Float32Array(1024), peak: 0, hold: 0, holdT: 0 };
       mixMeters.set(s.key, m);
     }
-    const strip = $('mixer-strips').querySelector(`.strip[data-key="${s.key}"]`);
-    if (!strip) continue;
+    const ui = meterEls(s.key);
+    if (!ui) continue;
     let level = 0;
     if (m) {
       m.an.getFloatTimeDomainData(m.data);
@@ -5369,9 +5417,20 @@ function meterLoop() {
     const peak = m ? m.peak : 0;
     if (m && level >= m.hold) { m.hold = level; m.holdT = performance.now(); } else if (m && performance.now() - m.holdT > 1200) m.hold *= 0.95;
     const toPos = (x) => Math.max(0, Math.min(1, (20 * Math.log10(Math.max(x, 1e-6)) + 60) / 60)); // −60…0 dB
-    strip.querySelector('.meter-fill').style.height = `${toPos(peak) * 100}%`;
-    strip.querySelector('.meter-peak').style.bottom = `${toPos(m ? m.hold : 0) * 100}%`;
-    strip.querySelector('.meter').classList.toggle('hot', peak > 0.89);
+    // Transforms only, and only when the drawn position moves (in steps of 0.2%).
+    const fill = Math.round(toPos(peak) * 500) / 5;
+    const hold = Math.round(toPos(m ? m.hold : 0) * 500) / 5;
+    if (fill !== ui.fillAt) {
+      ui.fillAt = fill;
+      ui.fill.style.transform = `translateY(${100 - fill}%)`;
+      ui.grad.style.transform = `translateY(${fill - 100}%)`;
+    }
+    if (hold !== ui.holdAt) {
+      ui.holdAt = hold;
+      ui.peak.style.transform = `translateY(calc(${-hold}% + ${hold * 0.02}px))`;
+    }
+    const hot = peak > 0.89;
+    if (hot !== ui.hot) { ui.hot = hot; ui.meter.classList.toggle('hot', hot); }
   }
   mixRaf = requestAnimationFrame(meterLoop);
 }
