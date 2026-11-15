@@ -429,6 +429,6 @@
 :root[data-theme="mac"] body.midi-learn .cc-armed { outline-color: #000 !important; }
 :root[data-theme="mac"] .cc-mapped { box-shadow: 0 0 0 2px #fff, 0 0 0 3px #000; }
 :root[data-theme="mac"] .pads-box { border: 1px solid #000; border-radius: 0; box-shadow: 2px 2px 0 #000; background: #fff; }
-:root[data-theme="mac"] .pad { border: 1px solid #000; border-radius: 4px; background: #fff; font: 16px var(--chicago); box-shadow: inset -2px -2px 0 #888; }
-:root[data-theme="mac"] .pad.hit { animation: none; background: #000; color: #fff; }
+:root[data-theme="mac"] .mpc-pad { border: 1px solid #000; border-radius: 4px; background: #fff; font: 16px var(--chicago); box-shadow: inset -2px -2px 0 #888; }
+:root[data-theme="mac"] .mpc-pad.hit { animation: none; background: #000; color: #fff; }
 :root[data-theme="mac"] #pad-rec[aria-pressed="true"] { background: #000; color: #fff; }
