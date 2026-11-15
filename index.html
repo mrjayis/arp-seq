@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=150" />
-  <link rel="stylesheet" href="mac.css?v=150" />
+  <link rel="stylesheet" href="styles.css?v=151" />
+  <link rel="stylesheet" href="mac.css?v=151" />
 </head>
 <body>
   <main class="device">
@@ -709,6 +709,7 @@
       <p class="hint">A shared delay, reverb and harmonizer. Each sound source has its own <b>send</b> into each one.</p>
       <div class="row">
         <span class="row-label">Delay</span>
+        <button id="delay-mute" class="fx-mute" aria-pressed="false" title="Mute the delay's output (the sends keep feeding it, so unmuting brings its echoes straight back)">Mute</button>
         <label class="field">Time <select id="delay-time" title="Synced to the tempo"></select></label>
         <label class="field slider">Feedback <output id="delay-feedback-val"></output>
           <input id="delay-feedback" type="range" min="0" max="90" />
@@ -732,6 +733,7 @@
       </div>
       <div class="row">
         <span class="row-label">Reverb</span>
+        <button id="reverb-mute" class="fx-mute" aria-pressed="false" title="Mute the reverb's output (the sends keep feeding it, so unmuting brings its tail straight back)">Mute</button>
         <label class="field slider">Size <output id="reverb-size-val"></output>
           <input id="reverb-size" type="range" min="0" max="1000" title="Decay time of the tail" />
         </label>
@@ -756,6 +758,7 @@
       </div>
       <div class="row">
         <span class="row-label" title="An H949-style Harmonizer: a pitch shifter whose output feeds back through a short delay, so each repeat is shifted again (spirals, staircases, shimmer), plus micro-pitch widening">Harmonizer</span>
+        <button id="harm-mute" class="fx-mute" aria-pressed="false" title="Mute the harmonizer's output (the sends keep feeding it, so unmuting brings it straight back)">Mute</button>
         <div class="field" title="FUNCTION: the Pitch Change group (Norm, Extend, μPC, Reverse) or the Delay group (Delay, Random, Flange, Reverse)">Function
           <div class="seg" id="harm-func" role="group" aria-label="Harmonizer function">
             <button data-func="pitch" aria-label="Harmonizer function Pitch change">Pitch change</button><button data-func="delay" aria-label="Harmonizer function Delay">Delay</button>
@@ -829,6 +832,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=150"></script>
+  <script type="module" src="src/app.js?v=151"></script>
 </body>
 </html>
