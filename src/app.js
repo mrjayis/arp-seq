@@ -8,25 +8,25 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=151';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=151';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=151';
-import { Midi } from './midi.js?v=151';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=151';
+} from './core.js?v=156';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=156';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=156';
+import { Midi } from './midi.js?v=156';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=156';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=151';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=151';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=151';
+} from './percussion.js?v=156';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=156';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=156';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=151';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=151';
+} from './breaks.js?v=156';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=156';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=151';
+} from './mono.js?v=156';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -92,6 +92,9 @@ const settings = {
   tuning: 'equal', // 'equal' | 'just' | 'just7': adaptive just intonation to the chord now playing
   humanize: 0, // 0–100: random timing and level variation for every section
   delayMuted: false, // an effect's output muted (its sends keep feeding it)
+  delayReturn: 100, // %: the mixer's Delay and Reverb return faders
+  reverbReturn: 100,
+  mixMute: {}, // the mixer's mutes for the sections: {arp: true, …}
   reverbMuted: false,
   harmMuted: false,
   arrBars: 4, // Arr: how often the arrangement changes
@@ -345,7 +348,7 @@ function ensureAudio() {
         sends[fx][src] = { pre, post };
       }
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=151', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=156', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -4090,8 +4093,8 @@ function applyFxMutes() {
   }
   if (!ctx || !delayFx) return;
   const now = ctx.currentTime;
-  delayFx.out.gain.setTargetAtTime(settings.delayMuted ? 0 : 1, now, 0.01);
-  reverbFx.out.gain.setTargetAtTime(settings.reverbMuted ? 0 : 1, now, 0.01);
+  delayFx.out.gain.setTargetAtTime(settings.delayMuted ? 0 : settings.delayReturn / 100, now, 0.01);
+  reverbFx.out.gain.setTargetAtTime(settings.reverbMuted ? 0 : settings.reverbReturn / 100, now, 0.01);
   applyHarm();
 }
 onRecall(applyFxMutes)();
@@ -4114,8 +4117,8 @@ function applyFx() {
   // Rebuilding the impulse is heavy, so wait for the slider to settle.
   clearTimeout(reverbTimer);
   reverbTimer = setTimeout(() => reverbFx.setSize(settings.reverbSize / 1000), 120);
-  delayFx.out.gain.setTargetAtTime(settings.delayMuted ? 0 : 1, ctx.currentTime, 0.01);
-  reverbFx.out.gain.setTargetAtTime(settings.reverbMuted ? 0 : 1, ctx.currentTime, 0.01);
+  delayFx.out.gain.setTargetAtTime(settings.delayMuted ? 0 : settings.delayReturn / 100, ctx.currentTime, 0.01);
+  reverbFx.out.gain.setTargetAtTime(settings.reverbMuted ? 0 : settings.reverbReturn / 100, ctx.currentTime, 0.01);
   for (const fx of ['delay', 'reverb']) {
     for (const src of ['arp', 'chords', 'drums', 'bass']) setSend(fx, src);
   }
@@ -5083,7 +5086,7 @@ function applySolo(instant = false, at = null) {
     const bus = buses[key];
     if (!bus) continue;
     // A section sounds when it's soloed (or nothing is) and Arr hasn't muted it.
-    const v = (soloed.size === 0 || soloed.has(key)) && !arrMuted.has(key) ? 1 : 0;
+    const v = (soloed.size === 0 || soloed.has(key)) && !arrMuted.has(key) && !settings.mixMute?.[key] ? 1 : 0;
     if (instant) bus.gain.value = v;
     else bus.gain.setTargetAtTime(v, t, 0.008);
   }
@@ -5112,6 +5115,7 @@ function arrPulse(pulse, time) {
 }
 
 function renderArr() {
+  renderMixer();
   $('arr').setAttribute('aria-pressed', String(arrOn));
   $('arr').textContent = arrOn ? `Arr ${arrMuted.size ? `−${arrMuted.size}` : '●'}` : 'Arr';
   $('arr-cancel').disabled = !arrOn && !arrMuted.size;
@@ -5221,6 +5225,164 @@ for (const [id, collapse] of [['collapse-all', true], ['expand-all', false]]) {
     save();
   });
 }
+
+// ---------------------------------------------------------------- mixer
+// A console over the page: one channel strip per section and effect return, plus the
+// master, each with a fader, a live meter, Mute and (sections) Solo. A fader moves the
+// same setting as the window's own Level slider, so the two always agree.
+if (!settings.mixMute || typeof settings.mixMute !== 'object') settings.mixMute = {};
+const MIX_STRIPS = [
+  { key: 'arp', name: 'Arp', input: 'arp-level', node: () => faders.arp, solo: 'arp' },
+  { key: 'chords', name: 'Chords', input: 'chord-level', node: () => faders.chords, solo: 'chords' },
+  { key: 'bass', name: 'Mono', input: 'mono-level', node: () => faders.bass, solo: 'bass' },
+  { key: 'perc', name: 'Drums', input: 'drum-level', node: () => faders.perc, solo: 'perc' },
+  { key: 'break', name: 'Break', input: 'break-level', node: () => faders.break, solo: 'break' },
+  { key: 'delay', name: 'Delay', setting: 'delayReturn', fx: 'delay', node: () => delayFx?.out, sep: true },
+  { key: 'reverb', name: 'Reverb', setting: 'reverbReturn', fx: 'reverb', node: () => reverbFx?.out },
+  { key: 'harm', name: 'Harm', input: 'harm-level', fx: 'harm', node: () => harmOut },
+  { key: 'master', name: 'Master', input: 'volume', node: () => synth?.master, sep: true, master: true },
+];
+const mixMeters = new Map(); // strip key -> {an, data, el, peak, hold}
+let mixRaf = 0;
+
+const levelDb = (pct) => (pct <= 0 ? '−∞' : `${(20 * Math.log10(pct / 100)).toFixed(1)}`);
+
+/** The strip's current value (0–100), from the window control it shares or its own setting. */
+function stripValue(s) {
+  if (s.input) return Number($(s.input).value);
+  return settings[s.setting];
+}
+
+function setStripValue(s, v) {
+  if (s.input) {
+    // Move the window's own slider: its handler sets the level and saves.
+    const el = $(s.input);
+    el.value = String(v);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  } else {
+    settings[s.setting] = v;
+    applyFxMutes();
+    save();
+  }
+}
+
+function stripMuted(s) {
+  if (s.fx) return !!settings[`${s.fx}Muted`];
+  if (s.master) return !settings.synthOn;
+  return !!settings.mixMute[s.key];
+}
+
+function toggleStripMute(s) {
+  if (s.fx) { $(`${s.fx}-mute`).click(); return; }
+  if (s.master) { $('synth-on').click(); return; }
+  settings.mixMute[s.key] = !settings.mixMute[s.key];
+  applySolo();
+  save();
+  renderMixer();
+}
+
+function buildMixer() {
+  const wrap = $('mixer-strips');
+  wrap.replaceChildren();
+  for (const s of MIX_STRIPS) {
+    const strip = document.createElement('div');
+    strip.className = `strip${s.sep ? ' sep' : ''}${s.master ? ' master' : ''}${s.fx ? ' fx' : ''}`;
+    strip.dataset.key = s.key;
+    strip.innerHTML = `
+      <div class="strip-name">${s.name}</div>
+      <div class="strip-db"></div>
+      <div class="strip-body">
+        <div class="meter"><div class="meter-fill"></div><div class="meter-peak"></div></div>
+        <input class="fader" type="range" min="0" max="100" step="1" aria-label="${s.name} fader" />
+      </div>
+      <div class="strip-btns">
+        <button class="mute" aria-pressed="false" aria-label="Mute ${s.name}">M</button>
+        ${s.solo ? `<button class="solo" aria-pressed="false" aria-label="Solo ${s.name}">S</button>` : ''}
+      </div>`;
+    const fader = strip.querySelector('.fader');
+    fader.value = String(stripValue(s));
+    fader.addEventListener('input', () => { setStripValue(s, Number(fader.value)); renderStripValue(s, strip); });
+    fader.addEventListener('dblclick', () => { fader.value = s.master ? '50' : s.key === 'delay' || s.key === 'reverb' ? '100' : '80'; fader.dispatchEvent(new Event('input')); });
+    strip.querySelector('.mute').addEventListener('click', () => { toggleStripMute(s); renderMixer(); });
+    strip.querySelector('.solo')?.addEventListener('click', (e) => {
+      soloButtons[s.solo]?.dispatchEvent(new MouseEvent('click', { altKey: e.altKey }));
+      renderMixer();
+    });
+    wrap.append(strip);
+  }
+  renderMixer();
+}
+
+function renderStripValue(s, strip) {
+  const v = stripValue(s);
+  strip.querySelector('.strip-db').textContent = `${v}% · ${levelDb(v)} dB`;
+}
+
+function renderMixer() {
+  if ($('mixer').hidden) return;
+  for (const s of MIX_STRIPS) {
+    const strip = $('mixer-strips').querySelector(`.strip[data-key="${s.key}"]`);
+    if (!strip) continue;
+    const fader = strip.querySelector('.fader');
+    if (document.activeElement !== fader) fader.value = String(stripValue(s));
+    renderStripValue(s, strip);
+    const muted = stripMuted(s);
+    strip.querySelector('.mute').setAttribute('aria-pressed', String(muted));
+    strip.classList.toggle('muted', muted);
+    const solo = strip.querySelector('.solo');
+    if (solo) solo.setAttribute('aria-pressed', String(soloed.has(s.solo)));
+    strip.classList.toggle('silenced', !!s.solo && ((soloed.size > 0 && !soloed.has(s.solo)) || arrMuted.has(s.solo)));
+  }
+}
+
+/** Meters: a peak level per strip, read from an analyser on its output. */
+function meterLoop() {
+  if ($('mixer').hidden) { mixRaf = 0; return; }
+  for (const s of MIX_STRIPS) {
+    let m = mixMeters.get(s.key);
+    const node = ctx ? s.node() : null;
+    if (!m && node) {
+      const an = ctx.createAnalyser();
+      an.fftSize = 1024;
+      node.connect(an);
+      m = { an, data: new Float32Array(1024), peak: 0, hold: 0, holdT: 0 };
+      mixMeters.set(s.key, m);
+    }
+    const strip = $('mixer-strips').querySelector(`.strip[data-key="${s.key}"]`);
+    if (!strip) continue;
+    let level = 0;
+    if (m) {
+      m.an.getFloatTimeDomainData(m.data);
+      for (const x of m.data) level = Math.max(level, Math.abs(x));
+    }
+    // Fast attack, slow fall; a peak marker that holds for a moment.
+    m && (m.peak = Math.max(level, m.peak * 0.9));
+    const peak = m ? m.peak : 0;
+    if (m && level >= m.hold) { m.hold = level; m.holdT = performance.now(); } else if (m && performance.now() - m.holdT > 1200) m.hold *= 0.95;
+    const toPos = (x) => Math.max(0, Math.min(1, (20 * Math.log10(Math.max(x, 1e-6)) + 60) / 60)); // −60…0 dB
+    strip.querySelector('.meter-fill').style.height = `${toPos(peak) * 100}%`;
+    strip.querySelector('.meter-peak').style.bottom = `${toPos(m ? m.hold : 0) * 100}%`;
+    strip.querySelector('.meter').classList.toggle('hot', peak > 0.89);
+  }
+  mixRaf = requestAnimationFrame(meterLoop);
+}
+
+function openMixer(open) {
+  $('mixer').hidden = !open;
+  $('mixer-btn').setAttribute('aria-pressed', String(open));
+  if (open) {
+    buildMixer();
+    if (!mixRaf) mixRaf = requestAnimationFrame(meterLoop);
+  }
+}
+$('mixer-btn').addEventListener('click', () => openMixer($('mixer').hidden));
+$('mixer-close').addEventListener('click', () => openMixer(false));
+$('mixer').addEventListener('pointerdown', (e) => { if (e.target === $('mixer')) openMixer(false); });
+window.addEventListener('keydown', (e) => { if (!$('mixer').hidden && e.key === 'Escape') openMixer(false); });
+// Keep the console in step with changes made elsewhere (the windows, MIDI, scenes, Arr).
+document.addEventListener('input', (e) => { if (!$('mixer').hidden && !e.target.closest?.('#mixer')) renderMixer(); }, true);
+document.addEventListener('click', (e) => { if (!$('mixer').hidden && !e.target.closest?.('#mixer')) requestAnimationFrame(renderMixer); }, true);
+onRecall(() => { if (!settings.mixMute || typeof settings.mixMute !== 'object') settings.mixMute = {}; applySolo(); renderMixer(); });
 
 // ---------------------------------------------------------------- boot
 buildSteps();

@@ -1089,3 +1089,107 @@ main > .panel.arr-muted > h2, main > .panel.arr-muted > .seq-head > h2 { opacity
 .fx-mute { min-height: 28px; padding: 2px 10px; font-size: 13px; align-self: center; }
 .fx-mute[aria-pressed="true"] { background: var(--brick); border-color: var(--brick); color: #fff; }
 .row.fx-muted > :not(.row-label):not(.fx-mute) { opacity: 0.45; }
+
+/* ---------- mixer ---------- */
+.mixer-overlay {
+  position: fixed;
+  inset: 0;
+  top: var(--dock-h, 0px); /* below the top bar, so its Mixer button can close it */
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  padding: 10px;
+}
+.mixer-overlay[hidden] { display: none; }
+.mixer-box {
+  background: var(--plate);
+  border: 2px solid var(--line);
+  border-top: 8px solid var(--ink);
+  border-radius: 3px;
+  padding: 12px;
+  max-width: 100%;
+  max-height: 100%;
+  overflow: auto;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+.mixer-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.mixer-head b { font-size: 16px; }
+.mixer-tip { margin-right: auto; font-size: 12px; color: var(--ink-3); font-style: italic; }
+.mixer-strips { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; }
+.strip {
+  flex: 0 0 auto;
+  width: 68px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 4px;
+  border: 1.5px solid var(--line);
+  border-radius: 4px;
+  background: var(--plate-2);
+}
+.strip.sep { margin-left: 10px; }
+.strip.fx { background: color-mix(in srgb, var(--plate-2) 85%, var(--brick)); }
+.strip.master { background: color-mix(in srgb, var(--plate-2) 80%, var(--ink)); }
+.strip-name { font-weight: 700; font-size: 13px; }
+.strip-db { font-size: 10px; color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.strip-body { display: flex; align-items: stretch; gap: 6px; height: 200px; }
+.strip.muted .strip-body, .strip.silenced .strip-body { opacity: 0.4; }
+/* The meter: green to amber to red, −60 to 0 dB. */
+.meter { position: relative; flex: 0 0 8px; width: 8px; border-radius: 2px; background: color-mix(in srgb, var(--ink) 18%, transparent); overflow: hidden; }
+.meter-fill {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 0;
+  background: linear-gradient(to top, #2fae5b 0 70%, #e0b030 70% 90%, #d64533 90%);
+  background-size: 100% 200px; background-position: bottom;
+}
+.meter-peak { position: absolute; left: 0; right: 0; height: 2px; background: var(--ink); bottom: 0; }
+.meter.hot { box-shadow: 0 0 0 1.5px #d64533; }
+/* The fader: a long vertical slot with a proper cap. */
+input.fader[type="range"] {
+  flex: 0 0 34px;
+  min-width: 34px;
+  -webkit-appearance: none;
+  appearance: none;
+  writing-mode: vertical-lr;
+  direction: rtl;
+  width: 34px;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  cursor: ns-resize;
+  touch-action: none;
+}
+input.fader[type="range"]::-webkit-slider-runnable-track {
+  width: 6px;
+  margin: 0 auto;
+  border-radius: 3px;
+  background: linear-gradient(to right, #111, #444 50%, #111);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.6);
+}
+input.fader[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 32px;
+  height: 18px;
+  margin-left: -13px;
+  border-radius: 3px;
+  border: 1px solid #222;
+  background:
+    linear-gradient(#222, #222) center / 70% 2px no-repeat,
+    linear-gradient(to bottom, #f4f1ea, #c9c3b6 45%, #a9a296 55%, #e2ddd2);
+  box-shadow: 0 2px 3px rgba(0, 0, 0, 0.45);
+}
+input.fader[type="range"]::-moz-range-track { width: 6px; background: #333; border-radius: 3px; }
+input.fader[type="range"]::-moz-range-thumb { width: 32px; height: 18px; border-radius: 3px; border: 1px solid #222; background: #ddd8cc; }
+.strip-btns { display: flex; gap: 4px; }
+.strip-btns button { min-width: 0; min-height: 26px; width: 26px; padding: 0; font-weight: 700; font-size: 12px; }
+.strip-btns .mute[aria-pressed="true"] { background: #d64533; border-color: #d64533; color: #fff; }
+.strip-btns .solo[aria-pressed="true"] { background: #e0b030; border-color: #e0b030; color: #111; }
+#mixer-btn[aria-pressed="true"] { background: var(--ink); color: var(--plate); }
+@media (max-width: 420px) {
+  .strip { width: 58px; }
+  .strip-body { height: 170px; }
+}

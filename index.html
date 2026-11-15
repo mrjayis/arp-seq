@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=151" />
-  <link rel="stylesheet" href="mac.css?v=151" />
+  <link rel="stylesheet" href="styles.css?v=156" />
+  <link rel="stylesheet" href="mac.css?v=156" />
 </head>
 <body>
   <main class="device">
@@ -65,6 +65,7 @@
           </span>
         </label>
         <button id="tap" title="Tap tempo">Tap</button>
+        <button id="mixer-btn" class="arr" aria-pressed="false" title="Open or close the mixer: a fader, meter, mute and solo for every section, the effect returns and the master">Mixer</button>
         <button id="arr" class="arr" aria-pressed="false" title="Arr: arrange automatically. On the bar line, mute a random selection of the sections that are on (at least two keep playing) and change it every few bars. Press again for a new arrangement on the next bar.">Arr</button>
         <button id="arr-cancel" class="arr" disabled title="Cancel Arr: everything plays again, now">Cancel</button>
         <select id="arr-bars" class="arr-bars" aria-label="How often Arr changes the arrangement"></select>
@@ -671,6 +672,13 @@
       <div id="break-rows" class="tracker"></div>
     </section>
 
+    <div id="mixer" class="mixer-overlay" hidden role="dialog" aria-label="Mixer">
+      <div class="mixer-box">
+        <div class="mixer-head"><b>Mixer</b><span class="mixer-tip">Double-click a fader to reset it</span><button id="mixer-close">Close</button></div>
+        <div id="mixer-strips" class="mixer-strips"></div>
+      </div>
+    </div>
+
     <div id="pads" class="pads-overlay" hidden role="dialog" aria-label="Breakbeat pads">
       <div class="pads-box brk">
         <div class="pads-head">
@@ -832,6 +840,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=151"></script>
+  <script type="module" src="src/app.js?v=156"></script>
 </body>
 </html>
