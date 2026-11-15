@@ -413,8 +413,24 @@ input[type="range"]::-moz-range-thumb {
   border-left: 1.5px solid var(--line);
   transition: background 60ms, opacity 120ms;
 }
-.slot:first-child { border-left: 0; }
+.slot:first-child, .slot:nth-child(8n + 1) { border-left: 0; }
+.slot:nth-child(n + 9) { border-top: 1.5px solid var(--line); }
+.slot[hidden] { display: none; }
+#prog-len-n { width: 4.2em; }
+.prog-song { font-weight: 600; }
+/* iReal Pro import */
+.ireal-box { display: grid; gap: 8px; margin: 4px 0 12px; padding: 10px; border: 1.5px solid var(--line); border-radius: 4px; }
+.ireal-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ireal-row input[type="search"] { flex: 1 1 160px; min-width: 0; }
+.ireal-box .status { margin: 0; }
+.ireal-box textarea { width: 100%; box-sizing: border-box; font: inherit; font-size: 13px; resize: vertical; }
+.ireal-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 6px; max-height: 320px; overflow-y: auto; }
+.ireal-song { display: grid; text-align: left; gap: 2px; padding: 6px 8px; min-width: 0; }
+.ireal-song b, .ireal-song small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ireal-song small { font-weight: 400; opacity: 0.75; }
 .slot .name .bass { font-size: 0.6em; font-weight: 600; }
+.slot .name.long { font-size: 17px; line-height: 1.55; }
+@media (max-width: 600px) { .slot .name.long { font-size: 14px; line-height: 1.9; } }
 .slot .num { font-size: 12px; font-style: italic; color: var(--ink-3); }
 .slot .name {
   font-size: 22px;

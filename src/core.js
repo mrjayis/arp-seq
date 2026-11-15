@@ -252,15 +252,42 @@ export function noteName(n) {
 
 // Chord types: intervals in semitones above the root. The pads use the first four;
 // the progression sequencer can use them all.
+// `suffix` names the chord after its root (C + 'm7'); `minor` marks a minor home chord
+// for finding the key. The jazz types are what iReal Pro charts are read into.
 export const CHORDS = {
-  maj: { label: 'Maj', intervals: [0, 4, 7] },
-  min: { label: 'min', intervals: [0, 3, 7] },
-  min7: { label: 'min7', intervals: [0, 3, 7, 10] },
-  maj7: { label: 'maj7', intervals: [0, 4, 7, 11] },
-  dom7: { label: '7', intervals: [0, 4, 7, 10] },
-  dim: { label: 'dim', intervals: [0, 3, 6] },
-  sus4: { label: 'sus4', intervals: [0, 5, 7] },
+  maj: { label: 'Maj', suffix: '', intervals: [0, 4, 7] },
+  min: { label: 'min', suffix: 'm', intervals: [0, 3, 7], minor: true },
+  min7: { label: 'min7', suffix: 'm7', intervals: [0, 3, 7, 10], minor: true },
+  maj7: { label: 'maj7', suffix: 'maj7', intervals: [0, 4, 7, 11] },
+  dom7: { label: '7', suffix: '7', intervals: [0, 4, 7, 10] },
+  dim: { label: 'dim', suffix: 'dim', intervals: [0, 3, 6], minor: true },
+  sus4: { label: 'sus4', suffix: 'sus4', intervals: [0, 5, 7] },
+  sus2: { label: 'sus2', suffix: 'sus2', intervals: [0, 2, 7] },
+  aug: { label: 'aug', suffix: '+', intervals: [0, 4, 8] },
+  add9: { label: 'add9', suffix: 'add9', intervals: [0, 4, 7, 14] },
+  maj6: { label: '6', suffix: '6', intervals: [0, 4, 7, 9] },
+  six9: { label: '6/9', suffix: '6/9', intervals: [0, 4, 7, 9, 14] },
+  maj9: { label: 'maj9', suffix: 'maj9', intervals: [0, 4, 7, 11, 14] },
+  maj7s11: { label: 'maj7♯11', suffix: 'maj7♯11', intervals: [0, 4, 7, 11, 18] },
+  maj7s5: { label: 'maj7♯5', suffix: 'maj7♯5', intervals: [0, 4, 8, 11] },
+  min6: { label: 'min6', suffix: 'm6', intervals: [0, 3, 7, 9], minor: true },
+  minmaj7: { label: 'm(maj7)', suffix: 'm(maj7)', intervals: [0, 3, 7, 11], minor: true },
+  min9: { label: 'min9', suffix: 'm9', intervals: [0, 3, 7, 10, 14], minor: true },
+  min11: { label: 'min11', suffix: 'm11', intervals: [0, 3, 7, 10, 14, 17], minor: true },
+  hdim7: { label: 'm7♭5', suffix: 'm7♭5', intervals: [0, 3, 6, 10], minor: true },
+  dim7: { label: 'dim7', suffix: 'dim7', intervals: [0, 3, 6, 9], minor: true },
+  dom7sus4: { label: '7sus4', suffix: '7sus4', intervals: [0, 5, 7, 10] },
+  dom9: { label: '9', suffix: '9', intervals: [0, 4, 7, 10, 14] },
+  dom13: { label: '13', suffix: '13', intervals: [0, 4, 7, 10, 14, 21] },
+  dom7b9: { label: '7♭9', suffix: '7♭9', intervals: [0, 4, 7, 10, 13] },
+  dom7s9: { label: '7♯9', suffix: '7♯9', intervals: [0, 4, 7, 10, 15] },
+  dom7s11: { label: '7♯11', suffix: '7♯11', intervals: [0, 4, 7, 10, 18] },
+  dom7b5: { label: '7♭5', suffix: '7♭5', intervals: [0, 4, 6, 10] },
+  aug7: { label: '7♯5', suffix: '7♯5', intervals: [0, 4, 8, 10] },
+  alt: { label: '7alt', suffix: '7alt', intervals: [0, 4, 10, 13, 15, 20] },
 };
+/** Diminished-family types (tuned with a diminished fifth). */
+export const DIM_TYPES = ['dim', 'dim7', 'hdim7'];
 export const PAD_CHORDS = ['maj', 'min', 'min7', 'maj7'];
 
 export function chordNotes(root, type) {
@@ -321,7 +348,10 @@ export function patternAt(pulse, pulsesPerStep, hits, steps, rotate = 0) {
 }
 
 // ---- chord progression sequencer
-export const MAX_PROGRESSION = 8;
+/** Slots in the progression: room for a whole tune's changes (an iReal Pro chart). */
+export const MAX_PROGRESSION = 128;
+/** A slot can be held for this many beats at most (a long pedal chord from a chart). */
+export const MAX_SLOT_BEATS = 64;
 
 /** A progression chord as note objects. Negative order: in As Played mode it comes first, root up. */
 export function progressionChord(notes) {
@@ -735,10 +765,11 @@ export function sweeten(pcs, rootPc, tuning, fixed = new Map()) {
 export function autoTonic(slots) {
   const chords = slots.filter((s) => s && s.type !== 'rest' && CHORDS[s.type]);
   if (!chords.length) return null;
-  const tones = chords.flatMap((s) => CHORDS[s.type].intervals.map((i) => (s.root + i) % 12));
+  // The triad and seventh only: 9ths and 13ths would pull the key away.
+  const tones = chords.flatMap((s) => CHORDS[s.type].intervals.slice(0, 4).filter((i) => i < 12).map((i) => (s.root + i) % 12));
   const MAJOR = [0, 2, 4, 5, 7, 9, 11];
   const MINOR = [0, 2, 3, 5, 7, 8, 10];
-  const isMinor = (t) => ['min', 'min7', 'dim'].includes(t);
+  const isMinor = (t) => !!CHORDS[t]?.minor;
   let best = null;
   for (let tonic = 0; tonic < 12; tonic++) {
     for (const [scale, minor] of [[MAJOR, false], [MINOR, true]]) {
