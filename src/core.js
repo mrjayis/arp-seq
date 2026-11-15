@@ -298,7 +298,7 @@ export function chordNotes(root, type) {
 
 // Oscillator 2 follows the same sequencer step as oscillator 1, using either the
 // step's offset ('same') or its mirror image ('invert': +7 → −7), plus a fixed transpose.
-export const OSC2_MODES = { same: 'Same', invert: 'Inverted' };
+export const OSC2_MODES = { same: 'Same', invert: 'Inverted', line: 'Bass line' }; // line: its own bass line (bass.js)
 
 export function osc2Note(ev, mode, transpose = 0) {
   const offset = mode === 'invert' ? -ev.offset : ev.offset;
