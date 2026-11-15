@@ -999,3 +999,52 @@ body.midi-learn .cc-armed { outline: 3px solid var(--brick) !important; outline-
 .send-pair { display: inline-flex; align-items: flex-end; gap: 6px; flex-wrap: nowrap; max-width: 100%; }
 .send-pair > .field.slider { min-width: 0; }
 .check.pre-send { font-size: 12px; white-space: nowrap; padding-bottom: 2px; }
+
+/* ---------- MPC-style pads (a pop-up over the page) ---------- */
+.pads-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  padding: 12px;
+}
+.pads-overlay[hidden] { display: none; }
+.pads-box {
+  background: var(--plate);
+  border: 2px solid var(--line);
+  border-top: 8px solid var(--mod);
+  border-radius: 3px;
+  padding: 12px;
+  width: min(460px, 100%);
+  max-height: 100%;
+  overflow: auto;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+.pads-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 10px; }
+.pads-head b { margin-right: auto; font-size: 16px; }
+#pad-rec[aria-pressed="true"] { background: #c0392b; border-color: #c0392b; color: #fff; }
+#pad-erase.held { background: var(--ink); color: var(--plate); }
+.pad-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; touch-action: none; }
+.pad {
+  position: relative;
+  aspect-ratio: 1;
+  min-height: 0;
+  padding: 0;
+  border-radius: 6px;
+  font-size: 18px;
+  font-weight: 700;
+  background: var(--field);
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: none;
+}
+.pad .pad-key { position: absolute; right: 6px; bottom: 4px; font-size: 10px; font-weight: 400; color: var(--ink-3); }
+.pad.off { opacity: 0.35; }
+.pad.hit { animation: pad-hit 0.18s ease-out; }
+@keyframes pad-hit { from { background: var(--mod); color: var(--mod-ink); } to { background: var(--field); } }
+.pads-overlay.recording .pads-box { border-top-color: #c0392b; }
+.pads-tip { margin: 8px 0 0; font-size: 12px; color: var(--ink-3); text-align: center; }
+.trow.just-written { outline: 2px solid var(--mod); outline-offset: -2px; }

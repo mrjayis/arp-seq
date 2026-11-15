@@ -8,25 +8,25 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=138';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=138';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=138';
-import { Midi } from './midi.js?v=138';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=138';
+} from './core.js?v=141';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=141';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=141';
+import { Midi } from './midi.js?v=141';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=141';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=138';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=138';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=138';
+} from './percussion.js?v=141';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=141';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=141';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
-  trimSamples, fadeEdges, isFilled, rollSpan, usableSlices,
-} from './breaks.js?v=138';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=138';
+  trimSamples, fadeEdges, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
+} from './breaks.js?v=141';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=141';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=138';
+} from './mono.js?v=141';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -341,7 +341,7 @@ function ensureAudio() {
         sends[fx][src] = { pre, post };
       }
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=138', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=141', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -1014,6 +1014,8 @@ function setPlaying(on, { fromClock = false } = {}) {
     midi.allNotesOff();
     uiEvents.length = 0;
     breakRoll = null;
+    breakStepTimes.length = 0;
+    padSkip.clear();
     // Back to showing the patterns as written.
     drumOverlayShown = false;
     showDrumOverlay(null);
@@ -1177,17 +1179,7 @@ const MIDI_IN_MODULES = [
   }],
   ['midiInBreak', {
     // C1 (36) plays slice 1, C♯1 slice 2, and so on: finger-drum the break.
-    on(note, vel) {
-      const slice = note - 36;
-      const t = liveNow();
-      if (!breakPlayer || !breakBuffer || slice < 0 || slice >= breakPoints.length) return;
-      breakPlayer.trigger(t, {
-        offset: breakPoints[slice],
-        duration: (slice + 1 < breakPoints.length ? breakPoints[slice + 1] : breakBuffer.duration) - breakPoints[slice],
-        rate: fitRate(breakBuffer.duration, settings.breakBars, currentBpm(), settings.breakPitch, settings.breakFit),
-        gain: vel / 127,
-      });
-    },
+    on(note, vel) { padHit(note - 36, vel); }, // records too, when the pads' Rec is on
     off() {},
   }],
 ];
@@ -2463,6 +2455,11 @@ let breakRoll = null; // a roll carrying on through empty rows: {row, span, part
 
 function playBreakStep(step) {
   const idx = step.stepNumber % settings.breakSteps;
+  // For the pads: when each step plays (live hits are written to the nearest one).
+  breakStepTimes.push({ time: step.time, idx, dur: step.duration });
+  if (breakStepTimes.length > 12) breakStepTimes.shift();
+  // Pads: Erase held wipes each row as the playhead reaches it.
+  if (padErasing && !songSlot(step.stepNumber)) eraseRow(idx);
   const pattern = breakPatternFor(songSlot(step.stepNumber) || settings.breakSlot);
   const off = settings.breakOff || [];
   const evolved = evolveBreakRow(pattern[idx], settings.breakEvolve / 100,
@@ -2472,7 +2469,12 @@ function playBreakStep(step) {
   const row = evolved && off.includes(evolved.slice) && evolved.fx !== 'cut' ? { ...evolved, slice: null } : evolved;
   let triggers;
   let rolling = false;
-  if (isFilled(row)) {
+  if (padSkip.has(idx)) {
+    // Just recorded from a pad that already sounded: don't play it twice.
+    padSkip.delete(idx);
+    breakRoll = null;
+    triggers = [];
+  } else if (isFilled(row)) {
     // A new row stops any roll; a roll here holds until the next filled row (Roll hold).
     const span = settings.breakRollHold && row.roll > 0 && row.fx !== 'cut' ? rollSpan(pattern, idx) : 1;
     triggers = rowTriggers(row, step.duration, Math.random, { span, part: 0 });
@@ -2502,6 +2504,160 @@ function playBreakStep(step) {
   }
   uiEvents.push({ kind: 'break', time: step.time, step: idx, slice: shown, change: rolling ? 'roll…' : breakRowChange(pattern[idx], row) });
 }
+
+// ---- MPC-style pads: play slices live, and record them into the tracker.
+const breakStepTimes = []; // recent and upcoming steps: {time, idx, dur}
+const padSkip = new Set(); // rows just recorded from a pad (it already sounded): skip once
+let padRec = false;
+let padErasing = false;
+let padBank = 0; // 0: slices 1–16, 1: 17–32
+const padUndo = []; // [{idx, row}] to put back
+const padEls = [];
+
+/** Play a slice now (a pad, or a note on the Breakbeat's MIDI channel); with Rec on, record it. */
+function padHit(slice, vel = 100) {
+  if (!breakBuffer || slice < 0 || slice >= breakPoints.length) return;
+  ensureAudio();
+  const t = ctx.currentTime + 0.003;
+  if (breakPlayer && settings.synthOn) {
+    breakPlayer.trigger(t, {
+      offset: breakPoints[slice],
+      duration: (slice + 1 < breakPoints.length ? breakPoints[slice + 1] : breakBuffer.duration) - breakPoints[slice],
+      rate: fitRate(breakBuffer.duration, settings.breakBars, currentBpm(), settings.breakPitch, settings.breakFit),
+      gain: vel / 127,
+    });
+  }
+  flashPad(slice);
+  if (padRec && playing && settings.breakOn) recordPadHit(slice, vel, t);
+}
+
+function recordPadHit(slice, vel, t) {
+  const dur = breakStepTimes[breakStepTimes.length - 1]?.dur || 60 / currentBpm() / 4;
+  const at = nearestStep(t, breakStepTimes, dur);
+  // Between known steps (just started): the next step to come.
+  const idx = at ? at.idx : null;
+  if (idx === null) return;
+  padUndo.push({ idx, row: { ...settings.breakPattern[idx] } });
+  if (padUndo.length > 128) padUndo.shift();
+  writeBreakRow(idx, { slice, vol: Math.round((vel / 127) * 100), roll: 0, fx: '', chance: 100 });
+  // If that step hasn't played yet, the pad already did: skip it this time round.
+  if (at.time > ctx.currentTime) padSkip.add(idx);
+  renderPadButtons();
+}
+
+function eraseRow(idx) {
+  const r = settings.breakPattern[idx];
+  if (!r || (!isFilled(r) && !(r.roll > 0))) return;
+  padUndo.push({ idx, row: { ...r } });
+  if (padUndo.length > 128) padUndo.shift();
+  writeBreakRow(idx, { slice: null, roll: 0, fx: '', chance: 100, vol: 100, pitch: 0 });
+  renderPadButtons();
+}
+
+/** Change a tracker row and show it (the pads write here). */
+function writeBreakRow(idx, patch) {
+  editBreakRow(idx, patch);
+  const el = breakRowEls[idx];
+  if (el) {
+    const r = settings.breakPattern[idx];
+    const sel = el.querySelector('select');
+    if (sel) sel.value = r.slice === null ? '' : String(r.slice);
+    const nums = el.querySelectorAll('input[type="number"]');
+    if (nums[0]) nums[0].value = r.vol;
+    if (nums[3]) nums[3].value = r.roll || 0;
+    el.classList.add('just-written');
+    setTimeout(() => el.classList.remove('just-written'), 300);
+  }
+}
+
+function flashPad(slice) {
+  const el = padEls[slice - padBank * 16];
+  if (!el) return;
+  el.classList.remove('hit');
+  void el.offsetWidth; // restart the flash
+  el.classList.add('hit');
+  clearTimeout(el.hitTimer);
+  el.hitTimer = setTimeout(() => el.classList.remove('hit'), 160);
+}
+
+function buildPads() {
+  const grid = $('pad-grid');
+  grid.replaceChildren();
+  padEls.length = 0;
+  const count = breakPoints.length;
+  $('pad-bank').hidden = count <= 16;
+  $('pad-bank').textContent = padBank ? 'Bank B (17–32)' : 'Bank A (1–16)';
+  const order = mpcOrder();
+  const els = [];
+  for (let n = 0; n < 16; n++) {
+    const slice = padBank * 16 + n;
+    const b = document.createElement('button');
+    b.className = 'pad';
+    b.disabled = slice >= count;
+    b.dataset.slice = slice;
+    b.innerHTML = `<span class="pad-n">${slice + 1}</span><span class="pad-key">${'1234QWERASDFZXCV'[order.indexOf(n)]}</span>`;
+    b.setAttribute('aria-label', `Pad ${n + 1}: slice ${slice + 1}`);
+    b.classList.toggle('off', (settings.breakOff || []).includes(slice));
+    b.addEventListener('pointerdown', (e) => { e.preventDefault(); padHit(slice, 110); });
+    els[n] = b;
+    padEls[n] = b;
+  }
+  for (const n of order) grid.append(els[n]); // pad 1 bottom-left, 16 top-right
+  renderPadButtons();
+}
+
+function renderPadButtons() {
+  $('pad-rec').setAttribute('aria-pressed', String(padRec));
+  $('pad-undo').disabled = !padUndo.length;
+  $('pad-undo').textContent = padUndo.length ? `Undo (${padUndo.length})` : 'Undo';
+  $('pads').classList.toggle('recording', padRec);
+}
+
+function openPads(open) {
+  $('pads').hidden = !open;
+  if (open) buildPads();
+  else { padRec = false; padErasing = false; $('pad-erase').classList.remove('held'); }
+  renderPadButtons();
+}
+
+$('break-pads').addEventListener('click', () => openPads(true));
+$('pad-close').addEventListener('click', () => openPads(false));
+$('pads').addEventListener('pointerdown', (e) => { if (e.target === $('pads')) openPads(false); }); // tap outside
+$('pad-rec').addEventListener('click', () => {
+  padRec = !padRec;
+  if (padRec) {
+    // Recording needs the break running: start it (and the transport) if needed.
+    ensureAudio();
+    if (!settings.breakOn) { settings.breakOn = true; renderBreakPanel(); save(); }
+    if (!playing && settings.sync === 'internal') setPlaying(true);
+  }
+  renderPadButtons();
+});
+// Erase: held (pointer, or the Delete/Backspace key) wipes rows as the playhead passes.
+const eraseOn = (e) => { e?.preventDefault?.(); padErasing = true; $('pad-erase').classList.add('held'); };
+const eraseOff = () => { padErasing = false; $('pad-erase').classList.remove('held'); renderPadButtons(); };
+$('pad-erase').addEventListener('pointerdown', eraseOn);
+for (const type of ['pointerup', 'pointerleave', 'pointercancel']) $('pad-erase').addEventListener(type, eraseOff);
+$('pad-undo').addEventListener('click', () => {
+  const last = padUndo.pop();
+  if (last) writeBreakRow(last.idx, last.row);
+  renderPadButtons();
+});
+$('pad-bank').addEventListener('click', () => { padBank = padBank ? 0 : 1; buildPads(); });
+// Keys while the pads are open: MPC layout (1234 / QWER / ASDF / ZXCV), Delete held = Erase.
+window.addEventListener('keydown', (e) => {
+  if ($('pads').hidden || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === 'Escape') { openPads(false); return; }
+  if (e.key === 'Delete' || e.key === 'Backspace') { if (!e.repeat) eraseOn(e); e.stopImmediatePropagation(); return; }
+  const k = '1234qwerasdfzxcv'.indexOf(e.key.toLowerCase());
+  if (k < 0) return;
+  e.preventDefault();
+  e.stopImmediatePropagation(); // not the main keyboard's notes
+  if (!e.repeat) padHit(padBank * 16 + mpcOrder()[k], 110);
+}, true);
+window.addEventListener('keyup', (e) => { if (!$('pads').hidden && (e.key === 'Delete' || e.key === 'Backspace')) eraseOff(); }, true);
+// The pattern playing a slice lights its pad too.
+function showPadPlaying(slice) { if (!$('pads').hidden && slice !== null && slice !== undefined) flashPad(slice); }
 
 /**
  * A synthesized demo break so the slicer works before you load your own:
@@ -4583,6 +4739,7 @@ function frame() {
     }
     if (ev.kind === 'break') {
       showBreakStep(ev.step, ev.slice, ev.change);
+      showPadPlaying(ev.slice);
       continue;
     }
     if (ev.kind === 'drum') {
