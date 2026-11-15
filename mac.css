@@ -434,3 +434,13 @@
 :root[data-theme="mac"] #pad-rec[aria-pressed="true"] { background: #000; color: #fff; }
 :root[data-theme="mac"] #arr[aria-pressed="true"] { background: #000; color: #fff; }
 :root[data-theme="mac"] .fx-mute[aria-pressed="true"] { background: #000; color: #fff; }
+:root[data-theme="mac"] .mixer-box { border: 1px solid #000; border-radius: 0; box-shadow: 2px 2px 0 #000; background: #fff; }
+:root[data-theme="mac"] .strip { border: 1px solid #000; border-radius: 0; background: #fff; }
+:root[data-theme="mac"] .strip.fx, :root[data-theme="mac"] .strip.master { background: #fff; border-width: 2px; }
+:root[data-theme="mac"] .strip-name { font: 12px var(--chicago); }
+:root[data-theme="mac"] .meter { border: 1px solid #000; border-radius: 0; background: #fff; }
+:root[data-theme="mac"] .meter-fill { background: #000; }
+:root[data-theme="mac"] input.fader[type="range"]::-webkit-slider-runnable-track { background: #000; box-shadow: none; border-radius: 0; width: 4px; }
+:root[data-theme="mac"] input.fader[type="range"]::-webkit-slider-thumb { border: 1px solid #000; border-radius: 0; background: linear-gradient(#000, #000) center / 70% 1px no-repeat, #fff; box-shadow: 1px 1px 0 #000; }
+:root[data-theme="mac"] .strip-btns .mute[aria-pressed="true"], :root[data-theme="mac"] .strip-btns .solo[aria-pressed="true"], :root[data-theme="mac"] #mixer-btn[aria-pressed="true"] { background: #000; color: #fff; border-color: #000; }
+:root[data-theme="mac"] input.fader[type="range"] { height: 100%; }

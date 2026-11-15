@@ -266,3 +266,13 @@ A shared delay and reverb, with a **send** from each source (Arp, Chords, Drums)
 ## Solo
 
 The Arpeggiator (both voices), Chord Rhythm (with its pad and sub), Mono Synth, Percussion and Breakbeat windows each have an **S** button. In System 7 it sits at the right of the title bar. Solo one or more to hear only those. Their delay and reverb sends go quiet too, but echoes already ringing still finish. Alt-click solos a section on its own. The button still shows when a window is folded, and solo isn't saved: a fresh load starts with everything audible.
+
+## Mixer
+
+**Mixer** in the top bar opens a console over the page; press it again, **Close**, Esc, or click outside to shut it. Playback carries on while it's open.
+
+- **Strips:** Arp, Chords, Mono, Drums and Break have a fader each, which is the same control as that window's Level slider. Moving one moves the other.
+- **Returns:** Delay, Reverb and Harm have return faders. Master is the main Volume.
+- **Meters:** each strip has a level meter with a peak marker, running from −60 to 0 dB. The readout above the fader shows the percentage and its dB value.
+- **M and S:** **M** mutes a strip. Mutes are saved with scenes. **S** is the same solo as the window's S button.
+- **Reset:** double-click a fader to put it back to its default.
