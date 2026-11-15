@@ -8,25 +8,25 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=150';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=150';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=150';
-import { Midi } from './midi.js?v=150';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=150';
+} from './core.js?v=151';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=151';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=151';
+import { Midi } from './midi.js?v=151';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=151';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=150';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=150';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=150';
+} from './percussion.js?v=151';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=151';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=151';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=150';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=150';
+} from './breaks.js?v=151';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=151';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=150';
+} from './mono.js?v=151';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -91,6 +91,9 @@ const settings = {
   tuningPure: true, // with Just tuning: no deliberate detuning, vibrato or chorus wobble
   tuning: 'equal', // 'equal' | 'just' | 'just7': adaptive just intonation to the chord now playing
   humanize: 0, // 0–100: random timing and level variation for every section
+  delayMuted: false, // an effect's output muted (its sends keep feeding it)
+  reverbMuted: false,
+  harmMuted: false,
   arrBars: 4, // Arr: how often the arrangement changes
   scoreOn: false,
   scoreId: '', // the piece chosen in the Score player
@@ -342,7 +345,7 @@ function ensureAudio() {
         sends[fx][src] = { pre, post };
       }
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=150', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=151', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -4076,6 +4079,30 @@ function audible(section) {
   return ['delay', 'reverb', 'harm'].some((fx) => settings[`${fx}Pre${SEND_SOURCES[section]}`] && settings[`${fx}Send${SEND_SOURCES[section]}`] > 0);
 }
 
+/** Each effect's Mute: its output off, its input still fed (so tails come back on unmute). */
+function applyFxMutes() {
+  for (const fx of ['delay', 'reverb', 'harm']) {
+    const b = $(`${fx}-mute`);
+    const on = !!settings[`${fx}Muted`];
+    b.setAttribute('aria-pressed', String(on));
+    b.textContent = on ? 'Muted' : 'Mute';
+    b.closest('.row').classList.toggle('fx-muted', on);
+  }
+  if (!ctx || !delayFx) return;
+  const now = ctx.currentTime;
+  delayFx.out.gain.setTargetAtTime(settings.delayMuted ? 0 : 1, now, 0.01);
+  reverbFx.out.gain.setTargetAtTime(settings.reverbMuted ? 0 : 1, now, 0.01);
+  applyHarm();
+}
+onRecall(applyFxMutes)();
+for (const fx of ['delay', 'reverb', 'harm']) {
+  $(`${fx}-mute`).addEventListener('click', () => {
+    settings[`${fx}Muted`] = !settings[`${fx}Muted`];
+    applyFxMutes();
+    save();
+  });
+}
+
 function applyFx() {
   if (!delayFx) return;
   updateDelayTime();
@@ -4087,6 +4114,8 @@ function applyFx() {
   // Rebuilding the impulse is heavy, so wait for the slider to settle.
   clearTimeout(reverbTimer);
   reverbTimer = setTimeout(() => reverbFx.setSize(settings.reverbSize / 1000), 120);
+  delayFx.out.gain.setTargetAtTime(settings.delayMuted ? 0 : 1, ctx.currentTime, 0.01);
+  reverbFx.out.gain.setTargetAtTime(settings.reverbMuted ? 0 : 1, ctx.currentTime, 0.01);
   for (const fx of ['delay', 'reverb']) {
     for (const src of ['arp', 'chords', 'drums', 'bass']) setSend(fx, src);
   }
@@ -4163,7 +4192,7 @@ function applyHarm() {
     set('main', 1);
     set('delayOut', settings.harmDelayLevel / 100);
   }
-  harmOut.gain.setTargetAtTime(settings.harmLevel / 100, now, 0.02);
+  harmOut.gain.setTargetAtTime(settings.harmMuted ? 0 : settings.harmLevel / 100, now, 0.02);
   for (const src of ['arp', 'chords', 'drums', 'bass']) setSend('harm', src);
 }
 
