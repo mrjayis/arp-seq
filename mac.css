@@ -292,8 +292,12 @@
 :root[data-theme="mac"] .slot { border-left: 1px solid #000; }
 :root[data-theme="mac"] .step:first-child,
 :root[data-theme="mac"] .slot:first-child { border-left: 0; }
+:root[data-theme="mac"] .slot:nth-child(8n + 1) { border-left: 0; }
+:root[data-theme="mac"] .slot:nth-child(n + 9) { border-top: 1px solid #000; }
 :root[data-theme="mac"] .step .num,
 :root[data-theme="mac"] .slot .name { font-family: var(--chicago); font-size: 24px; font-weight: 700; }
+:root[data-theme="mac"] .slot .name.long { font-size: 18px; line-height: 1.45; }
+@media (max-width: 600px) { :root[data-theme="mac"] .slot .name.long { font-size: 14px; line-height: 1.9; } }
 :root[data-theme="mac"] .step .value,
 :root[data-theme="mac"] .step .col .cap { font: 12px var(--chicago); font-style: normal; }
 :root[data-theme="mac"] .step .led { background: #fff; border: 1px solid #000; }

@@ -3,30 +3,31 @@ import {
   ArpSeqEngine, MODES, MODE_LABELS, RATES, PITCH_RANGE,
   MIN_SEQ_LENGTH, MAX_SEQ_LENGTH, noteName, defaultSteps, CHORDS, chordNotes,
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
-  PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
+  PAD_CHORDS, MAX_PROGRESSION, MAX_SLOT_BEATS, DIM_TYPES, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   progressionChord, anticipatedSlot, chordTie, SLOT_OCTAVES, humanizeOffset, humanizeLevel,
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=166';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=166';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=166';
-import { Midi } from './midi.js?v=166';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=166';
+} from './core.js?v=169';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=169';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=169';
+import { Midi } from './midi.js?v=169';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=169';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=166';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=166';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=166';
+} from './percussion.js?v=169';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=169';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=169';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=169';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=166';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=166';
+} from './breaks.js?v=169';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=169';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=166';
+} from './mono.js?v=169';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -186,6 +187,7 @@ const settings = {
   chordGateArp: false,
   progOn: false,
   progLength: 4,
+  progSong: '', // the tune the progression came from (an iReal Pro chart), shown by the slots
   progOctave: 3,
   progModEvery: 0, // modulate every N rounds of the progression (0 = off)
   progModBy: 2, // semitones per modulation
@@ -278,9 +280,10 @@ function repairProgression() {
     return {
       root: Number.isInteger(s.root) && s.root >= 0 && s.root < 12 ? s.root : def.root,
       type: s.type === 'rest' || CHORDS[s.type] ? s.type : def.type,
-      beats: PROGRESSION_BEATS.includes(s.beats) ? s.beats : def.beats,
+      beats: Number.isInteger(s.beats) && s.beats >= 1 && s.beats <= MAX_SLOT_BEATS ? s.beats : def.beats,
       inv: Number.isInteger(s.inv) && s.inv >= 0 && s.inv < INVERSIONS.length ? s.inv : 0,
       oct: SLOT_OCTAVES.includes(s.oct) ? s.oct : 0,
+      ...(s.flat === true ? { flat: true } : {}), // spelled with a flat (from a chart)
     };
   });
 }
@@ -348,7 +351,7 @@ function ensureAudio() {
         sends[fx][src] = { pre, post };
       }
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=166', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=169', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -470,7 +473,7 @@ function chordRoot() {
     const slot = settings.progression[progIndex];
     if (slot && slot.type !== 'rest') {
       const root = (((slot.root + progShift) % 12) + 12) % 12;
-      return tuningId(root, notes, slot.type === 'dim');
+      return tuningId(root, notes, DIM_TYPES.includes(slot.type));
     }
   }
   return tuningKeyFor(notes);
@@ -1665,11 +1668,14 @@ renderChordRhythm();
 
 // ---------------------------------------------------------------- UI: progression
 const NOTE_CLASSES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-const CHORD_SUFFIX = { maj: '', min: 'm', min7: 'm7', maj7: 'maj7', dom7: '7', dim: 'dim', sus4: 'sus4' };
+const FLAT_CLASSES = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
+/** A slot's root as written: with a flat when it came from a chart that way. */
+const rootName = (pc, flat) => (flat ? FLAT_CLASSES : NOTE_CLASSES)[((pc % 12) + 12) % 12];
+const CHORD_SUFFIX = Object.fromEntries(Object.entries(CHORDS).map(([t, c]) => [t, c.suffix]));
 const slotEls = [];
 
 function slotName(slot) {
-  return slot.type === 'rest' ? '—' : NOTE_CLASSES[slot.root] + CHORD_SUFFIX[slot.type];
+  return slot.type === 'rest' ? '—' : rootName(slot.root, slot.flat) + CHORD_SUFFIX[slot.type];
 }
 
 /** What each slot plays, after inversions and voice leading. */
@@ -1683,9 +1689,10 @@ function progEdited() {
   save();
 }
 
-function buildProgression() {
+/** Slot elements are made as the progression needs them (a tune's chart can use 100+). */
+function ensureSlots(n) {
   const wrap = $('prog-slots');
-  for (let i = 0; i < MAX_PROGRESSION; i++) {
+  for (let i = slotEls.length; i < Math.min(n, MAX_PROGRESSION); i++) {
     const el = document.createElement('div');
     el.className = 'slot';
     el.innerHTML = `
@@ -1718,9 +1725,15 @@ function buildProgression() {
     wrap.append(el);
     slotEls.push(el);
   }
+}
 
+/** Slots shown: at least the first 8 (past the length, dimmed), else as many as play. */
+const slotsShown = () => Math.max(8, settings.progLength);
+
+function buildProgression() {
+  ensureSlots(8);
   const len = $('prog-length');
-  for (let n = 1; n <= MAX_PROGRESSION; n++) {
+  for (let n = 1; n <= 8; n++) {
     const b = document.createElement('button');
     b.textContent = n;
     b.dataset.n = n;
@@ -1732,6 +1745,15 @@ function buildProgression() {
     });
     len.append(b);
   }
+  // Any length, up to a whole tune.
+  const count = $('prog-len-n');
+  count.max = String(MAX_PROGRESSION);
+  count.addEventListener('change', () => {
+    const n = Math.max(1, Math.min(MAX_PROGRESSION, Math.round(Number(count.value)) || 1));
+    settings.progLength = n;
+    renderProgression();
+    progEdited();
+  });
 
   for (let o = 1; o <= 6; o++) $('prog-octave').add(new Option(`C${o}`, String(o)));
   bindSelect('prog-octave', 'progOctave', null, () => progEdited());
@@ -1751,6 +1773,7 @@ function buildProgression() {
     if (!chords) return;
     chords.forEach(([root, type], i) => { settings.progression[i] = { root, type, beats: 4, inv: 0, oct: 0 }; });
     settings.progLength = chords.length;
+    settings.progSong = '';
     renderProgression();
     progEdited();
   });
@@ -1779,7 +1802,11 @@ function renderSlot(i, voicing) {
   const rest = slot.type === 'rest';
   el.querySelector('.root').value = String(slot.root);
   el.querySelector('.type').value = slot.type;
-  el.querySelector('.beats').value = String(slot.beats);
+  const beatsSel = el.querySelector('.beats');
+  if (![...beatsSel.options].some((o) => Number(o.value) === slot.beats)) {
+    beatsSel.add(new Option(`${slot.beats} beats`, String(slot.beats))); // a held chord from a chart
+  }
+  beatsSel.value = String(slot.beats);
   el.querySelector('.oct').value = String(slot.oct || 0);
   el.querySelector('.oct').disabled = rest || off;
   el.querySelector('.root').disabled = rest || off;
@@ -1794,10 +1821,17 @@ function renderSlot(i, voicing) {
   const bass = voicing?.notes?.[0];
   const nameEl = el.querySelector('.name');
   nameEl.textContent = slotName(slot);
+  nameEl.classList.toggle('long', nameEl.textContent.length > 4); // Bbmaj7, C#m7♭5: smaller, so it fits
+  // The root menu spelled the same way as the name (Bb, not A#).
+  const rootSel = el.querySelector('.root');
+  if (rootSel.dataset.flat !== String(!!slot.flat)) {
+    rootSel.dataset.flat = String(!!slot.flat);
+    [...rootSel.options].forEach((o, pc) => { o.textContent = rootName(pc, slot.flat); });
+  }
   if (!rest && bass !== undefined && bass % 12 !== slot.root) {
     const over = document.createElement('small');
     over.className = 'bass';
-    over.textContent = `/${NOTE_CLASSES[bass % 12]}`; // slash chord: the inversion's bass note
+    over.textContent = `/${rootName(bass, slot.flat)}`; // slash chord: the inversion's bass note
     nameEl.append(over);
   }
 }
@@ -1810,8 +1844,14 @@ function renderProgression() {
   $('prog-length').querySelectorAll('button').forEach((b) => {
     b.setAttribute('aria-pressed', String(Number(b.dataset.n) === settings.progLength));
   });
+  $('prog-len-n').value = String(settings.progLength);
+  $('prog-song').textContent = settings.progSong || '';
+  const shown = slotsShown();
+  ensureSlots(shown);
   const voicings = progVoicings();
   slotEls.forEach((el, i) => {
+    el.hidden = i >= shown;
+    if (el.hidden) return;
     const off = i >= settings.progLength;
     el.classList.toggle('disabled', off);
     el.querySelectorAll('select').forEach((s) => { s.disabled = off; });
@@ -1850,6 +1890,102 @@ function showProgSlot(i) {
 }
 
 buildProgression();
+
+// ---- iReal Pro: open an exported playlist (.html) or paste an irealb:// link, then pick a
+// song: its changes, once through the form, become the progression.
+const IREAL_KEY = 'arp-seq-ireal'; // the last imported list, kept on this device
+let irealSongs = [];
+function setIrealSongs(songs, from) {
+  irealSongs = songs;
+  renderIrealList();
+  $('ireal-status').textContent = songs.length
+    ? `${songs.length} song${songs.length === 1 ? '' : 's'}${from ? ` from ${from}` : ''}. Pick one to load its changes.`
+    : 'No iReal Pro songs found there. Use an exported playlist (.html) or an irealb:// link.';
+}
+function importIreal(text, from) {
+  const songs = readSongs(text);
+  if (songs.length) {
+    try { localStorage.setItem(IREAL_KEY, JSON.stringify({ text: String(text).match(/irealb(?:ook)?:\/\/[^"'<>\s]+/g).join('\n'), from })); } catch { /* too big for storage: kept for this visit */ }
+  }
+  setIrealSongs(songs, from);
+}
+function renderIrealList() {
+  const list = $('ireal-list');
+  list.replaceChildren();
+  const q = $('ireal-search').value.trim().toLowerCase();
+  const all = [...irealSongs.map((s) => ({ s, example: false })), ...EXAMPLE_SONGS.map((s) => ({ s, example: true }))];
+  const hits = all.filter(({ s }) => !q || `${s.title} ${s.composer}`.toLowerCase().includes(q));
+  for (const { s, example } of hits.slice(0, 300)) {
+    const b = document.createElement('button');
+    b.className = 'ireal-song';
+    b.innerHTML = '<b></b><small></small>';
+    b.querySelector('b').textContent = s.title;
+    b.querySelector('small').textContent = [s.composer, s.style, s.key && `in ${s.key.replace('-', 'm')}`, example && 'example'].filter(Boolean).join(' · ');
+    b.addEventListener('click', () => loadIrealSong(s));
+    list.append(b);
+  }
+  if (hits.length > 300) list.append(Object.assign(document.createElement('p'), { className: 'hint', textContent: `…and ${hits.length - 300} more: search to narrow it down.` }));
+}
+function loadIrealSong(song) {
+  const { slots } = songSlots(song);
+  if (!slots.length) { $('ireal-status').textContent = `Couldn't read any chords in ${song.title}.`; return; }
+  const used = slots.slice(0, MAX_PROGRESSION);
+  used.forEach((s, i) => {
+    // A slash chord whose bass is a chord tone: the inversion that puts it lowest.
+    let inv = 0;
+    if (s.bass !== null && s.type !== 'rest') {
+      const k = CHORDS[s.type].intervals.findIndex((iv) => (s.root + iv) % 12 === s.bass);
+      if (k > 0 && k < INVERSIONS.length) inv = k;
+    }
+    settings.progression[i] = { root: s.root, type: s.type, beats: Math.min(MAX_SLOT_BEATS, s.beats), inv, oct: 0, ...(s.flat ? { flat: true } : {}) };
+  });
+  settings.progLength = used.length;
+  settings.progSong = `${song.title}${song.composer ? ` (${song.composer})` : ''}`;
+  if (song.bpm > 0 && settings.sync === 'internal') setBpm(song.bpm);
+  if (!settings.progOn) { settings.progOn = true; progIndex = -1; }
+  renderProgression();
+  progEdited();
+  $('ireal-status').textContent = `Loaded ${song.title}: ${used.length} chord${used.length === 1 ? '' : 's'}`
+    + (slots.length > used.length ? ` (the first ${MAX_PROGRESSION} of ${slots.length})` : '')
+    + (song.bpm > 0 ? `, at its ${song.bpm} BPM.` : '. Press Play.');
+}
+$('ireal-btn').addEventListener('click', () => {
+  const box = $('ireal-box');
+  box.hidden = !box.hidden;
+  $('ireal-btn').setAttribute('aria-pressed', String(!box.hidden));
+  if (!box.hidden) renderIrealList();
+});
+$('ireal-open').addEventListener('click', () => $('ireal-file').click());
+$('ireal-file').addEventListener('change', async () => {
+  const file = $('ireal-file').files[0];
+  $('ireal-file').value = '';
+  if (file) importIreal(await file.text(), file.name);
+});
+$('ireal-text').addEventListener('input', () => {
+  const text = $('ireal-text').value;
+  if (/irealb(ook)?:\/\//.test(text)) { importIreal(text, 'the pasted link'); $('ireal-text').value = ''; }
+});
+$('ireal-search').addEventListener('input', renderIrealList);
+$('ireal-clear').addEventListener('click', () => {
+  try { localStorage.removeItem(IREAL_KEY); } catch { /* ignore */ }
+  irealSongs = [];
+  renderIrealList();
+  $('ireal-status').textContent = 'List cleared.';
+});
+// Drop an exported playlist on the Progression window.
+$('prog-panel').addEventListener('dragover', (e) => e.preventDefault());
+$('prog-panel').addEventListener('drop', async (e) => {
+  const file = e.dataTransfer?.files?.[0];
+  if (!file) return;
+  e.preventDefault();
+  $('ireal-box').hidden = false;
+  $('ireal-btn').setAttribute('aria-pressed', 'true');
+  importIreal(await file.text(), file.name);
+});
+try {
+  const saved = JSON.parse(localStorage.getItem(IREAL_KEY) || 'null');
+  if (saved?.text) { irealSongs = readSongs(saved.text); $('ireal-status').textContent = irealSongs.length ? `${irealSongs.length} songs from ${saved.from || 'your last import'}.` : ''; }
+} catch { /* storage unavailable */ }
 onRecall(() => { progIndex = -1; renderProgression(); })();
 
 // ---------------------------------------------------------------- UI: percussion
@@ -4783,7 +4919,7 @@ function showTuning(nowMs) {
     const root = Number(r);
     const slot = settings.progOn && progIndex >= 0 ? settings.progression[progIndex] : null;
     const name = slot && slot.type !== 'rest'
-      ? NOTE_CLASSES[root] + CHORD_SUFFIX[slot.type]
+      ? rootName(root, slot.flat) + CHORD_SUFFIX[slot.type]
       : NOTE_CLASSES[root] + (d === '1' ? '°' : '');
     const cents = settings.tuning === 'equal' ? 0 : tuningCents(60 + root, key);
     chordText = Math.abs(cents) >= 0.05 ? `${name} ${cents > 0 ? '+' : '−'}${Math.abs(cents).toFixed(1)}¢` : name;
