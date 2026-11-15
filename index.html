@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=170" />
-  <link rel="stylesheet" href="mac.css?v=170" />
+  <link rel="stylesheet" href="styles.css?v=177" />
+  <link rel="stylesheet" href="mac.css?v=177" />
 </head>
 <body>
   <main class="device">
@@ -214,7 +214,8 @@
     <section class="panel osc2" id="osc2-panel" aria-label="Oscillator 2">
       <h2>Arp Voice · Oscillator 2</h2>
       <p class="hint">A second monophonic arp voice on every arpeggiated note. It plays each sequencer
-        step's offset as-is (<b>Same</b>) or flipped (<b>Inverted</b>: +7 becomes −7). <b>Sync cutoff</b>
+        step's offset as-is (<b>Same</b>) or flipped (<b>Inverted</b>: +7 becomes −7), or its own
+        <b>Bass line</b> over the chords: walking, two-feel, bossa or roots, as a play-along app's bassist would. <b>Sync cutoff</b>
         lets Oscillator 1's Cutoff drive both gates.</p>
       <div class="row">
         <button id="osc2-on" aria-pressed="true" title="Turn oscillator 2 on or off">On</button>
@@ -241,6 +242,11 @@
         <label class="field">MIDI Out Ch
           <select id="osc2-midi-ch" title="Send oscillator 2 to its own MIDI channel"><option value="-1">Off</option></select>
         </label>
+      </div>
+      <div class="row" id="bassline-row" hidden>
+        <span class="row-label">Bass line</span>
+        <label class="field" title="Walking: quarter notes through the chord and its scale, leading into each next chord. Two-feel: root and fifth in half notes. Bossa: root on 1, fifth on the and of 2. Roots: the root each bar. Auto picks from the iReal Pro song's style (Walking otherwise).">Style <select id="osc2-bass-style"></select></label>
+        <span class="status hint" id="bassline-hint">Plays on the beat, following the progression (or the keys you hold), even with the arp off.</span>
       </div>
       <div class="row" id="bass-row" hidden>
         <span class="row-label">Bass</span>
@@ -857,6 +863,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=170"></script>
+  <script type="module" src="src/app.js?v=177"></script>
 </body>
 </html>

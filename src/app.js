@@ -8,26 +8,27 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=170';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=170';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=170';
-import { Midi } from './midi.js?v=170';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=170';
+} from './core.js?v=177';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=177';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=177';
+import { Midi } from './midi.js?v=177';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=177';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=170';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=170';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=170';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=170';
+} from './percussion.js?v=177';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=177';
+import { BASS_STYLES, styleForSong, bassLine } from './bass.js?v=177';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=177';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=177';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=170';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=170';
+} from './breaks.js?v=177';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=177';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=170';
+} from './mono.js?v=177';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -86,6 +87,7 @@ const settings = {
   osc2Resonance: 1.5,
   osc2Mod: 'off', // oscillator 2 → oscillator 1: 'off' | 'am' | 'fm'
   osc2ModDepth: 30,
+  osc2BassStyle: 'auto', // with the Bass line sequence: a BASS_STYLES key
   chordSyncopate: false, // a chord hit in the last 8th before the progression moves on plays the next chord
   chordTie: false, // a syncopated chord holds over the bar line instead of being struck again on the downbeat
   tuningKey: 'auto', // the key's tonic for Just tuning: 'auto' (the progression's first chord) or 0–11
@@ -188,6 +190,7 @@ const settings = {
   progOn: false,
   progLength: 4,
   progSong: '', // the tune the progression came from (an iReal Pro chart), shown by the slots
+  progStyle: '', // that tune's style ("Up Tempo Swing"), for the bass line's Auto style
   progOctave: 3,
   progModEvery: 0, // modulate every N rounds of the progression (0 = off)
   progModBy: 2, // semitones per modulation
@@ -351,7 +354,7 @@ function ensureAudio() {
         sends[fx][src] = { pre, post };
       }
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=170', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=177', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -604,7 +607,7 @@ function playArp(step) {
     // Step switched off: strike nothing, but slide whatever tail is still ringing
     // to the note this step would have played (each oscillator its own way).
     const modNote = osc2Note(ev, settings.osc2Mode, settings.osc2Transpose);
-    const note2 = settings.osc2On ? modNote : null;
+    const note2 = settings.osc2On && settings.osc2Mode !== 'line' ? modNote : null;
     if (settings.synthOn && synth) {
       synth.retune('osc1', tuned(ev.note), step.time, tuned(modNote));
       if (note2 !== null) synth.retune('osc2', tuned(note2), step.time);
@@ -616,7 +619,7 @@ function playArp(step) {
   // Oscillator 2's pitch for this step: heard if it's on, and used to modulate
   // oscillator 1 even when it's off (a pure modulator).
   const modNote = osc2Note(ev, settings.osc2Mode, settings.osc2Transpose);
-  const note2 = settings.osc2On ? modNote : null;
+  const note2 = settings.osc2On && settings.osc2Mode !== 'line' ? modNote : null; // a bass line plays on its own
   if (ev.velocity > 0) {
     // Aftertouch: pressing harder on a held key makes its arp notes louder and brighter.
     const press = arpPressureFor(ev.sourceNote);
@@ -625,6 +628,84 @@ function playArp(step) {
     arpTail = { note: ev.note, note2, modNote, root: chordRoot() };
   }
   uiEvents.push({ kind: 'arp', time: step.time, off: step.time + gateLen, note2, ...ev });
+}
+
+// ---- Bass line: oscillator 2 as the band's bassist. Each chord's line is planned as the
+// chord starts (knowing the next chord) and played on the 8th-note grid.
+let bassPlan = null; // {start, end, key, events: [{pulse, note, len (pulses)}]}
+let bassLast = null; // the last bass note (written register), so each line carries on from it
+
+/** The style in use: Auto follows the loaded song's style. */
+const bassStyle = () => (settings.osc2BassStyle === 'auto' ? styleForSong(settings.progSong ? settings.progStyle : '') : settings.osc2BassStyle);
+
+/** Plan the bass from `pulse` to the end of the chord (or bar) it's in. null: nothing to play. */
+function planBass(pulse) {
+  const barBeats = 4;
+  if (settings.progOn) {
+    const slots = settings.progression.slice(0, settings.progLength);
+    const total = slots.reduce((n, s) => n + s.beats, 0) * PPQN;
+    if (!total) return null;
+    const t = pulse % total;
+    let at = 0;
+    let i = 0;
+    while (i < slots.length - 1 && at + slots[i].beats * PPQN <= t) { at += slots[i].beats * PPQN; i++; }
+    const start = pulse - (t - at);
+    const end = start + slots[i].beats * PPQN;
+    const shiftNow = progShiftAt(start);
+    const nextSlot = slots[(i + 1) % slots.length];
+    const shiftNext = progShiftAt(end);
+    const chord = { root: (slots[i].root + shiftNow + 120) % 12, type: slots[i].type };
+    const next = { root: (nextSlot.root + shiftNext + 120) % 12, type: nextSlot.type };
+    return makePlan(start, end, chord, next, `p${i}|${start}`, barBeats);
+  }
+  // No progression: follow the keys held, a bar at a time (a new chord starts a new line).
+  const notes = engine.notes.map((n) => n.note);
+  if (!notes.length) return null;
+  const root = chordRootPc(notes);
+  const pcs = new Set(notes.map((n) => (((n - root) % 12) + 12) % 12));
+  const type = pcs.has(3) ? (pcs.has(6) && !pcs.has(7) ? 'hdim7' : 'min7') : pcs.has(10) ? 'dom7' : pcs.has(11) ? 'maj7' : 'maj';
+  const bar = PPQN * barBeats;
+  const end = (Math.floor(pulse / bar) + 1) * bar;
+  return makePlan(pulse, end, { root, type }, { root, type }, `h${root}${type}`, barBeats);
+}
+
+function makePlan(start, end, chord, next, key, barBeats) {
+  const beats = (end - start) / PPQN;
+  const line = bassLine({ chord, next, beats, prev: bassLast, style: bassStyle(), barBeats });
+  return { start, end, key, events: line.map((e) => ({ pulse: start + Math.round(e.beat * PPQN), note: e.note, len: e.len * PPQN })) };
+}
+
+function bassPulse(time, pulse, pulseDuration) {
+  if (settings.osc2Mode !== 'line' || !settings.osc2On) { bassPlan = null; return; }
+  if (pulse % (PPQN / 2)) return; // the 8th-note grid is enough
+  const heldKey = () => { const n = engine.notes.map((x) => x.note); return n.length ? `h${chordRootPc(n)}` : ''; };
+  // Re-plan at the end of a chord, or when the held chord changes under it.
+  if (!bassPlan || pulse >= bassPlan.end || pulse < bassPlan.start
+    || (!settings.progOn && !bassPlan.key.startsWith(heldKey() || '?'))) bassPlan = planBass(pulse);
+  if (!bassPlan) return;
+  for (const ev of bassPlan.events) {
+    if (ev.pulse !== pulse) continue;
+    bassLast = ev.note;
+    const velocity = humanLevel(ev.pulse === bassPlan.start ? 104 : 92);
+    playBassNote(ev.note + settings.osc2Transpose, velocity, human({ time, duration: (PPQN / 2) * pulseDuration }).time, ev.len * pulseDuration * 0.95);
+  }
+}
+
+function playBassNote(note, velocity, time, len) {
+  if (note < 0 || note > 127) return;
+  if (settings.synthOn && synth && settings.osc2Level > 0) {
+    if (settings.osc2Sound === 'bass') {
+      synth.playBass(tuned(note), velocity, time, Math.max(len, 0.05), {
+        level: settings.osc2Level / 100, out: buses.arp, mono: 'osc2',
+        tone: settings.bassTone / 100, decay: settings.bassDecay / 1000,
+      });
+    } else synth.playWest(tuned(note), velocity, time, len, { ...westVoice(2), out: buses.arp });
+  }
+  if (settings.osc2MidiCh >= 0) {
+    midi.noteOn(note, velocity, toPerfMs(time), settings.osc2MidiCh);
+    midi.noteOff(note, toPerfMs(time + len), settings.osc2MidiCh);
+  }
+  uiEvents.push({ kind: 'bass', time, note });
 }
 
 let arpTail = null; // the arp note still ringing: {note, note2, modNote, root it was tuned to}
@@ -900,6 +981,7 @@ function onPulse(time, pulse, pulseDuration) {
   arrPulse(pulse, time);
   if (settings.clockOut && settings.sync === 'internal') midi.clock(toPerfMs(time));
   stepProgression(time, pulse);
+  bassPulse(time, pulse, pulseDuration);
   const swing = settings.swing / 100;
   // Arp first, so a chord that follows the sequencer uses the same step as the
   // arp note sounding with it.
@@ -1774,6 +1856,7 @@ function buildProgression() {
     chords.forEach(([root, type], i) => { settings.progression[i] = { root, type, beats: 4, inv: 0, oct: 0 }; });
     settings.progLength = chords.length;
     settings.progSong = '';
+    settings.progStyle = '';
     renderProgression();
     progEdited();
   });
@@ -1941,6 +2024,7 @@ function loadIrealSong(song) {
   });
   settings.progLength = used.length;
   settings.progSong = `${song.title}${song.composer ? ` (${song.composer})` : ''}`;
+  settings.progStyle = song.style || '';
   if (song.bpm > 0 && settings.sync === 'internal') setBpm(song.bpm);
   if (!settings.progOn) { settings.progOn = true; progIndex = -1; }
   renderProgression();
@@ -4509,6 +4593,8 @@ function renderOsc2() {
   $('osc2-on').setAttribute('aria-pressed', String(settings.osc2On));
   $('osc2-on').textContent = settings.osc2On ? 'On' : 'Off';
   $('osc2-panel').classList.toggle('off', !settings.osc2On);
+  $('bassline-row').hidden = settings.osc2Mode !== 'line';
+  bassPlan = null; // start the line afresh on the next beat
   $('osc2-mode').querySelectorAll('button').forEach((b) => {
     const sel = b.dataset.mode === settings.osc2Mode;
     b.setAttribute('aria-pressed', String(sel));
@@ -4539,6 +4625,7 @@ for (let t = -24; t <= 24; t++) {
   $('osc2-transpose').add(new Option(`${t > 0 ? '+' : ''}${t}${oct}`, String(t)));
 }
 bindSelect('osc2-wave', 'osc2Wave');
+bindSelect('osc2-bass-style', 'osc2BassStyle', Object.entries(BASS_STYLES), () => { bassPlan = null; });
 bindSelect('osc2-transpose', 'osc2Transpose');
 bindRange('osc2-detune', 'osc2Detune', (v) => `${v > 0 ? '+' : ''}${v} ct`);
 bindRange('osc2-level', 'osc2Level', (v) => `${v}%`);
@@ -4953,6 +5040,11 @@ function frame() {
       showSongBar(ev.bar);
       continue;
     }
+    if (ev.kind === 'bass') {
+      $('out-osc2-wrap').hidden = false;
+      $('out-osc2').textContent = noteName(ev.note);
+      continue;
+    }
     if (ev.kind === 'arr') {
       renderArr();
       continue;
@@ -4994,7 +5086,7 @@ function frame() {
       ? `tail → ${noteName(ev.note)}`
       : ev.velocity ? noteName(ev.note) : '(muted)';
     $('out-vel').textContent = ev.velocity && !ev.silent ? `vel ${ev.velocity}` : '';
-    $('out-osc2-wrap').hidden = ev.note2 === null;
+    if (settings.osc2Mode !== 'line') $('out-osc2-wrap').hidden = ev.note2 === null; // a bass line shows its own notes
     if (ev.note2 !== null) $('out-osc2').textContent = ev.velocity ? noteName(ev.note2) : '(muted)';
     if (ev.velocity && !ev.silent) {
       for (const n of [ev.note, ev.note2]) {

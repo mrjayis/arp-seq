@@ -62,6 +62,13 @@ The arp has two monophonic voices: **Oscillator 1**, and **Oscillator 2**, which
   - **LP** is filter only: the note holds for exactly the arp's Gate time.
 - **Resonance** for the gate's filter.
 - **Attack** and **Release** (shared by both oscillators): Attack is how quickly each note fades in. Release adds tail: on top of the ring in Combo/VCA, or as the fade after the gate in LP. At their minimums the voices sound as before.
+- **Bass line** (Oscillator 2's third Sequence choice): instead of following the arp's steps, oscillator 2 plays its own bass line over the chords, the way a play-along app such as iReal Pro has its bassist do. It plays on the beat, following the progression (or, with the progression off, the keys you hold), even with the arp switched off. **Style:**
+  - **Walking:** a quarter note a beat. Each chord starts on its root; the last beat before the next chord leads into it by a half step from below or above, or from its fifth; the beats between move by step through the chord's scale (Dorian for minor 7ths, Mixolydian for 7ths, altered for 7alt, and so on), with chord tones on the stronger beats. The line carries on from its last note and keeps to the bass's range.
+  - **Two-feel:** root and fifth in half notes.
+  - **Bossa:** root on 1, the fifth on the "and" of 2, held over.
+  - **Roots:** the root once a bar.
+  - **Auto** picks from the style of the iReal Pro song you loaded: Walking for swing (and anything else), Bossa for bossa, samba and Latin styles, Two-feel for ballads, Roots for rock, pop, funk and even-8ths styles.
+  Choose **Sound: Upright bass** for the full effect (Transpose −12 puts it in the bass's real register). The bass line is written from E2 up, so with Transpose 0 on the West-coast sound it plays an octave higher, like a synth bass. MIDI Out Ch sends it on oscillator 2's channel.
 - **Mod → Osc 1** (in Oscillator 2's panel): oscillator 2 modulates oscillator 1 with **AM** or **FM**, using its own pitch for each step (Same/Inverted, Transpose, Detune) and its own Wave.
   - **Depth** is the AM amount, or the FM index (0–8).
   - Off-step tail slides move the modulator too.
