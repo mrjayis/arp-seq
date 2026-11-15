@@ -5,28 +5,28 @@ import {
   OSC2_MODES, osc2Note, euclid, MAX_EUCLID_STEPS, chordVoicing, patternAt,
   PAD_CHORDS, MAX_PROGRESSION, PROGRESSION_BEATS, PROGRESSION_PRESETS, progressionAt, slotNotes,
   progressionChord, anticipatedSlot, chordTie, SLOT_OCTAVES, humanizeOffset, humanizeLevel,
-  MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic,
+  MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=148';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=148';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=148';
-import { Midi } from './midi.js?v=148';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=148';
+} from './core.js?v=150';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=150';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=150';
+import { Midi } from './midi.js?v=150';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=150';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=148';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=148';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=148';
+} from './percussion.js?v=150';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=150';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=150';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=148';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=148';
+} from './breaks.js?v=150';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=150';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=148';
+} from './mono.js?v=150';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -91,6 +91,7 @@ const settings = {
   tuningPure: true, // with Just tuning: no deliberate detuning, vibrato or chorus wobble
   tuning: 'equal', // 'equal' | 'just' | 'just7': adaptive just intonation to the chord now playing
   humanize: 0, // 0–100: random timing and level variation for every section
+  arrBars: 4, // Arr: how often the arrangement changes
   scoreOn: false,
   scoreId: '', // the piece chosen in the Score player
   scoreVoices: {}, // {pieceId: ['arp' | 'chord' | 'mono' | 'off', …]} one per part
@@ -341,7 +342,7 @@ function ensureAudio() {
         sends[fx][src] = { pre, post };
       }
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=148', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=150', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -867,6 +868,7 @@ const humanLevel = (v, max) => humanizeLevel(v, settings.humanize / 100, Math.ra
 function onPulse(time, pulse, pulseDuration) {
   // A recalled scene takes over on a bar's downbeat, before anything on it is scheduled.
   if (pendingScene && pulse % (PPQN * 4) === 0) applyPendingScene();
+  arrPulse(pulse, time);
   if (settings.clockOut && settings.sync === 'internal') midi.clock(toPerfMs(time));
   stepProgression(time, pulse);
   const swing = settings.swing / 100;
@@ -4735,6 +4737,10 @@ function frame() {
       showSongBar(ev.bar);
       continue;
     }
+    if (ev.kind === 'arr') {
+      renderArr();
+      continue;
+    }
     if (ev.kind === 'drum-overlay') {
       showDrumOverlay(ev.overlay);
       continue;
@@ -5041,16 +5047,70 @@ const SOLO_PANELS = {
 };
 const soloed = new Set();
 const soloButtons = {};
-function applySolo(instant = false) {
+function applySolo(instant = false, at = null) {
   if (!ctx) return;
+  const t = at ?? ctx.currentTime;
   for (const key of Object.values(SOLO_PANELS)) {
     const bus = buses[key];
     if (!bus) continue;
-    const v = soloed.size === 0 || soloed.has(key) ? 1 : 0;
+    // A section sounds when it's soloed (or nothing is) and Arr hasn't muted it.
+    const v = (soloed.size === 0 || soloed.has(key)) && !arrMuted.has(key) ? 1 : 0;
     if (instant) bus.gain.value = v;
-    else bus.gain.setTargetAtTime(v, ctx.currentTime, 0.008);
+    else bus.gain.setTargetAtTime(v, t, 0.008);
   }
 }
+
+// ---- Arr: an automatic arranger. Every few bars, on the bar line, it mutes a random
+// selection of the sections that are on (at least two keep playing). Cancel brings
+// everything back.
+const arrMuted = new Set();
+let arrOn = false;
+let arrReroll = false; // pressed Arr while running: change on the very next bar
+const ARR_SECTIONS = { arp: 'arpOn', chords: 'chordOn', bass: 'monoOn', perc: 'drumOn', break: 'breakOn' };
+
+/** On a bar line: maybe change the arrangement (called from the clock). */
+function arrPulse(pulse, time) {
+  if (!arrOn || pulse % (PPQN * 4) !== 0) return;
+  const bar = pulse / (PPQN * 4);
+  if (!arrReroll && bar % settings.arrBars !== 0) return;
+  arrReroll = false;
+  const active = Object.keys(ARR_SECTIONS).filter((k) => settings[ARR_SECTIONS[k]]);
+  const next = arrangeMutes(active, arrMuted);
+  arrMuted.clear();
+  for (const k of next) arrMuted.add(k);
+  applySolo(false, time); // lands exactly on the bar line
+  uiEvents.push({ kind: 'arr', time });
+}
+
+function renderArr() {
+  $('arr').setAttribute('aria-pressed', String(arrOn));
+  $('arr').textContent = arrOn ? `Arr ${arrMuted.size ? `−${arrMuted.size}` : '●'}` : 'Arr';
+  $('arr-cancel').disabled = !arrOn && !arrMuted.size;
+  for (const [label, key] of Object.entries(SOLO_PANELS)) {
+    const panel = document.querySelector(`main > .panel[aria-label="${label}"]`);
+    panel?.classList.toggle('arr-muted', arrMuted.has(key));
+    dockChips.get(label)?.classList.toggle('arr-muted', arrMuted.has(key));
+  }
+}
+
+$('arr').addEventListener('click', () => {
+  if (arrOn) arrReroll = true; // already arranging: a new arrangement on the next bar
+  else {
+    arrOn = true;
+    arrReroll = true; // the first change on the next bar
+    ensureAudio();
+    if (!playing && settings.sync === 'internal') setPlaying(true);
+  }
+  renderArr();
+});
+$('arr-cancel').addEventListener('click', () => {
+  arrOn = false;
+  arrReroll = false;
+  arrMuted.clear();
+  applySolo(); // everything back, now
+  renderArr();
+});
+bindSelect('arr-bars', 'arrBars', [['1', '1 bar'], ['2', '2 bars'], ['4', '4 bars'], ['8', '8 bars']]);
 function renderSolo() {
   for (const [key, btn] of Object.entries(soloButtons)) {
     const on = soloed.has(key);
@@ -5088,9 +5148,11 @@ const DOCK_NAMES = {
   Percussion: 'Drums', 'Breakbeat slicer': 'Break', Song: 'Song', Effects: 'FX', 'Sound and MIDI': 'MIDI',
 };
 const DOCK_GROUP_STARTS = new Set(['Arpeggiator', 'Chord progression', 'Mono synth', 'Percussion', 'Effects']);
+const dockChips = new Map(); // panel label -> its jump-bar chip
 document.querySelectorAll('main > .panel').forEach((panel) => {
   const label = panel.getAttribute('aria-label');
   const chip = document.createElement('button');
+  dockChips.set(label, chip);
   chip.textContent = DOCK_NAMES[label] || label;
   chip.title = `Go to ${panel.querySelector('h2')?.textContent || label}`;
   if (DOCK_GROUP_STARTS.has(label)) chip.classList.add('group-start');

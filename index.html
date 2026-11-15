@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=148" />
-  <link rel="stylesheet" href="mac.css?v=148" />
+  <link rel="stylesheet" href="styles.css?v=150" />
+  <link rel="stylesheet" href="mac.css?v=150" />
 </head>
 <body>
   <main class="device">
@@ -65,6 +65,9 @@
           </span>
         </label>
         <button id="tap" title="Tap tempo">Tap</button>
+        <button id="arr" class="arr" aria-pressed="false" title="Arr: arrange automatically. On the bar line, mute a random selection of the sections that are on (at least two keep playing) and change it every few bars. Press again for a new arrangement on the next bar.">Arr</button>
+        <button id="arr-cancel" class="arr" disabled title="Cancel Arr: everything plays again, now">Cancel</button>
+        <select id="arr-bars" class="arr-bars" aria-label="How often Arr changes the arrangement"></select>
       </div>
       <div class="dock-nav" id="dock-nav" aria-label="Jump to a window"></div>
     </nav>
@@ -826,6 +829,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=148"></script>
+  <script type="module" src="src/app.js?v=150"></script>
 </body>
 </html>

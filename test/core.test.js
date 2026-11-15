@@ -487,3 +487,22 @@ test('autoTonic finds the key from the whole progression', () => {
   assert.equal(autoTonic(p([9, 'min7'], [2, 'min7'], [4, 'min7'], [9, 'min7'])), 9); // i–iv–v–i in Am
   assert.equal(autoTonic([]), null);
 });
+
+import { arrangeMutes } from '../src/core.js';
+
+test('Arr mutes some sections, always leaving at least two playing', () => {
+  const all = ['arp', 'chords', 'bass', 'perc', 'break'];
+  let sawSome = false;
+  let sawNone = false;
+  for (let i = 0; i < 500; i++) {
+    const m = arrangeMutes(all);
+    assert.ok(all.length - m.size >= 2);
+    assert.ok([...m].every((k) => all.includes(k)));
+    if (m.size) sawSome = true; else sawNone = true;
+  }
+  assert.ok(sawSome && sawNone);
+  assert.equal(arrangeMutes(['arp', 'perc']).size, 0); // only two: both keep playing
+  assert.equal(arrangeMutes([]).size, 0);
+  // Everything comes up "mute": still two left.
+  assert.equal(arrangeMutes(all, new Set(), () => 0).size, 3);
+});
