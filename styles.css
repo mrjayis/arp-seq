@@ -201,6 +201,11 @@ h2::after {
 .check input { accent-color: var(--mod); width: 16px; height: 16px; margin: 0; }
 
 .status { color: var(--ink-2); font-size: 13px; font-style: italic; padding-bottom: 6px; }
+/* A menu is as wide as its longest choice (a long file name, say): never wider than the screen. */
+select { max-width: min(100%, calc(100vw - 130px)); text-overflow: ellipsis; } /* room for its label beside it */
+.field { max-width: 100%; }
+/* File names can be one long unbroken word: let them wrap instead of widening the page. */
+.status { overflow-wrap: anywhere; min-width: 0; max-width: 100%; }
 
 /* ---------- controls ---------- */
 select, input[type="number"], input[type="text"], button {
@@ -1055,3 +1060,20 @@ body.midi-learn .cc-armed { outline: 3px solid var(--brick) !important; outline-
 .pads-overlay.recording .pads-box { border-top-color: #c0392b; }
 .pads-tip { margin: 8px 0 0; font-size: 12px; color: var(--ink-3); text-align: center; }
 .trow.just-written { outline: 2px solid var(--mod); outline-offset: -2px; }
+
+/* ---------- narrow phones: nothing wider than the screen ---------- */
+@media (max-width: 420px) {
+  /* Segmented switches (the harmonizer's modes and the like) share the width instead of overflowing. */
+  .seg { max-width: 100%; }
+  .seg button { min-width: 0; flex: 1 1 auto; padding-left: 8px; padding-right: 8px; }
+  /* Tracker fields fit their columns. */
+  .trow select, .trow input { min-width: 0; width: 100%; }
+  /* The transport bar's controls shrink a little before they spill. */
+  .dock-transport { gap: 6px; min-width: 0; }
+  .bpm-wrap input { width: 64px; }
+}
+@media (max-width: 360px) {
+  /* The tracker's columns, a little tighter on the narrowest phones. */
+  .trow { grid-template-columns: 24px 38px 34px 32px 34px 28px 38px minmax(0, 1fr); gap: 1px; }
+  .trow select, .trow input { padding-left: 1px; padding-right: 1px; }
+}
