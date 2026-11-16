@@ -150,6 +150,14 @@ Three kits, all synthesized live with Web Audio (no samples). Each kit remembers
   - **Jazz waltz (3/4):** every row loops every three beats: the ride on 1, 2-and, 3, hi-hat on 2 and 3, the kick on 1, the snare comping.
 
   Raise **Evolve** for more variation, and the Mixer under the grid sets each sound's level and tuning. Use it with an iReal Pro tune, the walking bass line and the Coltrane solo for a whole quartet.
+- **The jazz patterns on every kit:** Latin, 808-style, Linn-style and Your samples each have them too (**Jazz swing**, **Jazz swing (more comping)**, **Jazz swing (brushes)**, **Jazz two-feel**, **Jazz ballad**, **Jazz waltz (3/4)**), played on that kit's nearest sounds, with the same chance comping:
+  - **808-style:** the ride on the cymbal, the foot hi-hat on the closed hat, the snare, rim, kick and low tom; maracas for brushes.
+  - **Linn-style:** the ride on the closed hat (the classic drum-machine swing), cabasa on 2 and 4, snare and kick; cabasa and tambourine for brushes.
+  - **Latin:** maracas as the ride, claves on 2 and 4, the high conga comping, the kick, low conga and the guiro scraping in place of a brush sweep.
+  - **Your samples:** cymbal, closed hat, snare, rim, kick, low tom, cabasa and tambourine.
+
+  (The 808 and Linn open hats are cut off by their closed hats, so the ride doesn't go there: the foot hi-hat on 2 and 4 would choke it.)
+- **Feel** (every kit): **Straight** plays the grid as 16ths, with the Swing slider shuffling them; **Jazz swing** puts each beat's cells on the triplet, as above. Loading a jazz pattern sets Jazz swing and any other pattern sets Straight, but you can change it: Jazz swing on Synth Pop's hats, for example, swings them like a ride.
 
 - **Your samples:** twelve rows (Kick, Snare, Rimshot, Clap, Closed HH, Open HH, Tom Hi, Tom Lo, Tamb, Cabasa, Cowbell, Cymbal) that you fill with your own recordings, such as your own drum machine.
   - Loading: **Load samples…** (or drop a folder's worth of files on the grid) matches each file to a row by the **first three letters** of its name: KIC/BAS → Kick, SNA → Snare, RIM/SID/SST → Rimshot, CLA → Clap, CHH/CLO/HHC/HIH → Closed HH, OHH/OPE/HHO → Open HH, TOM+H/L → toms, TAM, CAB, COW, CRA/RID/CYM. Short codes like BD, SD or CH1 work too, and a prefix shared by the whole batch (e.g. "LinnDrum " or "LD_") or a track number is skipped first. Unrecognised files fill empty rows; drop a single file on a row to replace it.

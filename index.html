@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=193" />
-  <link rel="stylesheet" href="mac.css?v=193" />
+  <link rel="stylesheet" href="styles.css?v=194" />
+  <link rel="stylesheet" href="mac.css?v=194" />
 </head>
 <body>
   <main class="device">
@@ -601,6 +601,7 @@
         <div class="field inline">Pattern <div class="seg slots" id="drum-slots" role="group" aria-label="Drum pattern slot"></div></div>
         <select id="drum-copy" aria-label="Copy this pattern to another slot"><option value="">Copy to…</option></select>
         <label class="field inline">Rhythm <select id="drum-preset"></select></label>
+        <label class="field inline" title="Straight: 16ths on the grid (the Swing slider shuffles them). Jazz swing: each beat's cells fall on the triplet, the swung &quot;and&quot; two-thirds through the beat. The jazz patterns choose it.">Feel <select id="drum-feel"></select></label>
         <label class="field inline slider">Level <output id="drum-level-val"></output>
           <input id="drum-level" type="range" min="0" max="100" value="70" />
         </label>
@@ -872,6 +873,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=193"></script>
+  <script type="module" src="src/app.js?v=194"></script>
 </body>
 </html>
