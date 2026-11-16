@@ -8,28 +8,29 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=196';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=196';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=196';
-import { Midi } from './midi.js?v=196';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=196';
+} from './core.js?v=199';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=199';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=199';
+import { Midi } from './midi.js?v=199';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=199';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, presetConds, presetLens, TRIPLET_FEEL, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=196';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=196';
-import { ColtraneSolo } from './coltrane.js?v=196';
-import { BASS_STYLES, styleForSong, bassLine } from './bass.js?v=196';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=196';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=196';
+} from './percussion.js?v=199';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=199';
+import { Invention } from './invention.js?v=199';
+import { ColtraneSolo } from './coltrane.js?v=199';
+import { BASS_STYLES, styleForSong, bassLine } from './bass.js?v=199';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=199';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=199';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=196';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=196';
+} from './breaks.js?v=199';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=199';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=196';
+} from './mono.js?v=199';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -268,7 +269,7 @@ function save(now = false) {
 window.addEventListener('pagehide', () => save(true));
 
 function applyEngineSettings() {
-  engine.setMode(settings.mode === 'coltrane' ? 'up' : settings.mode); // the solo still steps the engine
+  engine.setMode(MODES.includes(settings.mode) ? settings.mode : 'up'); // a solo mode still steps the engine
   engine.setOctaves(settings.octaves);
   engine.setLatch(settings.latch);
   engine.setLength(settings.length);
@@ -359,7 +360,7 @@ function ensureAudio() {
         sends[fx][src] = { pre, post };
       }
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=196', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=199', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -653,6 +654,7 @@ function soloContext(pulse, rateKey = settings.rate) {
 let soloIntensity = 0.5;
 
 function playArp(step, pulse = 0) {
+  if (settings.mode === 'bach') return; // the invention plays the arp voice itself (inventionPulse)
   let ev = engine.next();
   if (!ev) return;
   if (settings.mode === 'coltrane') {
@@ -1066,6 +1068,7 @@ function onPulse(time, pulse, pulseDuration) {
   if (settings.clockOut && settings.sync === 'internal') midi.clock(toPerfMs(time));
   stepProgression(time, pulse);
   bassPulse(time, pulse, pulseDuration);
+  inventionPulse(time, pulse, pulseDuration);
   const swing = settings.swing / 100;
   // Arp first, so a chord that follows the sequencer uses the same step as the
   // arp note sounding with it.
@@ -1190,6 +1193,7 @@ function setPlaying(on, { fromClock = false } = {}) {
       engine.reset();
       solo.reset();
       monoSolo.reset();
+      invention.reset();
       resetProgression();
       runSeed = (Math.random() * 2 ** 32) >>> 0; // each run evolves differently
       if (settings.clockOut) midi.send([0xfa]);
@@ -1567,15 +1571,26 @@ onRecall(() => { $('clock-out').checked = settings.clockOut; });
 onRecall(() => setLatch(!!settings.latch));
 $('clock-out').addEventListener('change', () => { settings.clockOut = $('clock-out').checked; save(); });
 
-bindSelect('mode', 'mode', [...MODES.map((m) => [m, MODE_LABELS[m]]), ['coltrane', 'Coltrane solo']], (m) => {
-  engine.setMode(m === 'coltrane' ? 'up' : m);
+bindSelect('mode', 'mode', [...MODES.map((m) => [m, MODE_LABELS[m]]), ['coltrane', 'Coltrane solo'], ['bach', 'Bach invention']], (m) => {
+  engine.setMode(MODES.includes(m) ? m : 'up');
   solo.reset();
+  invention.reset();
   renderSoloRow();
 });
 /** The Solo settings (Space, Bebop, Build) show while the arp or the Mono Synth is soloing. */
 function renderSoloRow() {
   $('solo-row').hidden = settings.mode !== 'coltrane' && settings.monoSource !== 'solo';
   $('mono-solo-hint').hidden = settings.monoSource !== 'solo';
+  const arpBach = settings.mode === 'bach';
+  const monoBach = settings.monoSource === 'bach';
+  $('bach-row').hidden = !arpBach;
+  $('bach-hint').textContent = monoBach
+    ? 'The upper voice; the Mono Synth plays the lower voice against it.'
+    : 'A single line. Set the Mono Synth\'s Play to Bach invention too for the lower voice in imitation.';
+  $('mono-bach-hint').hidden = !monoBach;
+  $('mono-bach-hint').textContent = arpBach
+    ? 'The lower voice, against the arp\'s upper voice.'
+    : 'A single line. Set the Arpeggiator\'s Mode to Bach invention too: it takes the upper voice and this one the lower.';
 }
 onRecall(() => renderSoloRow());
 bindRange('solo-space', 'soloSpace', (v) => (v ? `${v}%` : 'none'));
@@ -3787,6 +3802,60 @@ function monoAllOff() {
   monoGateOpen = false;
 }
 
+// ---- Bach invention: two voices in imitation over the chords (invention.js). The arp
+// (Mode: Bach invention) plays the upper voice, the Mono Synth (Play: Bach invention) the
+// lower; either alone plays a single line. In 16ths, straight, whatever the Rate.
+const invention = new Invention();
+
+/** The form marks for the bar at `pulse`: the last bar of a pass through the progression
+ * (or of 8 bars without one) is a cadence; the bar after it, long notes. */
+function inventionInfo(pulse) {
+  const bar = PPQN * 4;
+  const slots = settings.progOn ? settings.progression.slice(0, settings.progLength) : [];
+  const total = slots.reduce((n, s) => n + s.beats, 0) * PPQN;
+  // A section is at least 8 bars: as many passes through a short progression as that takes.
+  const round = total >= bar ? Math.floor(total / bar) : 0;
+  const bars = round ? round * Math.ceil(8 / round) : 8;
+  const span = bars * bar;
+  const inRound = Math.floor((pulse % span) / bar);
+  return { cadence: inRound === bars - 1, afterCadence: inRound === 0 && pulse >= span };
+}
+
+function inventionPulse(time, pulse, pulseDuration) {
+  const arpBach = settings.mode === 'bach' && settings.arpOn;
+  const monoBach = settings.monoSource === 'bach' && settings.monoOn;
+  if (!arpBach && !monoBach) return;
+  const sixteenth = RATES['1/16'];
+  if (pulse % sixteenth) return;
+  const s = pulse / sixteenth;
+  const chord = currentChord();
+  const info = inventionInfo(pulse);
+  const len16 = sixteenth * pulseDuration;
+  // Who plays what: both on, the arp has the upper voice; alone, either plays it.
+  const parts = arpBach && monoBach ? [['upper', 'arp'], ['lower', 'mono']] : [['upper', arpBach ? 'arp' : 'mono']];
+  for (const [voice, inst] of parts) {
+    const ev = invention.step(voice, s, chord, { ...info, other: invention.last.upper });
+    if (!ev) continue;
+    const t = human({ time, duration: len16 }).time;
+    // Detached a little, as on a harpsichord; long notes held.
+    const len = ev.len * len16 * (ev.len >= 4 ? 0.95 : 0.8);
+    const velocity = humanLevel(ev.kind === 'subject' || ev.kind === 'inversion' ? 100 : 86);
+    if (inst === 'arp') {
+      const note2 = settings.osc2On && settings.osc2Mode !== 'line' ? Math.max(0, Math.min(127, ev.note + settings.osc2Transpose)) : null;
+      playVoice(ev.note, note2, velocity, t, len, ev.note);
+      arpTail = { note: ev.note, note2, modNote: ev.note, root: chordRoot() };
+    } else {
+      const n = Math.max(0, Math.min(127, ev.note + settings.monoTranspose));
+      if (monoSynth && settings.synthOn) { monoSynth.noteOn(tuned(n), t, { legato: false }); monoSynth.noteOff(t + len); }
+      monoRoot = chordRoot();
+      if (settings.monoMidiCh >= 0) {
+        midi.noteOn(n, velocity, toPerfMs(t), settings.monoMidiCh);
+        midi.noteOff(n, toPerfMs(t + len), settings.monoMidiCh);
+      }
+    }
+  }
+}
+
 // The Mono Synth's own soloist (Play: Coltrane solo): a second line, independent of the arp's.
 const monoSolo = new ColtraneSolo();
 
@@ -3823,6 +3892,7 @@ function playMonoSolo(step, pulse) {
 
 function playMonoStep(step, pulse = 0) {
   if (settings.monoSource === 'solo') { playMonoSolo(step, pulse); return; }
+  if (settings.monoSource === 'bach') return; // played by the invention (inventionPulse)
   const seq = settings.monoSeq;
   if (!seq.length) return;
   const idx = step.stepNumber % seq.length;
@@ -4049,10 +4119,11 @@ $('mono-demo').addEventListener('click', () => {
 });
 
 bindSelect('mono-rate', 'monoRate', Object.keys(RATES).map((r) => [r, r]));
-bindSelect('mono-source', 'monoSource', [['seq', 'Sequence'], ['solo', 'Coltrane solo']], () => {
+bindSelect('mono-source', 'monoSource', [['seq', 'Sequence'], ['solo', 'Coltrane solo'], ['bach', 'Bach invention']], () => {
   monoSolo.reset();
+  invention.reset();
   renderSoloRow();
-  if (settings.monoSource === 'solo') showMonoStep(-1);
+  if (settings.monoSource !== 'seq') showMonoStep(-1);
 });
 renderSoloRow();
 bindRange('mono-gate', 'monoGate', (v) => `${v}%`);
