@@ -50,6 +50,7 @@ Make the drums and break move through sections instead of looping one bar.
 ### Mono synth (101-style)
 - **Little keyboard:** two octaves under the steps for writing the sequence directly. Tap a key and it goes in at the cursor, with no need to arm Write. Legato, Rest, Tie and Back work with it as usual. **−** and **+** move it by an octave (C0 to C8). While the sequence plays, the key of the note now sounding is marked.
 A monophonic bass/lead voice with its own step sequencer, playing in time with everything else.
+- **Play: Coltrane solo:** instead of its sequence (which is kept), the Mono Synth plays a solo line over the chords: the same soloist as the Arpeggiator's **Coltrane solo** mode (pentatonic cells, bebop enclosures and runs, motifs, phrases ending on the downbeat, the build), at the Mono's **Rate**, with its sound and filter. **Legato** makes the line glide from note to note like a 101 lead (a phrase's last note still lets go into the breath); **Transpose** moves it by octaves; **Gate** sets how short the notes are. It has its own line, separate from the arp's, so the two can play at once. Space, Bebop and Build are shared: they're in the Arpeggiator's Solo row, which shows whenever either is soloing.
 - **Voice:**
   - **Oscillator:** Saw, Pulse (Width, plus PWM from the LFO), Sub (−1 oct square, −2 oct square or −2 oct narrow pulse) and Noise, each with its own level.
   - **Filter:** a 24 dB resonant low-pass with Cutoff, Resonance, Env amount and Key follow.
