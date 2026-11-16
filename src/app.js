@@ -8,28 +8,28 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=189';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=189';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=189';
-import { Midi } from './midi.js?v=189';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=189';
+} from './core.js?v=193';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=193';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=193';
+import { Midi } from './midi.js?v=193';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=193';
 import {
-  DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=189';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=189';
-import { ColtraneSolo } from './coltrane.js?v=189';
-import { BASS_STYLES, styleForSong, bassLine } from './bass.js?v=189';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=189';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=189';
+  DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, presetConds, presetLens, TRIPLET_FEEL, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
+} from './percussion.js?v=193';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=193';
+import { ColtraneSolo } from './coltrane.js?v=193';
+import { BASS_STYLES, styleForSong, bassLine } from './bass.js?v=193';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=193';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=193';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=189';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=189';
+} from './breaks.js?v=193';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=193';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=189';
+} from './mono.js?v=193';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -358,7 +358,7 @@ function ensureAudio() {
         sends[fx][src] = { pre, post };
       }
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=189', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=193', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -1141,12 +1141,17 @@ function playDrums(step) {
     conds: data.conds, lens: data.lens, muted: settings.drumMuted, voices,
     fill: isFillBar(step.stepNumber, settings.drumFillEvery),
   });
+  // A kit with a triplet feel (jazz) places each beat's four cells on the triplet: the
+  // beat, the triplet's middle, the swung "and" at two-thirds, the last sixth. (The
+  // Swing slider doesn't apply: the feel already is the swing.)
+  const k = step.stepNumber % 4;
+  const at = kit().feel === 'triplet' ? step.time - step.delay + (TRIPLET_FEEL[k] * 4 - k) * step.duration : step.time;
   for (const { id, gain } of hits) {
     // Each row has its own level and tuning (the sample mixer, or the kit's mixer).
     const { level, tune: rowTune } = rowMix(id);
     const rowLevel = level / 100;
     // Humanize: each hit its own small push or drag and level.
-    const t = settings.humanize > 0 ? human(step).time : step.time;
+    const t = settings.humanize > 0 ? human({ ...step, time: at }).time : at;
     if (drums && audible('drums') && rowLevel > 0) drums.play(id, t, humanLevel(gain, 1.5) * rowLevel, rowTune);
     if (settings.drumMidiCh >= 0) {
       const { gm } = voices.find((v) => v.id === id);
@@ -2196,9 +2201,11 @@ function normalizeRows(rows, voices) {
 function normalizeDrumState(state = {}) {
   const { presets, voices } = kit();
   const preset = presets[state.preset] || state.preset === 'custom' ? state.preset : Object.keys(presets)[0];
-  const rows = normalizeRows(state.rows, voices) || parsePattern(presets[preset] || {}, voices);
-  const conds = state.conds && typeof state.conds === 'object' ? state.conds : {};
-  const lens = state.lens && typeof state.lens === 'object' ? state.lens : {};
+  const saved = normalizeRows(state.rows, voices);
+  const rows = saved || parsePattern(presets[preset] || {}, voices);
+  // A pattern fresh from a preset brings its own conditions and lengths (jazz comping, 3/4).
+  const conds = saved ? (state.conds && typeof state.conds === 'object' ? state.conds : {}) : presetConds(presets[preset]);
+  const lens = saved ? (state.lens && typeof state.lens === 'object' ? state.lens : {}) : presetLens(presets[preset], voices);
   const out = { preset, rows, conds: {}, lens: {} };
   for (const { id } of voices) {
     const c = Array.isArray(conds[id]) ? conds[id] : [];
@@ -2376,8 +2383,11 @@ function buildDrums() {
     if (preset.value === 'custom') return;
     settings.drumPreset = preset.value;
     settings.drumRows = parsePattern(kit().presets[preset.value], kitVoices());
-    settings.drumConds = {};
-    loadKitState(); // fresh, empty conditions for the new preset
+    // The preset's own chance conditions (jazz comping) and row lengths (a 3/4 waltz), else none.
+    settings.drumConds = presetConds(kit().presets[preset.value]);
+    settings.drumLens = presetLens(kit().presets[preset.value], kitVoices());
+    loadKitState();
+    buildDrumGrid(); // the row-length menus too (a 3/4 preset loops every 12)
     renderDrumGrid();
     save();
   });

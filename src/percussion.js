@@ -314,15 +314,104 @@ const LATIN_ON_808 = Object.fromEntries(
   Object.entries(DRUM_PRESETS).map(([name, preset]) => [name, mapPreset(preset, LATIN_TO_808)]),
 );
 
+// ---- Jazz: a small-band kit played light, on a triplet (swing) grid. In each beat's four
+// cells, cell 0 is the beat, cell 1 the middle of the triplet, cell 2 the swung "and"
+// (two-thirds through the beat) and cell 3 the last sixth. Snare comping uses chance
+// conditions, so it's different every bar; Evolve varies it further.
+const VOICES_JAZZ = [
+  { id: 'jRide', label: 'Ride', gm: 51 },
+  { id: 'jBell', label: 'Ride bell', gm: 53 },
+  { id: 'jHat', label: 'Hi-hat', gm: 44 },
+  { id: 'jSnare', label: 'Snare', gm: 38 },
+  { id: 'jRim', label: 'X-stick', gm: 37 },
+  { id: 'jKick', label: 'Kick', gm: 35 },
+  { id: 'jTom', label: 'Tom', gm: 43 },
+  { id: 'jBrush', label: 'Sweep', gm: 40 },
+  { id: 'jTap', label: 'Brush', gm: 39 },
+];
+
+// The classic time: "ding, ding-a ding, ding-a" on the ride (accents on 2 and 4), hi-hat
+// foot on 2 and 4, the bass drum feathered on every beat, the snare comping.
+const PRESETS_JAZZ = {
+  Swing: {
+    jRide: 'x...X.x.x...X.x.',
+    jHat: '....X.......X...',
+    jKick: 'x...x...x...x...',
+    jSnare: '..x..xx...x..xx.',
+    conds: { jSnare: { 2: '25%', 5: '25%', 6: '50%', 10: '25%', 13: '25%', 14: '50%' } },
+  },
+  'Swing (more comping)': {
+    jRide: 'x...X.x.x...X.x.',
+    jHat: '....X.......X...',
+    jKick: 'x...x...x...x.x.',
+    jSnare: '..x.xxx..xx.xxx.',
+    jTom: '..............x.',
+    conds: {
+      jSnare: { 2: '50%', 4: '25%', 5: '25%', 6: '75%', 9: '25%', 10: '50%', 12: '25%', 13: '50%', 14: '50%' },
+      jKick: { 14: '25%' }, jTom: { 14: '25%' },
+    },
+  },
+  'Swing (brushes)': {
+    jBrush: 'X...X...X...X...',
+    jTap: '....x.x.....x.x.',
+    jHat: '....X.......X...',
+    jKick: 'x.......x.......',
+    conds: { jTap: { 6: '50%', 14: '50%' } },
+  },
+  'Two-feel': {
+    jRide: 'x...X.x.x...X.x.',
+    jHat: '....X.......X...',
+    jKick: 'X.......X.......',
+    jRim: '............x...',
+    conds: { jRim: { 12: '50%' } },
+  },
+  Ballad: {
+    jBrush: 'X...X...X...X...',
+    jTap: '....x.......x...',
+    jKick: 'x.......x.......',
+    jBell: 'x...............',
+    conds: { jBell: { 0: '1:4' } },
+  },
+  'Jazz waltz (3/4)': {
+    jRide: 'X...x.x.x...', // 1, 2-and, 3
+    jHat: '....x...x...', // 2 and 3
+    jKick: 'x...........',
+    jSnare: '..x...x...x.',
+    conds: { jSnare: { 2: '25%', 6: '25%', 10: '50%' } },
+    lens: 12,
+  },
+};
+
 /** Menu order (a numeric key like '808' would otherwise sort first). */
-export const KIT_ORDER = ['latin', '808', 'linn', 'user'];
+export const KIT_ORDER = ['latin', '808', 'linn', 'jazz', 'user'];
 
 export const KITS = {
   latin: { label: 'Latin', voices: VOICES, presets: DRUM_PRESETS },
   808: { label: '808-style', voices: VOICES_808, presets: { ...PRESETS_808, ...LATIN_ON_808 } },
   linn: { label: 'Linn-style', voices: VOICES_LINN, presets: PRESETS_LINN },
+  jazz: { label: 'Jazz', voices: VOICES_JAZZ, presets: PRESETS_JAZZ, feel: 'triplet' },
   user: { label: 'Your samples', voices: VOICES_USER, presets: PRESETS_USER },
 };
+
+/** A preset's chance conditions as {voiceId: [16 condition strings]} (presets may have none). */
+export function presetConds(preset = {}) {
+  const out = {};
+  for (const [id, at] of Object.entries(preset.conds || {})) {
+    out[id] = Array.from({ length: DRUM_STEPS }, (_, i) => (CONDITIONS[at[i]] !== undefined ? at[i] : ''));
+  }
+  return out;
+}
+
+/** A preset's row lengths (every row the same, e.g. 12 for 3/4), or {} for full bars. */
+export function presetLens(preset = {}, voices = VOICES) {
+  return preset.lens ? Object.fromEntries(voices.map(({ id }) => [id, preset.lens])) : {};
+}
+
+/**
+ * Where a 16th-grid cell falls in its beat under a kit's feel, as a fraction of the beat.
+ * Triplet (jazz): the beat, the triplet's middle, the swung "and" at 2/3, the last sixth.
+ */
+export const TRIPLET_FEEL = [0, 1 / 3, 2 / 3, 5 / 6];
 
 /** Parse a preset into {voiceId: Array<0 | 0.65 | 1>} with every voice of the kit present. */
 export function parsePattern(preset = {}, voices = VOICES) {
@@ -608,6 +697,89 @@ export class DrumSynth {
       .connect(decay(g * 0.027, 0.85));
   }
 
+  // ---------------------------------------------------------------- Jazz
+
+  /** Inharmonic partials (a cymbal's metal), summed. */
+  partials(t, stop, freqs, type = 'square') {
+    const sum = this.ctx.createGain();
+    sum.gain.value = 1 / freqs.length;
+    for (const f of freqs) {
+      const o = this.ctx.createOscillator();
+      o.type = type;
+      o.frequency.value = this.hz(f);
+      o.connect(sum);
+      o.start(t);
+      o.stop(stop);
+    }
+    return sum;
+  }
+
+  /** A gain that rises to `peak` and dies away with time constant `tau`. */
+  swell(t, peak, attack, tau, dest = this.out) {
+    const a = this.ctx.createGain();
+    a.gain.setValueAtTime(0, t);
+    a.gain.linearRampToValueAtTime(peak, t + attack);
+    a.gain.setTargetAtTime(0, t + attack, tau);
+    a.connect(dest);
+    return a;
+  }
+
+  // The ride: a ping on top of a long, dark wash.
+  jRide(t, g) {
+    g *= 1.6; // the ride carries the time: on top of everything else in the kit
+    const len = 3;
+    const metal = this.partials(t, t + len, [287, 401, 529, 712, 931, 1187, 1503, 1879]);
+    metal.connect(this.filter('bandpass', 4600, 0.6)).connect(this.filter('highpass', 2600)).connect(this.swell(t, g * 0.5, 0.004, 0.75));
+    metal.connect(this.filter('highpass', 7000)).connect(this.swell(t, g * 0.22, 0.002, 0.35));
+    // The stick's ping.
+    const ping = this.partials(t, t + 0.5, [3150, 4730], 'triangle');
+    ping.connect(this.swell(t, g * 0.1, 0.001, 0.09));
+    this.noiseHit(t, g * 0.07, 0.6, 'highpass', 8000);
+  }
+  // The bell of the ride: brighter and more ringing, more pitch than wash.
+  jBell(t, g) {
+    const bell = this.partials(t, t + 2, [905, 1366, 2290, 3317], 'sine');
+    bell.connect(this.swell(t, g * 0.4, 0.002, 0.45));
+    this.jRide(t, g * 0.22);
+  }
+  // Hi-hat played with the foot: the two cymbals closing, a short "chick".
+  jHat(t, g) {
+    this.noiseHit(t, g * 0.26, 0.05, 'bandpass', 4200, 1.4, this.hatBus(t, 'jazz', false));
+    this.noiseHit(t, g * 0.07, 0.025, 'lowpass', 800);
+  }
+  jSnare(t, g) {
+    this.tone(t, g * 0.21, 215, 0.12, 1.2, 'triangle', 0.02); // comping: under the ride
+    this.noiseHit(t, g * 0.3, 0.2, 'bandpass', 2600, 0.6);
+    this.noiseHit(t, g * 0.085, 0.08, 'highpass', 5500);
+  }
+  // Cross-stick: the stick laid across the rim, woody.
+  jRim(t, g) {
+    this.tone(t, g * 0.32, 560, 0.05, 1, 'triangle');
+    this.tone(t, g * 0.18, 1650, 0.03, 1, 'sine');
+    this.noiseHit(t, g * 0.12, 0.015, 'bandpass', 3000, 1.5);
+  }
+  // An 18" bass drum, felt beater: soft, round, short; "feathered" it's felt more than heard.
+  jKick(t, g) {
+    this.tone(t, g * 0.25, 64, 0.4, 1.35, 'sine', 0.04);
+    this.noiseHit(t, g * 0.025, 0.02, 'lowpass', 900);
+  }
+  jTom(t, g) {
+    this.tone(t, g * 0.6, 92, 0.6, 1.2, 'sine', 0.05);
+    this.noiseHit(t, g * 0.05, 0.05, 'lowpass', 1200);
+  }
+  // Brushes: a sweep across the head (a swell of filtered noise) and a tap.
+  jBrush(t, g) {
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.noise;
+    src.connect(this.filter('bandpass', 2300, 0.45)).connect(this.swell(t, g * 0.22, 0.09, 0.12));
+    src.start(t, Math.random() * 0.4);
+    src.stop(t + 0.7);
+  }
+  jTap(t, g) {
+    this.noiseHit(t, g * 0.32, 0.1, 'bandpass', 3400, 0.7);
+    this.tone(t, g * 0.05, 200, 0.05, 1.1, 'triangle');
+  }
+
   // ---------------------------------------------------------------- Linn-style
   // Tighter and punchier: short sweeps, a click on the kick, brighter noise.
 
@@ -706,8 +878,8 @@ function fillLanes(voices) {
   const ids = voices.map((v) => v.id);
   const pick = (...res) => ids.filter((id) => res.some((re) => re.test(id)));
   return {
-    snare: pick(/^sd/, /^u_snare$/, /^cp/)[0] || pick(/conga ?hi|congaHi|bongoHi|hc808/i)[0],
-    low: pick(/^lt808$/, /^tomLinn$/, /^u_tomlo$/, /^congaLo$/, /^lc808$/)[0],
+    snare: pick(/^sd/, /^u_snare$/, /^jSnare$/, /^cp/)[0] || pick(/conga ?hi|congaHi|bongoHi|hc808/i)[0],
+    low: pick(/^lt808$/, /^tomLinn$/, /^u_tomlo$/, /^jTom$/, /^congaLo$/, /^lc808$/)[0],
     high: pick(/^ht808$/, /^u_tomhi$/, /^bongoHi$/, /^mc808$/, /^congaHi$/)[0],
   };
 }
