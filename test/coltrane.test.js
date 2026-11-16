@@ -37,14 +37,14 @@ test('the major 7th uses its own pentatonic, the 5th\'s and the 2nd\'s (Lydian);
   assert.ok(digital > 100, `1-2-3-5 shapes: ${digital}`);
 });
 
-test('the line: a new cell on each chord, flowing in small steps, in range', () => {
+test('pure pentatonic (Bebop 0): a new cell on each chord, flowing in small steps, in range', () => {
   const solo = new ColtraneSolo({ rng: seeded(3) });
   const changes = [[11, 'maj7'], [2, 'dom7'], [7, 'maj7'], [10, 'dom7'], [3, 'maj7'], [3, 'maj7'], [9, 'min7'], [2, 'dom7']];
   const notes = [];
   for (let round = 0; round < 8; round++) {
     for (const [root, type] of changes) {
       // two beats of 8ths per chord: four steps
-      for (let s = 0; s < 4; s++) notes.push({ n: solo.next({ root, type }, { space: 0, stepsPerBeat: 2 }), root, type, s });
+      for (let s = 0; s < 4; s++) notes.push({ n: solo.next({ root, type }, { space: 0, stepsPerBeat: 2, bebop: 0, intensity: 0.3 }), root, type, s });
     }
   }
   assert.ok(notes.every((x) => x.n !== null), 'no breaths with Space at 0');
@@ -80,4 +80,86 @@ test('a chord held for a while does not repeat the same cell back to back', () =
   }
   const same = cells.slice(1).filter((c, i) => c.join() === cells[i].join()).length;
   assert.ok(same <= 2, `${same} repeated cells`);
+});
+
+// Giant Steps' first eight bars, as the app passes them: chord, the next chord, steps left.
+const GS = [[11, 'maj7', 4], [2, 'dom7', 4], [7, 'maj7', 4], [10, 'dom7', 4], [3, 'maj7', 8], [9, 'min7', 4], [2, 'dom7', 4],
+  [7, 'maj7', 4], [10, 'dom7', 4], [3, 'maj7', 4], [6, 'dom7', 4], [11, 'maj7', 8], [5, 'min7', 4], [10, 'dom7', 4]];
+function play(solo, rounds, opts) {
+  const out = [];
+  for (let r = 0; r < rounds; r++) {
+    GS.forEach(([root, type, steps], i) => {
+      const [nr, nt] = GS[(i + 1) % GS.length];
+      for (let s = 0; s < steps; s++) {
+        const n = solo.next({ root, type }, { space: 0.1, stepsPerBeat: 2, next: { root: nr, type: nt }, stepsLeft: steps - s, ...opts });
+        out.push({ n, root, type, first: s === 0, kind: solo.kind });
+      }
+    });
+  }
+  return out;
+}
+const SCALES = { maj7: [0, 2, 4, 6, 7, 9, 11], dom7: [0, 2, 4, 5, 7, 9, 10, 11], min7: [0, 2, 3, 4, 5, 7, 9, 10] };
+const TONES = { maj7: [0, 4, 7, 11], dom7: [0, 4, 7, 10], min7: [0, 3, 7, 10] };
+
+test('enclosures: a step above and a half step below, landing on a chord tone right on the change', () => {
+  const out = play(new ColtraneSolo({ rng: seeded(31) }), 12, { bebop: 1, intensity: 0.5 });
+  let landed = 0;
+  for (let k = 2; k < out.length; k++) {
+    const x = out[k];
+    if (!x.first || x.kind !== 'enclosure' || x.n === null) continue;
+    const [a, b] = [out[k - 2].n, out[k - 1].n];
+    assert.ok(TONES[x.type].includes(pc(x.n - x.root)), `landed on ${pc(x.n - x.root)} over ${x.type}`);
+    // the two notes before surround it: one above (1-2 semitones), one a half step below
+    const around = [a - x.n, b - x.n].sort((p, q) => p - q);
+    if (around[0] === -1 && around[1] >= 1 && around[1] <= 2) landed++;
+  }
+  assert.ok(landed >= 10, `enclosures landed: ${landed}`);
+});
+
+test('on every chord change the line is inside the new chord (below the outside intensity)', () => {
+  const out = play(new ColtraneSolo({ rng: seeded(4) }), 10, { bebop: 0.8, intensity: 0.5 });
+  const firsts = out.filter((x) => x.first && x.n !== null);
+  const inside = firsts.filter((x) => SCALES[x.type].includes(pc(x.n - x.root)));
+  assert.equal(inside.length, firsts.length, firsts.filter((x) => !inside.includes(x)).map((x) => `${x.kind} ${pc(x.n - x.root)} ${x.type}`).join(', '));
+});
+
+test('bebop language appears with Bebop up: scale runs, chromatic runs, motifs', () => {
+  const out = play(new ColtraneSolo({ rng: seeded(8) }), 16, { bebop: 1, intensity: 0.7 });
+  const kinds = new Set(out.map((x) => x.kind));
+  for (const k of ['pent', 'bebop', 'chrom', 'motif', 'enclosure']) assert.ok(kinds.has(k), `no ${k} figure`);
+  // three half steps in a row somewhere
+  let chromatic = 0;
+  for (let k = 3; k < out.length; k++) {
+    const d = [1, 2, 3].map((j) => (out[k - j + 1].n ?? 0) - (out[k - j].n ?? 0));
+    if (d.every((x) => Math.abs(x) === 1 && x === d[0])) chromatic++;
+  }
+  assert.ok(chromatic > 3, `chromatic runs: ${chromatic}`);
+  // and with Bebop at 0, none of it
+  const pure = play(new ColtraneSolo({ rng: seeded(8) }), 8, { bebop: 0, intensity: 0.5 });
+  assert.ok(pure.every((x) => ['pent', 'motif'].includes(x.kind) || x.n === null));
+});
+
+test('the build: higher, busier and with side-slips outside only as intensity rises', () => {
+  const avg = (xs) => xs.reduce((a, b) => a + b, 0) / xs.length;
+  const low = play(new ColtraneSolo({ rng: seeded(2) }), 10, { bebop: 0.5, intensity: 0, space: 0.5 });
+  const high = play(new ColtraneSolo({ rng: seeded(2) }), 10, { bebop: 0.5, intensity: 1, space: 0.5 });
+  const notes = (o) => o.filter((x) => x.n !== null).map((x) => x.n);
+  assert.ok(avg(notes(high)) - avg(notes(low)) > 3, `register ${avg(notes(low))} → ${avg(notes(high))}`);
+  assert.ok(notes(high).length > notes(low).length, 'fewer breaths when built up');
+  assert.ok(!low.some((x) => x.kind === 'outside'));
+  assert.ok(high.some((x) => x.kind === 'outside'));
+  // a side-slip is followed straight away by a figure back inside
+  for (let k = 1; k < high.length; k++) {
+    if (high[k - 1].kind === 'outside' && high[k].kind !== 'outside' && high[k].n !== null && high[k].kind === 'pent') {
+      assert.ok(SCALES[high[k].type].includes(pc(high[k].n - high[k].root)));
+    }
+  }
+});
+
+test('restated motifs never stammer on one note', () => {
+  const solo = new ColtraneSolo({ rng: seeded(17) });
+  const out = play(solo, 30, { bebop: 0.6, intensity: 0.6 });
+  for (let k = 1; k < out.length; k++) {
+    if (out[k].kind === 'motif' && out[k - 1].kind === 'motif' && out[k].n !== null) assert.notEqual(out[k].n, out[k - 1].n);
+  }
 });

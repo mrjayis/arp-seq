@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=183" />
-  <link rel="stylesheet" href="mac.css?v=183" />
+  <link rel="stylesheet" href="styles.css?v=189" />
+  <link rel="stylesheet" href="mac.css?v=189" />
 </head>
 <body>
   <main class="device">
@@ -152,7 +152,10 @@
         <span class="row-label">Solo</span>
         <label class="field slider" title="Breath between phrases: none gives one unbroken line (sheets of sound at fast rates)">Space <output id="solo-space-val"></output>
           <input id="solo-space" type="range" min="0" max="100" value="20" /></label>
-        <span class="status hint">A line in Coltrane's manner over the chords: 1-2-3-5 cells from a pentatonic chosen for each chord (on the 2nd of a major 7th, the ♭3, 4 or ♭7 of a minor 7th, the ♭5 of an altered 7th…), a new cell on every change, each starting a step from the last. Rate 1/8 with some Swing is the Giant Steps feel; 1/16 for sheets of sound. Sequencer steps switched off still rest; their pitch offsets are ignored.</span>
+        <label class="field slider" title="Bebop language around the pentatonics: enclosures into each chord change, bebop-scale and chromatic runs. 0 is pure pentatonic.">Bebop <output id="solo-bebop-val"></output>
+          <input id="solo-bebop" type="range" min="0" max="100" value="50" /></label>
+        <label class="field" title="The solo builds over this many choruses: from sparse, lower and inside to dense, higher and more chromatic, with side-slips outside at the peak. Then it starts again.">Build <select id="solo-build"></select></label>
+        <span class="status hint">A line in Coltrane's manner over the chords: 1-2-3-5 cells from a pentatonic chosen for each chord (on the 2nd of a major 7th, the ♭3, 4 or ♭7 of a minor 7th, the ♭5 of an altered 7th…), a new cell on every change, each starting a step from the last. Rate 1/8 with some Swing is the Giant Steps feel; 1/16 for sheets of sound. <b>Bebop</b> adds enclosures, bebop-scale and chromatic runs; motifs come back sequenced through the changes; <b>Build</b> shapes the solo over choruses. Sequencer steps switched off still rest; their pitch offsets are ignored.</span>
       </div>
     </section>
 
@@ -869,6 +872,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=183"></script>
+  <script type="module" src="src/app.js?v=189"></script>
 </body>
 </html>

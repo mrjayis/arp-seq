@@ -8,28 +8,28 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=183';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=183';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=183';
-import { Midi } from './midi.js?v=183';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=183';
+} from './core.js?v=189';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=189';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=189';
+import { Midi } from './midi.js?v=189';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=189';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=183';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=183';
-import { ColtraneSolo } from './coltrane.js?v=183';
-import { BASS_STYLES, styleForSong, bassLine } from './bass.js?v=183';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=183';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=183';
+} from './percussion.js?v=189';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=189';
+import { ColtraneSolo } from './coltrane.js?v=189';
+import { BASS_STYLES, styleForSong, bassLine } from './bass.js?v=189';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=189';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=189';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=183';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=183';
+} from './breaks.js?v=189';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=189';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=183';
+} from './mono.js?v=189';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -42,6 +42,8 @@ const settings = {
   clockOut: false,
   mode: 'up', // an arp mode, or 'coltrane': a solo line over the chords (coltrane.js)
   soloSpace: 20, // %: Coltrane solo, breath between phrases
+  soloBebop: 50, // %: bebop language (enclosures, runs) against pure pentatonics
+  soloBuild: '2', // choruses the solo builds over ('0' = steady)
   rate: '1/16',
   octaves: 1,
   gate: 50,
@@ -356,7 +358,7 @@ function ensureAudio() {
         sends[fx][src] = { pre, post };
       }
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=183', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=189', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -621,18 +623,47 @@ function heldChord(notes) {
   return { root, type };
 }
 
-function playArp(step) {
+/**
+ * What the solo needs to know at clock `pulse`: the next chord and how many steps are
+ * left before it (for enclosures), and where it is in its build (intensity).
+ */
+function soloContext(pulse) {
+  const rate = RATES[settings.rate];
+  const ctx = {
+    space: settings.soloSpace / 100, bebop: settings.soloBebop / 100, stepsPerBeat: PPQN / rate,
+    next: null, stepsLeft: Infinity, intensity: 0.5,
+  };
+  const build = Number(settings.soloBuild) || 0; // choruses to build over (0: steady)
+  const at = progSlotAt(pulse);
+  if (at) {
+    ctx.next = at.next;
+    ctx.stepsLeft = Math.max(1, Math.ceil((at.end - pulse) / rate));
+  }
+  if (build) {
+    // A chorus is once through the progression (8 bars without one); the build starts
+    // again after its peak, like the next soloist.
+    const choruses = at ? at.progress : pulse / (PPQN * 4 * 8);
+    ctx.intensity = 0.1 + 0.9 * ((choruses % build) / build);
+  }
+  soloIntensity = ctx.intensity;
+  return ctx;
+}
+let soloIntensity = 0.5;
+
+function playArp(step, pulse = 0) {
   let ev = engine.next();
   if (!ev) return;
   if (settings.mode === 'coltrane') {
-    const note = ev.rest ? null : solo.next(currentChord(), { space: settings.soloSpace / 100, stepsPerBeat: PPQN / RATES[settings.rate] });
+    const note = ev.rest ? null : solo.next(currentChord(), soloContext(pulse));
     if (note === null) {
       // A breath (or a step switched off): nothing struck.
       uiEvents.push({ kind: 'arp', time: step.time, off: step.time, ...ev, velocity: 0, note2: null });
       return;
     }
-    // The line's note stands in for the arp's; oscillator 2 follows it (offset 0).
-    ev = { ...ev, note, sourceNote: note, offset: 0 };
+    // The line's note stands in for the arp's; oscillator 2 follows it (offset 0). It
+    // plays harder as the solo builds.
+    const velocity = Math.max(1, Math.min(127, Math.round(ev.velocity * (0.8 + 0.4 * soloIntensity))));
+    ev = { ...ev, note, sourceNote: note, offset: 0, velocity };
   }
   if (!settings.arpOn) {
     // Silent: still step, so the sequencer display and following chords keep moving.
@@ -675,24 +706,38 @@ let bassLast = null; // the last bass note (written register), so each line carr
 /** The style in use: Auto follows the loaded song's style. */
 const bassStyle = () => (settings.osc2BassStyle === 'auto' ? styleForSong(settings.progSong ? settings.progStyle : '') : settings.osc2BassStyle);
 
+/**
+ * Where the progression is at clock `pulse`: the slot (i), its start and end pulses,
+ * its chord and the next one (modulation applied), and how far through the whole
+ * progression the clock is (round + fraction). null with the progression off or empty.
+ */
+function progSlotAt(pulse) {
+  if (!settings.progOn) return null;
+  const slots = settings.progression.slice(0, settings.progLength);
+  const total = slots.reduce((n, s) => n + s.beats, 0) * PPQN;
+  if (!total) return null;
+  const t = pulse % total;
+  let at = 0;
+  let i = 0;
+  while (i < slots.length - 1 && at + slots[i].beats * PPQN <= t) { at += slots[i].beats * PPQN; i++; }
+  const start = pulse - (t - at);
+  const end = start + slots[i].beats * PPQN;
+  const nextSlot = slots[(i + 1) % slots.length];
+  return {
+    i, start, end,
+    chord: { root: (slots[i].root + progShiftAt(start) + 120) % 12, type: slots[i].type },
+    next: { root: (nextSlot.root + progShiftAt(end) + 120) % 12, type: nextSlot.type },
+    progress: pulse / total, // rounds played, with the fraction through this one
+  };
+}
+
 /** Plan the bass from `pulse` to the end of the chord (or bar) it's in. null: nothing to play. */
 function planBass(pulse) {
   const barBeats = 4;
   if (settings.progOn) {
-    const slots = settings.progression.slice(0, settings.progLength);
-    const total = slots.reduce((n, s) => n + s.beats, 0) * PPQN;
-    if (!total) return null;
-    const t = pulse % total;
-    let at = 0;
-    let i = 0;
-    while (i < slots.length - 1 && at + slots[i].beats * PPQN <= t) { at += slots[i].beats * PPQN; i++; }
-    const start = pulse - (t - at);
-    const end = start + slots[i].beats * PPQN;
-    const shiftNow = progShiftAt(start);
-    const nextSlot = slots[(i + 1) % slots.length];
-    const shiftNext = progShiftAt(end);
-    const chord = { root: (slots[i].root + shiftNow + 120) % 12, type: slots[i].type };
-    const next = { root: (nextSlot.root + shiftNext + 120) % 12, type: nextSlot.type };
+    const at = progSlotAt(pulse);
+    if (!at) return null;
+    const { start, end, chord, next, i } = at;
     return makePlan(start, end, chord, next, `p${i}|${start}`, barBeats);
   }
   // No progression: follow the keys held, a bar at a time (a new chord starts a new line).
@@ -1027,7 +1072,7 @@ function onPulse(time, pulse, pulseDuration) {
     && !patternAt(pulse, RATES[settings.chordRate], settings.chordHits, settings.chordSteps, settings.chordRotate).hit;
   if (step && !gated) {
     const hstep = human(step);
-    playArp(hstep);
+    playArp(hstep, pulse);
     if (settings.chordMode === 'pad') padFollow(hstep.time);
   }
   const cstep = pulseToStep(pulse, time, pulseDuration, RATES[settings.chordRate], swing);
@@ -1520,6 +1565,8 @@ bindSelect('mode', 'mode', [...MODES.map((m) => [m, MODE_LABELS[m]]), ['coltrane
 $('solo-row').hidden = settings.mode !== 'coltrane';
 onRecall(() => { $('solo-row').hidden = settings.mode !== 'coltrane'; });
 bindRange('solo-space', 'soloSpace', (v) => (v ? `${v}%` : 'none'));
+bindRange('solo-bebop', 'soloBebop', (v) => (v ? `${v}%` : 'pure pentatonic'));
+bindSelect('solo-build', 'soloBuild', [['0', 'Steady'], ['1', 'Over 1 chorus'], ['2', 'Over 2 choruses'], ['4', 'Over 4 choruses']]);
 bindSelect('rate', 'rate', Object.keys(RATES).map((r) => [r, r]));
 bindSelect('octaves', 'octaves', null, (n) => engine.setOctaves(n));
 bindRange('gate', 'gate', (v) => `${v}%`);
