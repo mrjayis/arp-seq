@@ -50,9 +50,18 @@ test('every kit has unique voices with sounds and valid 16-step presets', () => 
     assert.ok(Object.keys(presets).length >= 3, `${key} presets`);
     for (const [name, preset] of Object.entries(presets)) {
       for (const [id, row] of Object.entries(preset)) {
+        if (id === 'conds' || id === 'lens') continue; // chance conditions and row lengths, checked below
         assert.ok(ids.has(id), `${key}/${name}: ${id} is not in this kit`);
-        assert.equal(row.length, DRUM_STEPS, `${key}/${name}.${id}`);
+        assert.equal(row.length, preset.lens || DRUM_STEPS, `${key}/${name}.${id}`);
         assert.match(row, /^[Xx.]+$/);
+      }
+      // Every chance condition sits on a hit, and names a real condition.
+      for (const [id, at] of Object.entries(preset.conds || {})) {
+        assert.ok(ids.has(id), `${key}/${name}: conds for ${id}`);
+        for (const [i, c] of Object.entries(at)) {
+          assert.notEqual(preset[id][i], '.', `${key}/${name}: ${id} condition on an empty cell ${i}`);
+          assert.ok(CONDITIONS[c] !== undefined && c !== '', `${key}/${name}: ${c}`);
+        }
       }
       const rows = parsePattern(preset, voices);
       assert.deepEqual(Object.keys(rows).sort(), [...ids].sort());
@@ -211,4 +220,27 @@ test('a shared first word that names the instrument is kept when matching files'
   assert.deepEqual(rowsOf(['LD_Tom_Hi.wav', 'LD_Tom_Lo.wav']), { 'LD_Tom_Hi.wav': 'u_tomhi', 'LD_Tom_Lo.wav': 'u_tomlo' });
   // A brand prefix is still skipped.
   assert.deepEqual(rowsOf(['LinnDrum Clap.wav', 'LinnDrum Kick.wav']), { 'LinnDrum Clap.wav': 'u_clap', 'LinnDrum Kick.wav': 'u_kick' });
+});
+
+import { presetConds, presetLens, TRIPLET_FEEL, CONDITIONS } from '../src/percussion.js';
+
+test('jazz kit: triplet feel, ride pattern, comping by chance, a 3/4 waltz', () => {
+  const jazz = KITS.jazz;
+  assert.equal(jazz.feel, 'triplet');
+  // the swung "and" is two-thirds through the beat; the triplet's middle a third
+  assert.deepEqual(TRIPLET_FEEL.slice(0, 3), [0, 1 / 3, 2 / 3]);
+  const swing = jazz.presets.Swing;
+  const rows = parsePattern(swing, jazz.voices);
+  // ride on every beat plus the swung "and" of 2 and 4; accents on 2 and 4
+  assert.deepEqual(rows.jRide.map((v, i) => (v ? i : -1)).filter((i) => i >= 0), [0, 4, 6, 8, 12, 14]);
+  assert.ok(rows.jRide[4] > rows.jRide[0] && rows.jRide[12] > rows.jRide[8]);
+  assert.deepEqual(rows.jHat.map((v, i) => (v ? i : -1)).filter((i) => i >= 0), [4, 12]);
+  // every snare hit is a chance, so the comping changes from bar to bar
+  const conds = presetConds(swing);
+  rows.jSnare.forEach((v, i) => { if (v) assert.match(conds.jSnare[i], /%$/); });
+  assert.equal(conds.jSnare.length, DRUM_STEPS);
+  // the waltz loops every 12 cells (three beats)
+  const waltz = presetLens(jazz.presets['Jazz waltz (3/4)'], jazz.voices);
+  assert.ok(Object.values(waltz).every((n) => n === 12));
+  assert.deepEqual(presetLens(swing, jazz.voices), {});
 });
