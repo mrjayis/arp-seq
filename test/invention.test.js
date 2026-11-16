@@ -188,3 +188,50 @@ test('the checker does not turn a moving line into repeated notes', () => {
   }
   assert.ok(repeats / moves < 0.03, `${repeats} repeated of ${moves}`);
 });
+
+import { parseSubject } from '../src/invention.js';
+
+test('a typed subject: the C major Invention opening, answered a 5th up to fill the bar', () => {
+  const r = parseSubject('C5 D E F D E C G5-');
+  assert.equal(r.error, undefined);
+  assert.deepEqual(r.notes, [72, 74, 76, 77, 74, 76, 72, 79]);
+  assert.equal(r.length, 9);
+  // nine 16ths: more than half a bar, so the last note holds to the bar line
+  assert.deepEqual(r.events.map((e) => [e.at, e.len, e.move]),
+    [[0, 1, null], [1, 1, 1], [2, 1, 1], [3, 1, 1], [4, 1, -2], [5, 1, 1], [6, 1, -2], [7, 9, 4]]);
+  // without an octave number a note goes to the nearest octave: G after C is the 4th below
+  assert.equal(parseSubject('C5 D E F D E C G').notes[7], 67);
+  // exactly half a bar: stated, then again a 5th (four scale steps) higher
+  const half = parseSubject('C5 D E F D E C G5');
+  assert.equal(half.events.length, 16);
+  assert.deepEqual(half.events.slice(9).map((e) => e.move), half.events.slice(1, 8).map((e) => e.move));
+  assert.equal(half.events[8].at, 8);
+  assert.equal(half.events[8].move, 0); // from G5 to G5: the answer starts a 5th above the C
+});
+
+test('a typed subject: holds, rests, octaves, accidentals, errors', () => {
+  const r = parseSubject('G4- r C5-- Bb4 F#4 c');
+  assert.deepEqual(r.notes, [67, 72, 70, 66, 60]);
+  assert.deepEqual(r.events.map((e) => [e.at, e.len]), [[0, 2], [3, 3], [6, 1], [7, 1], [8, 8]]);
+  assert.deepEqual(r.events.map((e) => e.move), [null, 3, -1, -3, -3]);
+  assert.deepEqual(parseSubject('C5 B').notes, [72, 71]);
+  assert.ok(parseSubject('C5 H').error);
+  assert.ok(parseSubject('').error);
+  // past a bar: cut at the bar line
+  assert.equal(parseSubject('C5--- D--- E--- F--- G--- A---').events.length, 4);
+});
+
+test('the invention plays your subject', () => {
+  const inv = new Invention({ rng: seeded(3) });
+  const { events } = parseSubject('C5 D E F D E C G5- C6- B5- C6-');
+  inv.setSubject(events);
+  const got = [];
+  for (let s = 0; s < 16; s++) {
+    const ev = inv.step('upper', s, { root: 0, type: 'maj' }, { key: { tonic: 0, minor: false } });
+    if (ev) got.push(ev.note);
+  }
+  // over a C major chord in C, Bach's subject comes out as written
+  assert.deepEqual(got, [72, 74, 76, 77, 74, 76, 72, 79, 84, 83, 84]);
+  inv.reset(); // pressing Play again keeps it
+  assert.deepEqual(inv.subject.map((e) => e.move), events.map((e) => e.move));
+});

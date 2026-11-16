@@ -8,29 +8,29 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=212';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=212';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=212';
-import { Midi } from './midi.js?v=212';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=212';
+} from './core.js?v=214';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=214';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=214';
+import { Midi } from './midi.js?v=214';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=214';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, presetConds, presetLens, TRIPLET_FEEL, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=212';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=212';
-import { Invention } from './invention.js?v=212';
-import { ColtraneSolo } from './coltrane.js?v=212';
-import { BASS_STYLES, styleForSong, bassLine } from './bass.js?v=212';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=212';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=212';
+} from './percussion.js?v=214';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=214';
+import { Invention, parseSubject } from './invention.js?v=214';
+import { ColtraneSolo } from './coltrane.js?v=214';
+import { BASS_STYLES, styleForSong, bassLine } from './bass.js?v=214';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=214';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=214';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=212';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=212';
+} from './breaks.js?v=214';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=214';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=212';
+} from './mono.js?v=214';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -43,6 +43,7 @@ const settings = {
   clockOut: false,
   mode: 'up', // an arp mode, or 'coltrane': a solo line over the chords (coltrane.js)
   soloSpace: 20, // %: Coltrane solo, breath between phrases
+  bachSubject: '', // your own subject for the Bach invention, as note names ('' = a new one each Play)
   soloBebop: 50, // %: bebop language (enclosures, runs) against pure pentatonics
   soloBuild: '2', // choruses the solo builds over ('0' = steady)
   rate: '1/16',
@@ -360,7 +361,7 @@ function ensureAudio() {
         sends[fx][src] = { pre, post };
       }
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=212', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=214', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -1252,6 +1253,8 @@ function noteOn(note, vel = 100) {
   ensureAudio();
   // Mono synth Write armed: the key goes into its sequence instead of the arp.
   if (settings.monoArmed) { monoWrite(note); return; }
+  // Recording a Bach subject: the key is typed into it.
+  if (bachRecording) { recordSubjectNote(note); return; }
   if (settings.monoKeys) monoKeyTranspose = note - 48; // keys transpose the mono sequence (C3 = none)
   const count = holdCount.get(note) || 0;
   holdCount.set(note, count + 1);
@@ -1583,7 +1586,7 @@ function renderSoloRow() {
   $('mono-solo-hint').hidden = settings.monoSource !== 'solo';
   const arpBach = settings.mode === 'bach';
   const monoBach = settings.monoSource === 'bach';
-  $('bach-row').hidden = !arpBach;
+  $('bach-row').hidden = !arpBach && !monoBach; // (its Subject box serves either)
   $('bach-hint').textContent = monoBach
     ? 'The upper voice; the Mono Synth plays the lower voice against it.'
     : 'A single line. Set the Mono Synth\'s Play to Bach invention too for the lower voice in imitation.';
@@ -3829,6 +3832,52 @@ function inventionKey() {
   const home = settings.progOn ? settings.progression.slice(0, settings.progLength).find((s) => (((s.root + progShift) % 12) + 12) % 12 === tonic && s.type !== 'rest') : null;
   return { tonic, minor: !!(home && CHORDS[home.type]?.minor) };
 }
+
+// ---- Your subject: typed (or recorded from the keyboard) as note names.
+let bachRecording = false;
+function applySubject() {
+  const text = $('bach-subject').value.trim();
+  settings.bachSubject = text;
+  const status = $('bach-subject-status');
+  status.classList.remove('error');
+  if (!text) {
+    invention.setSubject(null);
+    status.textContent = 'A new subject each time you press Play.';
+    return;
+  }
+  const r = parseSubject(text);
+  if (r.error) {
+    status.textContent = r.error;
+    status.classList.add('error');
+    return; // the last good subject stays in use
+  }
+  invention.setSubject(r.events); // the piece starts again from its exposition, next bar
+  status.textContent = `${r.notes.length} note${r.notes.length === 1 ? '' : 's'}, ${r.length} sixteenths`
+    + (r.length <= 8 ? ': answered a 5th higher to fill the bar.' : r.length < 16 ? ': the last note held to the bar line.' : '.');
+}
+$('bach-subject').value = settings.bachSubject || '';
+$('bach-subject').addEventListener('change', () => { applySubject(); save(); });
+$('bach-subject').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('bach-subject').blur(); });
+$('bach-random').addEventListener('click', () => { $('bach-subject').value = ''; applySubject(); save(); });
+$('bach-record').addEventListener('click', () => {
+  bachRecording = !bachRecording;
+  $('bach-record').setAttribute('aria-pressed', String(bachRecording));
+  $('bach-record').textContent = bachRecording ? 'Recording… (tap to stop)' : 'Record';
+  if (bachRecording) {
+    $('bach-subject').value = '';
+    $('bach-subject-status').textContent = 'Play the subject on the keyboard.';
+  } else applySubject();
+  save();
+});
+/** A key while recording the subject: typed into the box (with its octave), and heard. */
+function recordSubjectNote(note) {
+  const box = $('bach-subject');
+  box.value = `${box.value.trim()} ${noteName(note)}`.trim();
+  applySubject();
+  if (settings.synthOn && synth) playVoice(note, null, 96, ctx.currentTime + 0.01, 0.25, note);
+}
+onRecall(() => { $('bach-subject').value = settings.bachSubject || ''; applySubject(); });
+applySubject();
 
 // One tap to hear it: a Baroque progression, both voices, a Bach tempo, from the top.
 $('bach-try').addEventListener('click', () => {
