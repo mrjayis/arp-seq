@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=214" />
-  <link rel="stylesheet" href="mac.css?v=214" />
+  <link rel="stylesheet" href="styles.css?v=217" />
+  <link rel="stylesheet" href="mac.css?v=217" />
 </head>
 <body>
   <main class="device">
@@ -703,12 +703,22 @@
       </div>
       <div class="break-trim">
         <span class="row-label">Trim</span>
-        <canvas id="break-trim-view" class="break-trim-view" title="The whole file: drag near an edge to move it. The faint parts are cut off."></canvas>
+        <canvas id="break-trim-view" class="break-trim-view" title="The whole file: drag to move the nearer edge. For finer moves, slide your finger up or down away from the strip while dragging (Shift on a computer). The faint parts are cut off."></canvas>
+        <div class="trim-zoom-head">
+          <span class="trim-zoom-label">Zoom</span>
+          <div class="seg" id="trim-zoom-edge" role="radiogroup" aria-label="Edge to zoom in on">
+            <button data-edge="start" role="radio">Start</button><button data-edge="end" role="radio">End</button>
+          </div>
+          <button id="trim-nudge-back" class="trim-nudge" title="Move this edge 1 ms earlier (hold to keep going)" aria-label="1 ms earlier">‹</button>
+          <button id="trim-nudge-fwd" class="trim-nudge" title="Move this edge 1 ms later (hold to keep going)" aria-label="1 ms later">›</button>
+          <span class="status" id="trim-zoom-at"></span>
+        </div>
+        <canvas id="break-trim-zoom" class="break-trim-view break-trim-zoom" title="Close up around the chosen edge (about ±0.2 s): drag to move it finely, slide up or down away from it for finer still."></canvas>
         <label class="field slider">Start <output id="break-trim-start-val"></output>
-          <input id="break-trim-start" type="range" min="0" max="1000" value="0" />
+          <input id="break-trim-start" type="range" min="0" max="1000" value="0" step="1" />
         </label>
         <label class="field slider">End <output id="break-trim-end-val"></output>
-          <input id="break-trim-end" type="range" min="0" max="1000" value="1000" />
+          <input id="break-trim-end" type="range" min="0" max="1000" value="1000" step="1" />
         </label>
         <button id="break-trim-reset" title="Use the whole file again">Whole file</button>
       </div>
@@ -716,6 +726,7 @@
         <canvas id="break-wave" class="break-wave" title="Click a slice to put it on the selected row · Shift-click or long-press to switch a slice off or on · drop a break here to load it"></canvas>
         <div id="break-now" class="break-now" hidden></div>
       </div>
+      <button id="break-steps-toggle" class="fold-toggle" aria-expanded="true" aria-controls="break-rows" title="Show or hide the tracker steps (the pattern keeps playing)">Steps</button>
       <div id="break-rows" class="tracker"></div>
     </section>
 
@@ -887,6 +898,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=214"></script>
+  <script type="module" src="src/app.js?v=217"></script>
 </body>
 </html>
