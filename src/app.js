@@ -8,28 +8,28 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=194';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=194';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=194';
-import { Midi } from './midi.js?v=194';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=194';
+} from './core.js?v=195';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=195';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=195';
+import { Midi } from './midi.js?v=195';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=195';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, presetConds, presetLens, TRIPLET_FEEL, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=194';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=194';
-import { ColtraneSolo } from './coltrane.js?v=194';
-import { BASS_STYLES, styleForSong, bassLine } from './bass.js?v=194';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=194';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=194';
+} from './percussion.js?v=195';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=195';
+import { ColtraneSolo } from './coltrane.js?v=195';
+import { BASS_STYLES, styleForSong, bassLine } from './bass.js?v=195';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=195';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=195';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=194';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=194';
+} from './breaks.js?v=195';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=195';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=194';
+} from './mono.js?v=195';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -359,7 +359,7 @@ function ensureAudio() {
         sends[fx][src] = { pre, post };
       }
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=194', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=195', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -636,6 +636,7 @@ function soloContext(pulse) {
   };
   const build = Number(settings.soloBuild) || 0; // choruses to build over (0: steady)
   const at = progSlotAt(pulse);
+  ctx.downbeat = pulse % (PPQN * 2) === 0; // beats 1 and 3
   if (at) {
     ctx.next = at.next;
     ctx.stepsLeft = Math.max(1, Math.ceil((at.end - pulse) / rate));
@@ -664,14 +665,16 @@ function playArp(step, pulse = 0) {
     // The line's note stands in for the arp's; oscillator 2 follows it (offset 0). It
     // plays harder as the solo builds.
     const velocity = Math.max(1, Math.min(127, Math.round(ev.velocity * (0.8 + 0.4 * soloIntensity))));
-    ev = { ...ev, note, sourceNote: note, offset: 0, velocity };
+    ev = { ...ev, note, sourceNote: note, offset: 0, velocity, phraseEnd: solo.ended };
   }
   if (!settings.arpOn) {
     // Silent: still step, so the sequencer display and following chords keep moving.
     uiEvents.push({ kind: 'arp', time: step.time, off: step.time, ...ev, note2: null, silent: true });
     return;
   }
-  const gateLen = gateLength(step, settings.gate);
+  let gateLen = gateLength(step, settings.gate);
+  // A solo phrase's last note is held on (about a beat) into the breath after it.
+  if (ev.phraseEnd) gateLen = Math.max(gateLen, step.duration * (PPQN / RATES[settings.rate]) * 0.9);
   if (ev.rest) {
     // Step switched off: strike nothing, but slide whatever tail is still ringing
     // to the note this step would have played (each oscillator its own way).

@@ -136,7 +136,7 @@ test('bebop language appears with Bebop up: scale runs, chromatic runs, motifs',
   assert.ok(chromatic > 3, `chromatic runs: ${chromatic}`);
   // and with Bebop at 0, none of it
   const pure = play(new ColtraneSolo({ rng: seeded(8) }), 8, { bebop: 0, intensity: 0.5 });
-  assert.ok(pure.every((x) => ['pent', 'motif'].includes(x.kind) || x.n === null));
+  assert.ok(pure.every((x) => ['pent', 'motif', 'end'].includes(x.kind) || x.n === null));
 });
 
 test('the build: higher, busier and with side-slips outside only as intensity rises', () => {
@@ -162,4 +162,28 @@ test('restated motifs never stammer on one note', () => {
   for (let k = 1; k < out.length; k++) {
     if (out[k].kind === 'motif' && out[k - 1].kind === 'motif' && out[k].n !== null) assert.notEqual(out[k].n, out[k - 1].n);
   }
+});
+
+test('phrases can end on the downbeat: a last chord tone on the change, then the breath', () => {
+  const solo = new ColtraneSolo({ rng: seeded(12) });
+  const out = [];
+  for (let r = 0; r < 20; r++) {
+    GS.forEach(([root, type, steps], i) => {
+      const [nr, nt] = GS[(i + 1) % GS.length];
+      for (let s = 0; s < steps; s++) {
+        const n = solo.next({ root, type }, { space: 0.5, stepsPerBeat: 2, next: { root: nr, type: nt }, stepsLeft: steps - s, bebop: 0.5, intensity: 0.4, downbeat: s % 4 === 0 });
+        out.push({ n, root, type, first: s === 0, ended: solo.ended });
+      }
+    });
+  }
+  // the last note before each breath
+  const lasts = out.filter((x, k) => x.n !== null && out[k + 1]?.n === null);
+  const onChange = lasts.filter((x) => x.first);
+  assert.ok(onChange.length / lasts.length > 0.5, `${onChange.length} of ${lasts.length} phrases end on a change`);
+  for (const x of onChange) {
+    assert.ok(x.ended, 'flagged as a phrase end (held on)');
+    assert.ok(TONES[x.type].includes(pc(x.n - x.root)), `ends on ${pc(x.n - x.root)} over ${x.type}`);
+  }
+  // and the breath really follows it
+  for (const x of out.filter((y) => y.ended)) assert.equal(out[out.indexOf(x) + 1].n, null);
 });
