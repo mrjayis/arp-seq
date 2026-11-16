@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=212" />
-  <link rel="stylesheet" href="mac.css?v=212" />
+  <link rel="stylesheet" href="styles.css?v=214" />
+  <link rel="stylesheet" href="mac.css?v=214" />
 </head>
 <body>
   <main class="device">
@@ -152,6 +152,11 @@
         <span class="row-label">Invention</span>
         <button id="bach-try" title="Load a Baroque circle-of-fifths progression in C, put the Mono Synth on the lower voice, set 84 BPM and play from the top">Try a Bach progression</button>
         <span class="status" id="bach-hint"></span>
+        <label class="field bach-subject" title="Your own subject, as note names: each a 16th, each - after a note holds it a 16th longer (G- is an 8th), r rests. Octave numbers are optional (without one, the nearest octave). Half a bar is answered a 5th higher. Empty: a new subject each time you press Play.">Subject
+          <input id="bach-subject" type="text" placeholder="e.g. C5 D E F D E C G5- C6- B5- C6- (empty: a new one each Play)" autocomplete="off" autocapitalize="characters" spellcheck="false" /></label>
+        <button id="bach-record" aria-pressed="false" title="Play the subject on the keyboard (on screen, computer keys or MIDI): each note is typed in for you. Add - for longer notes.">Record</button>
+        <button id="bach-random" title="Forget your subject: a new one each time you press Play">Random</button>
+        <span class="status" id="bach-subject-status" aria-live="polite"></span>
         <span class="status hint">In the manner of Bach's two-part inventions: a subject (a turn of 16ths, then leaping 8ths) stated, imitated an octave lower, inverted and sequenced through the chords against a countersubject, with a cadence at the end of each pass through the progression. Every note is checked against the rules of two-voice counterpoint (no parallel 5ths or octaves, consonances on the strong beats, dissonances only by step, leaps recovered…). A new subject each time you press Play. Straight 16ths whatever the Rate; around 70–90 BPM suits it.</span>
       </div>
       <div class="row" id="solo-row" hidden>
@@ -882,6 +887,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=212"></script>
+  <script type="module" src="src/app.js?v=214"></script>
 </body>
 </html>

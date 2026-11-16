@@ -14,7 +14,7 @@
 // each note is a step (or leap) along the chord's scale from the one before, and notes on
 // the beat are chord tones. The lower voice keeps below the upper.
 
-import { chordScale } from './bass.js?v=212';
+import { chordScale } from './bass.js?v=214';
 
 const pc12 = (n) => ((n % 12) + 12) % 12;
 
@@ -106,6 +106,64 @@ export function makeSubject(rng = Math.random) {
     out.push({ at: 8 + 2 * k, len: 2, move: d * size });
   }
   return out;
+}
+
+// ---- Your own subject, typed as note names: "C5 D E F D E C G- C6- B5- C6-".
+// Each note is a 16th; each "-" after it holds it a 16th longer (G- is an 8th, G--- a
+// quarter); "r" is a 16th's rest (r- an 8th's...). An octave number is optional: without
+// one, a note goes to the octave nearest the note before (the first to octave 5). Sharps
+// and flats are read but the line follows the scale of each chord it meets: the subject
+// is kept as its steps along the scale (the letter names), so it fits every chord.
+
+const LETTER_PC = [0, 2, 4, 5, 7, 9, 11]; // C D E F G A B
+
+/**
+ * Read a typed subject. Returns {events, notes, length} (events as the generator keeps
+ * subjects: {at, len, move}, with the first note's pitch as a hint for its register) or
+ * {error}. A subject of half a bar or less is answered a 5th higher to fill the bar (as in
+ * the C major Invention); a longer one is filled out by holding its last note; past a bar
+ * it's cut at the bar line.
+ */
+export function parseSubject(text) {
+  const tokens = String(text).trim().split(/[\s,|]+/).filter(Boolean);
+  const events = [];
+  const notes = [];
+  let at = 0;
+  let prevDia = null;
+  for (const tok of tokens) {
+    const rest = /^[rR](-*)$/.exec(tok);
+    if (rest) { at += 1 + rest[1].length; continue; }
+    const m = /^([A-Ga-g])([#♯]|[b♭])?(\d)?(-*)$/.exec(tok);
+    if (!m) return { error: `Can't read "${tok}": use note names like C5, Eb, F#4, with - to hold and r to rest` };
+    const letter = 'CDEFGAB'.indexOf(m[1].toUpperCase());
+    const acc = !m[2] ? 0 : /[#♯]/.test(m[2]) ? 1 : -1;
+    let oct;
+    if (m[3] !== undefined) oct = Number(m[3]);
+    else if (prevDia === null) oct = 5;
+    else {
+      // the octave that puts it nearest the note before
+      oct = Math.round((prevDia - letter) / 7);
+    }
+    const dia = letter + 7 * oct;
+    const len = 1 + m[4].length;
+    if (at >= 16) break; // past the bar: cut
+    events.push({ at, len: Math.min(len, 16 - at), move: prevDia === null ? null : dia - prevDia });
+    notes.push(12 * (oct + 1) + LETTER_PC[letter] + acc);
+    prevDia = dia;
+    at += len;
+  }
+  if (!events.length) return { error: 'No notes yet' };
+  const length = Math.min(at, 16);
+  if (at <= 8) {
+    // Half a bar: stated, then again a 5th higher (four steps up the scale) in the same voice.
+    const firstDia = prevDia - events.slice(1).reduce((sum, e) => sum + e.move, 0);
+    const again = events.map((e, k) => ({ ...e, at: e.at + 8, move: k === 0 ? firstDia + 4 - prevDia : e.move }));
+    events.push(...again);
+  } else if (at < 16) {
+    events[events.length - 1].len += 16 - at; // hold the last note to the bar line
+  }
+  events[0].pitch = notes[0];
+  return { events, notes, length };
 }
 
 /** A countersubject: eight 8ths, by step, against the subject's direction. */
@@ -231,8 +289,15 @@ export class Invention {
     this.reset();
   }
 
+  /** Use your own subject (events from parseSubject), or null for a new one each time. */
+  setSubject(events) {
+    this.userSubject = events ? events.map((e) => ({ ...e })) : null;
+    this.reset();
+  }
+
   reset() {
-    this.subject = makeSubject(this.rng);
+    // Your subject if you've given one (a copy: the plan is reused), else a new one.
+    this.subject = this.userSubject ? this.userSubject.map((e) => ({ ...e })) : makeSubject(this.rng);
     this.counter = makeCounter(this.subject, this.rng);
     this.bar = -1;
     this.barCount = 0; // bars since the piece (or the section) started
@@ -302,6 +367,13 @@ export class Invention {
       if (ev.tone === 'root' || ev.tone === 'fifth') {
         const pc = pc12(chord.root + (ev.tone === 'fifth' ? 7 : 0));
         note = near + ((((pc - near) % 12) + 18) % 12) - 6;
+      } else if (ev.pitch !== undefined && this.kinds[voice] === 'subject') {
+        // Your subject's first note: its own pitch class, in this voice's register (an octave
+        // down in the lower voice), moved to the nearest chord tone if it isn't one.
+        let p = ev.pitch - (voice === 'lower' ? 12 : 0);
+        while (p > hi) p -= 12;
+        while (p < lo) p += 12;
+        note = nearestTone(p, chord);
       } else if (ev.high) {
         // (the cadence starts high, so its run down stays in the voice's range)
         note = nearestTone(hi - 6, chord, -1);

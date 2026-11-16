@@ -417,6 +417,9 @@ input[type="range"]::-moz-range-thumb {
 .slot:nth-child(n + 9) { border-top: 1.5px solid var(--line); }
 .slot[hidden] { display: none; }
 #prog-len-n { width: 4.2em; }
+.bach-subject { flex: 1 1 280px; min-width: 0; }
+.status.error { color: var(--brick); }
+.bach-subject input { width: 100%; box-sizing: border-box; font-family: ui-monospace, Menlo, monospace; }
 .prog-song { font-weight: 600; }
 /* iReal Pro import */
 .ireal-box { display: grid; gap: 8px; margin: 4px 0 12px; padding: 10px; border: 1.5px solid var(--line); border-radius: 4px; }
