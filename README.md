@@ -119,6 +119,13 @@ The arp has two monophonic voices: **Oscillator 1**, and **Oscillator 2**, which
 - **Internal:** a look-ahead scheduler on the audio clock, kept running in background tabs by a Worker timer. Pressing a key starts the transport.
 - **MIDI Clock In:** follows 0xF8 ticks and Start/Continue/Stop, and shows the tempo it detects. *Play* starts it by hand for sources that never send Start.
 - **Send MIDI clock:** sends clock plus Start/Stop to the selected MIDI output when running on the internal clock.
+- **Audio out** (Sound & MIDI window): where this app's sound goes, the **System default** or another output device, such as a virtual audio cable (BlackHole on a Mac, VB-CABLE on Windows) to record it in a DAW like Ableton Live while everything else on the computer stays on your speakers. It needs Chrome or Edge (other browsers play to the system default). The browser only shows a page its output devices once it has microphone permission: **List outputs** asks for it, only to read the devices' names, and nothing is recorded. The choice is remembered on this device (not in scenes); if that device is unplugged the app plays to the default and says so.
+
+### Using it with Ableton Live (or another DAW)
+It runs in the browser beside Live (Chrome or Edge, for Web MIDI) and talks to it over a virtual MIDI port: the **IAC Driver** on a Mac (Audio MIDI Setup → MIDI Studio → IAC Driver → Device is online) or **loopMIDI** on Windows.
+- **Tempo:** in Live's Link, Tempo & MIDI settings turn on **Sync** for that port's output; here set **MIDI In** to the port and the Clock window's Sync to external. Live's Play then starts this in time. (Or the other way round: **Send MIDI clock** here and Sync on the port's input in Live.)
+- **Notes into Live:** set **MIDI Out** to the port and give each part a **MIDI Out Ch**; in Live, MIDI tracks set to that port and channel, monitoring In, play and record them on Live's instruments.
+- **Sound into Live:** set **Audio out** to a virtual cable and record an audio track whose input is that cable.
 
 ### Progression (meta sequencer)
 - Program **1–8 chords** with the buttons, or up to **128** with the **Chords** box. Each slot has a root, a chord type and a length in beats (1–8, or longer for a chord held over several bars from a chart). The types are Maj, min, min7, maj7, 7, dim, sus4, and the jazz chords: sus2, aug, add9, 6, 6/9, maj9, maj7♯11, maj7♯5, min6, m(maj7), min9, min11, m7♭5, dim7, 7sus4, 9, 13, 7♭9, 7♯9, 7♯11, 7♭5, 7♯5 and 7alt, plus Rest. The progression loops, locked to the clock (internal or MIDI clock in).
