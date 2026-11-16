@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=221" />
-  <link rel="stylesheet" href="mac.css?v=221" />
+  <link rel="stylesheet" href="styles.css?v=223" />
+  <link rel="stylesheet" href="mac.css?v=223" />
 </head>
 <body>
   <main class="device">
@@ -893,8 +893,11 @@
         <label class="field" title="Where this app's sound goes: your system's default output, or another device, such as a virtual cable (BlackHole, VB-CABLE) to record it in a DAW while everything else stays on your speakers">Audio out
           <select id="audio-out"><option value="">System default</option></select></label>
         <button id="audio-out-list" title="Your browser only shows a page its output devices once it has microphone permission: this asks for it, just to read the device names (nothing is recorded)">List outputs</button>
+        <label class="field" title="Stereo mix: everything on one pair. Separate: each module and effect on its own pair of channels of a multichannel output (e.g. BlackHole 16ch), to record on its own track in a DAW">Outputs
+          <select id="audio-split"><option value="mix">Stereo mix</option><option value="split">Separate per module</option></select></label>
         <span id="audio-out-status" class="status" aria-live="polite"></span>
       </div>
+      <p class="status" id="audio-split-map" hidden></p>
       <div class="row">
         <label class="field">MIDI In <select id="midi-in"><option value="">None</option></select></label>
         <label class="field">MIDI Out <select id="midi-out"><option value="">None</option></select></label>
@@ -921,6 +924,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=221"></script>
+  <script type="module" src="src/app.js?v=223"></script>
 </body>
 </html>

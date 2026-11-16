@@ -8,29 +8,29 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=221';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=221';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=221';
-import { Midi } from './midi.js?v=221';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=221';
+} from './core.js?v=223';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=223';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=223';
+import { Midi } from './midi.js?v=223';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=223';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, presetConds, presetLens, TRIPLET_FEEL, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=221';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=221';
-import { Invention, parseSubject } from './invention.js?v=221';
-import { ColtraneSolo } from './coltrane.js?v=221';
-import { BASS_STYLES, styleForSong, bassLine } from './bass.js?v=221';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=221';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=221';
+} from './percussion.js?v=223';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=223';
+import { Invention, parseSubject } from './invention.js?v=223';
+import { ColtraneSolo } from './coltrane.js?v=223';
+import { BASS_STYLES, styleForSong, bassLine } from './bass.js?v=223';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=223';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=223';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=221';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=221';
+} from './breaks.js?v=223';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=223';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=221';
+} from './mono.js?v=223';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -120,6 +120,7 @@ const settings = {
   breakOff: [], // slices switched off (shift-click): not played, not picked by Evolve/Randomize
   breakRollHold: true, // a roll keeps going until the next filled row (Polyend style); off = one step
   audioOut: '', // the audio output device id ('' = the system default); this device only
+  outputMode: 'mix', // 'mix': one stereo pair; 'split': each module on its own pair of a multichannel output
   breakStepsOpen: true, // the Breakbeat tracker's steps shown (a view choice, not part of scenes)
   breakTrim: { start: 0, end: 1 }, // the part of the loaded break that's used (fractions of the file)
   arpLevel: 100, // %: overall level of the arp (both voices)
@@ -250,7 +251,7 @@ const DEFAULTS = structuredClone(settings);
 const DEVICE_KEYS = [
   'theme', 'themeV2', 'collapsed', 'showHelp', 'midiIn', 'midiInCh', 'midiOut', 'midiOutCh', 'volume', 'synthOn',
   'midiInChord', 'midiInMono', 'midiInDrums', 'midiInBreak', 'aftertouch', 'aftertouchDepth', 'midiMap',
-  'sync', 'baseOctave', 'chordRoot', 'monoKbOctave', 'breakStepsOpen', 'audioOut',
+  'sync', 'baseOctave', 'chordRoot', 'monoKbOctave', 'breakStepsOpen', 'audioOut', 'outputMode',
 ];
 // Live scene recall: each part of the page registers how to re-read its settings,
 // in page order (repairs first, then controls, then drawing). See recallLive().
@@ -336,6 +337,7 @@ let harmIn = null; // sends mix here, into the Harmonizer worklet once it has lo
 let harmOut = null;
 let harmNode = null;
 let delayFx = null;
+let outRouter = null; // separate outputs: {merger, gains: Map key -> gain} while split (see applyOutputRouting)
 let reverbFx = null;
 let playing = false;
 const uiEvents = []; // {time, ...} drained by the animation loop
@@ -384,7 +386,7 @@ function ensureAudio() {
         sends[fx][src] = { pre, post };
       }
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=221', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=223', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -406,6 +408,7 @@ function ensureAudio() {
     drums.setLevel(1); // its Level is the percussion fader
   }
   applyAudioOut();
+  if (settings.outputMode === 'split' && !outRouter) applyOutputRouting();
   // Safari's state after a phone lock or a call is "interrupted", not "suspended".
   if (ctx.state !== 'running' && ctx.state !== 'closed') ctx.resume().catch(() => {});
   return ctx;
@@ -1641,6 +1644,7 @@ async function applyAudioOut() {
   audioOutBusy = true;
   try {
     await ctx.setSinkId(want);
+    applyOutputRouting(); // a new device may have more (or fewer) channels
     $('audio-out-status').textContent = want ? `Playing to ${$('audio-out').selectedOptions[0]?.textContent || 'the chosen output'}.` : '';
   } catch (e) {
     // Gone (unplugged) or not allowed: back to the default, and say so.
@@ -1650,6 +1654,88 @@ async function applyAudioOut() {
     audioOutBusy = false;
   }
 }
+// ---- Separate outputs: each module and effect on its own stereo pair of a multichannel
+// output (a DAW then records each on its own track). One page plays to one device, so
+// this is the way to split it: channels 1–2 Arp, 3–4 Chords, 5–6 Mono, 7–8 Percussion,
+// 9–10 Break, 11–12 Delay, 13–14 Reverb, 15–16 Harmonizer. With fewer channels the last
+// pair takes all the rest. The Volume sets every pair; the master compressor is skipped.
+const OUT_PAIRS = [
+  ['arp', 'Arp'], ['chords', 'Chords'], ['bass', 'Mono'], ['perc', 'Percussion'], ['break', 'Break'],
+  ['delay', 'Delay'], ['reverb', 'Reverb'], ['harm', 'Harmonizer'],
+];
+const outSource = (key) => ({
+  arp: faders.arp, chords: faders.chords, bass: faders.bass, perc: faders.perc, break: faders.break,
+  delay: delayFx?.out, reverb: reverbFx?.out, harm: harmOut,
+}[key]);
+const mixTarget = (key) => (key === 'perc' || key === 'break' ? buses.drums : synth.master);
+
+function applyOutputRouting() {
+  const map = $('audio-split-map');
+  if (!ctx || !faders.arp || !delayFx) { map.hidden = settings.outputMode !== 'split'; map.textContent = settings.outputMode === 'split' ? 'Separate outputs start with the sound.' : ''; return; }
+  const dest = ctx.destination;
+  // Undo a split first (back to the mix).
+  if (outRouter) {
+    for (const [key, g] of outRouter.gains) {
+      const src = outSource(key);
+      try { src.disconnect(g); } catch { /* not connected */ }
+      src.connect(mixTarget(key));
+      g.disconnect();
+    }
+    outRouter.merger.disconnect();
+    outRouter = null;
+    dest.channelCount = 2;
+    dest.channelInterpretation = 'speakers';
+  }
+  map.hidden = settings.outputMode !== 'split';
+  if (settings.outputMode !== 'split') return;
+  const max = dest.maxChannelCount || 2;
+  if (max < 4) {
+    map.textContent = `This output has ${max} channel${max === 1 ? '' : 's'}, so everything stays on one pair. Choose a multichannel one in Audio out (e.g. BlackHole 16ch, or an audio interface with several outputs).`;
+    return;
+  }
+  const n = Math.min(16, max - (max % 2));
+  dest.channelCount = n;
+  dest.channelCountMode = 'explicit';
+  dest.channelInterpretation = 'discrete';
+  const merger = ctx.createChannelMerger(n);
+  merger.connect(dest);
+  const pairs = n / 2;
+  const gains = new Map();
+  const used = new Map();
+  OUT_PAIRS.forEach(([key, name], i) => {
+    const src = outSource(key);
+    if (!src) return;
+    const pair = Math.min(i, pairs - 1);
+    // Upmix to stereo (a mono source to both sides), then into its two channels.
+    const g = ctx.createGain();
+    g.channelCount = 2;
+    g.channelCountMode = 'explicit';
+    g.channelInterpretation = 'speakers';
+    g.gain.value = settings.volume / 100;
+    const split = ctx.createChannelSplitter(2);
+    try { src.disconnect(mixTarget(key)); } catch { /* not connected */ }
+    src.connect(g).connect(split);
+    split.connect(merger, 0, 2 * pair);
+    split.connect(merger, 1, 2 * pair + 1);
+    gains.set(key, g);
+    used.set(pair, [...(used.get(pair) || []), name]);
+  });
+  outRouter = { merger, gains };
+  map.textContent = 'Channels: ' + [...used].map(([p, names]) => `${2 * p + 1}–${2 * p + 2} ${names.join(' + ')}`).join(' · ')
+    + (n < 16 ? ` (this output has ${max} channels: the last pair takes the rest).` : '.');
+}
+/** The Volume, on every pair while split. */
+function outVolume(v) {
+  if (!outRouter || !ctx) return;
+  for (const g of outRouter.gains.values()) g.gain.setTargetAtTime(v, ctx.currentTime, 0.02);
+}
+$('audio-split').value = settings.outputMode === 'split' ? 'split' : 'mix';
+$('audio-split').addEventListener('change', () => {
+  settings.outputMode = $('audio-split').value;
+  save();
+  applyOutputRouting();
+});
+
 async function listAudioOutputs() {
   const sel = $('audio-out');
   if (!canPickOutput || !navigator.mediaDevices?.enumerateDevices) {
@@ -1711,7 +1797,7 @@ bindLog('arp-attack', 'arpAttack', 2, 2000, arMs);
 bindLog('arp-release', 'arpRelease', 10, 4000, arMs);
 bindLog('osc2-attack', 'osc2Attack', 2, 2000, arMs);
 bindLog('osc2-release', 'osc2Release', 10, 4000, arMs);
-bindRange('volume', 'volume', (v) => `${v}%`, (v) => synth?.setVolume(v / 100));
+bindRange('volume', 'volume', (v) => `${v}%`, (v) => { synth?.setVolume(v / 100); outVolume(v / 100); });
 
 for (let c = 1; c <= 16; c++) {
   $('midi-in-ch').add(new Option(String(c), String(c - 1)));
