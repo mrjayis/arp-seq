@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=195" />
-  <link rel="stylesheet" href="mac.css?v=195" />
+  <link rel="stylesheet" href="styles.css?v=196" />
+  <link rel="stylesheet" href="mac.css?v=196" />
 </head>
 <body>
   <main class="device">
@@ -477,6 +477,8 @@
           <input id="mono-level" type="range" min="0" max="100" />
         </label>
         <label class="field inline">MIDI Out Ch <select id="mono-midi-ch"><option value="-1">Off</option></select></label>
+        <label class="field inline" title="Sequence: the steps below. Coltrane solo: a solo line over the chords, as in the Arpeggiator's Coltrane solo mode, played by this synth at its Rate (Legato glides it, Transpose moves it). The sequence is kept.">Play <select id="mono-source"></select></label>
+        <span class="status" id="mono-solo-hint" hidden>Soloing: Space, Bebop and Build are in the Arpeggiator's Solo row.</span>
       </div>
       <p class="hint">Arm <b>Write</b> and play notes on the Keyboard (on screen, computer keys or MIDI): each one fills the next
         step. <b>Rest</b> adds silence, <b>Tie</b> holds the previous note, and with <b>Legato</b> on, the next notes slide in
@@ -873,6 +875,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=195"></script>
+  <script type="module" src="src/app.js?v=196"></script>
 </body>
 </html>

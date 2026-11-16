@@ -8,28 +8,28 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=195';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=195';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=195';
-import { Midi } from './midi.js?v=195';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=195';
+} from './core.js?v=196';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=196';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=196';
+import { Midi } from './midi.js?v=196';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=196';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, presetConds, presetLens, TRIPLET_FEEL, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=195';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=195';
-import { ColtraneSolo } from './coltrane.js?v=195';
-import { BASS_STYLES, styleForSong, bassLine } from './bass.js?v=195';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=195';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=195';
+} from './percussion.js?v=196';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=196';
+import { ColtraneSolo } from './coltrane.js?v=196';
+import { BASS_STYLES, styleForSong, bassLine } from './bass.js?v=196';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=196';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=196';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=195';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=195';
+} from './breaks.js?v=196';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=196';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=195';
+} from './mono.js?v=196';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -359,7 +359,7 @@ function ensureAudio() {
         sends[fx][src] = { pre, post };
       }
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=195', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=196', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -628,8 +628,8 @@ function heldChord(notes) {
  * What the solo needs to know at clock `pulse`: the next chord and how many steps are
  * left before it (for enclosures), and where it is in its build (intensity).
  */
-function soloContext(pulse) {
-  const rate = RATES[settings.rate];
+function soloContext(pulse, rateKey = settings.rate) {
+  const rate = RATES[rateKey] || RATES['1/16'];
   const ctx = {
     space: settings.soloSpace / 100, bebop: settings.soloBebop / 100, stepsPerBeat: PPQN / rate,
     next: null, stepsLeft: Infinity, intensity: 0.5,
@@ -1090,7 +1090,7 @@ function onPulse(time, pulse, pulseDuration) {
   if (settings.scoreOn) playScorePulse(time, pulse, pulseDuration);
   if (settings.monoOn) {
     const mstep = pulseToStep(pulse, time, pulseDuration, RATES[settings.monoRate] || RATES['1/16'], swing);
-    if (mstep) playMonoStep(human(mstep));
+    if (mstep) playMonoStep(human(mstep), pulse);
   }
   if (settings.songOn && !settings.drumOn && settings.breakOn && pulse % (RATES['1/16'] * DRUM_STEPS) === 0) {
     uiEvents.push({ kind: 'song', time, bar: Math.floor(pulse / (RATES['1/16'] * DRUM_STEPS)) });
@@ -1189,6 +1189,7 @@ function setPlaying(on, { fromClock = false } = {}) {
       ensureAudio();
       engine.reset();
       solo.reset();
+      monoSolo.reset();
       resetProgression();
       runSeed = (Math.random() * 2 ** 32) >>> 0; // each run evolves differently
       if (settings.clockOut) midi.send([0xfa]);
@@ -1569,10 +1570,14 @@ $('clock-out').addEventListener('change', () => { settings.clockOut = $('clock-o
 bindSelect('mode', 'mode', [...MODES.map((m) => [m, MODE_LABELS[m]]), ['coltrane', 'Coltrane solo']], (m) => {
   engine.setMode(m === 'coltrane' ? 'up' : m);
   solo.reset();
-  $('solo-row').hidden = m !== 'coltrane';
+  renderSoloRow();
 });
-$('solo-row').hidden = settings.mode !== 'coltrane';
-onRecall(() => { $('solo-row').hidden = settings.mode !== 'coltrane'; });
+/** The Solo settings (Space, Bebop, Build) show while the arp or the Mono Synth is soloing. */
+function renderSoloRow() {
+  $('solo-row').hidden = settings.mode !== 'coltrane' && settings.monoSource !== 'solo';
+  $('mono-solo-hint').hidden = settings.monoSource !== 'solo';
+}
+onRecall(() => renderSoloRow());
 bindRange('solo-space', 'soloSpace', (v) => (v ? `${v}%` : 'none'));
 bindRange('solo-bebop', 'soloBebop', (v) => (v ? `${v}%` : 'pure pentatonic'));
 bindSelect('solo-build', 'soloBuild', [['0', 'Steady'], ['1', 'Over 1 chorus'], ['2', 'Over 2 choruses'], ['4', 'Over 4 choruses']]);
@@ -3782,7 +3787,42 @@ function monoAllOff() {
   monoGateOpen = false;
 }
 
-function playMonoStep(step) {
+// The Mono Synth's own soloist (Play: Coltrane solo): a second line, independent of the arp's.
+const monoSolo = new ColtraneSolo();
+
+/** Mono Synth, Play = Coltrane solo: the next note of its line, at the Mono's Rate and sound. */
+function playMonoSolo(step, pulse) {
+  const t = step.time;
+  const note = monoSolo.next(currentChord(), soloContext(pulse, settings.monoRate));
+  const release = (at) => {
+    if (!monoGateOpen) return;
+    if (monoSynth && settings.synthOn) monoSynth.noteOff(at);
+    if (settings.monoMidiCh >= 0 && monoMidiNote !== null) midi.noteOff(monoMidiNote, toPerfMs(at), settings.monoMidiCh);
+    monoMidiNote = null;
+    monoGateOpen = false;
+  };
+  if (note === null) { release(t); return; } // a breath
+  const n = Math.max(0, Math.min(127, note + settings.monoTranspose));
+  // With Legato on, the line slides from note to note (the 101's glide); otherwise each is struck.
+  const legato = settings.monoLegato && monoGateOpen;
+  if (!legato && monoGateOpen) release(t);
+  if (monoSynth && settings.synthOn) monoSynth.noteOn(tuned(n), t, { legato });
+  monoRoot = chordRoot();
+  if (settings.monoMidiCh >= 0) {
+    midi.noteOn(n, 100, toPerfMs(t), settings.monoMidiCh);
+    if (legato && monoMidiNote !== null) midi.noteOff(monoMidiNote, toPerfMs(t + 0.002), settings.monoMidiCh);
+  }
+  monoMidiNote = n;
+  monoGateOpen = true;
+  // The gate; a phrase's last note is held on for about a beat. With Legato the note
+  // stays open until the next one slides in (or the breath).
+  const beat = step.duration * (PPQN / (RATES[settings.monoRate] || RATES['1/16']));
+  const hold = monoSolo.ended ? Math.max(beat * 0.9, step.duration) : step.duration * Math.min(settings.monoGate / 100, 0.98);
+  if (!settings.monoLegato || monoSolo.ended) release(t + hold);
+}
+
+function playMonoStep(step, pulse = 0) {
+  if (settings.monoSource === 'solo') { playMonoSolo(step, pulse); return; }
   const seq = settings.monoSeq;
   if (!seq.length) return;
   const idx = step.stepNumber % seq.length;
@@ -3962,7 +4002,7 @@ function renderMonoPanel() {
   $('mono-panel').classList.toggle('armed', settings.monoArmed);
 }
 
-for (const [k, v] of Object.entries({ monoOn: false, monoArmed: false, monoLegato: false, monoRate: '1/16', monoGate: 70, monoTranspose: 0, monoKeys: false, monoMidiCh: -1 })) {
+for (const [k, v] of Object.entries({ monoOn: false, monoArmed: false, monoLegato: false, monoSource: 'seq', monoRate: '1/16', monoGate: 70, monoTranspose: 0, monoKeys: false, monoMidiCh: -1 })) {
   if (settings[k] === undefined) settings[k] = v;
 }
 settings.monoArmed = false; // never start armed: keys would go to the sequence unexpectedly
@@ -4009,6 +4049,12 @@ $('mono-demo').addEventListener('click', () => {
 });
 
 bindSelect('mono-rate', 'monoRate', Object.keys(RATES).map((r) => [r, r]));
+bindSelect('mono-source', 'monoSource', [['seq', 'Sequence'], ['solo', 'Coltrane solo']], () => {
+  monoSolo.reset();
+  renderSoloRow();
+  if (settings.monoSource === 'solo') showMonoStep(-1);
+});
+renderSoloRow();
 bindRange('mono-gate', 'monoGate', (v) => `${v}%`);
 for (let t = -24; t <= 24; t++) $('mono-transpose').add(new Option(`${t > 0 ? '+' : ''}${t}`, String(t)));
 bindSelect('mono-transpose', 'monoTranspose');
