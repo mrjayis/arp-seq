@@ -21,8 +21,8 @@
 //    dense, higher and more chromatic, with brief side-slips a half step "outside" that
 //    resolve straight back in.
 
-import { chordScale } from './bass.js?v=194';
-import { CHORDS } from './core.js?v=194';
+import { chordScale } from './bass.js?v=195';
+import { CHORDS } from './core.js?v=195';
 
 const PENT = [0, 2, 4, 7, 9]; // major pentatonic: 1 2 3 5 6
 
@@ -98,7 +98,7 @@ function targetTones(chord) {
   return tones.map((i, k) => [pc12(chord.root + i), k === 1 || k === 3 ? 2 : 1]);
 }
 
-export const FIGURES = ['pent', 'motif', 'bebop', 'chrom', 'outside', 'enclosure'];
+export const FIGURES = ['pent', 'motif', 'bebop', 'chrom', 'outside', 'enclosure', 'end'];
 
 /**
  * The solo: call next() once per arp step with the chord sounding; it returns a MIDI
@@ -128,6 +128,24 @@ export class ColtraneSolo {
     this.landing = null; // the note an enclosure is leading to, on the next chord
     this.leadIn = false;
     this.kind = null; // the figure being played (for display and tests)
+  }
+
+  /** How many steps the breath after a phrase lasts (less as the solo builds). */
+  breathSteps({ space, intensity, stepsPerBeat }) {
+    const breath = space * (1.25 - intensity);
+    const beats = 0.5 + this.rng() * (0.5 + breath * 4);
+    return Math.max(1, Math.round(beats * stepsPerBeat));
+  }
+
+  /** The phrase's last note, played now; the breath follows it. */
+  endPhrase(note, opts) {
+    this.inPhrase = false;
+    this.queue = [];
+    this.restLeft = this.breathSteps(opts);
+    this.last = note;
+    this.kind = 'end';
+    this.ended = true;
+    return note;
   }
 
   /** Move a figure by octaves to fit the range, if it can. */
@@ -276,8 +294,11 @@ export class ColtraneSolo {
    * @param opts.stepsLeft steps left on this chord, this one included (Infinity: unknown)
    * @param opts.intensity 0..1: where the solo is in its build
    * @param opts.bebop 0..1: how much bebop language (enclosures, runs) against pure pentatonics
+   * @param opts.downbeat this step is on a strong beat (1 or 3) — a phrase can end on it
+   * After each call, `ended` says whether that note was a phrase's last (to hold it on).
    */
-  next(chord, { space = 0.2, stepsPerBeat = 2, next = null, stepsLeft = Infinity, intensity = 0.5, bebop = 0.5 } = {}) {
+  next(chord, { space = 0.2, stepsPerBeat = 2, next = null, stepsLeft = Infinity, intensity = 0.5, bebop = 0.5, downbeat = false } = {}) {
+    this.ended = false;
     if (!chord || chord.type === 'rest') { this.queue = []; this.chordKey = null; return null; }
     const rng = this.rng;
     // The range climbs as the solo builds.
@@ -292,7 +313,7 @@ export class ColtraneSolo {
     // An enclosure into the next chord: its last steps surround a tone of the new chord.
     const nextKey = next && next.type !== 'rest' ? `${next.root}|${next.type}` : null;
     if (!changed && nextKey && nextKey !== key && !this.leadIn && this.inPhrase && this.last !== null
-      && stepsLeft >= 1 && stepsLeft <= 2 && this.phraseLeft > 0 && rng() < bebop * 0.45) {
+      && stepsLeft >= 1 && stepsLeft <= 2 && rng() < bebop * 0.45) {
       this.leadIn = true;
       const target = this.toneNear(next, 0, 1, 4);
       const { scale } = chordScale(next.type);
@@ -307,9 +328,11 @@ export class ColtraneSolo {
     }
     if (changed || !this.queue.length) {
       if (changed && this.landing !== null) {
-        // Land the enclosure on the change, then carry on from it.
+        // Land the enclosure on the change, then carry on from it (or, at the end of a
+        // phrase, stop on it).
         const target = this.landing;
         this.landing = null;
+        if (this.phraseLeft <= 0 && space * (1.25 - intensity) > 0) return this.endPhrase(target, { space, intensity, stepsPerBeat });
         this.last = target;
         const more = this.placeCell(pickCell(chord, rng).pcs).filter((n, k) => !(k === 0 && n === target)).slice(0, 3);
         this.queue = [target, ...more];
@@ -320,10 +343,14 @@ export class ColtraneSolo {
         if (this.phraseLeft <= 0) {
           const breath = space * (1.25 - intensity); // less breath as it builds
           if (this.inPhrase && breath > 0) {
+            // On a chord change or a strong beat the line usually comes down on it: one
+            // last note, a chord tone close by, and the breath after that.
+            if ((changed || downbeat) && this.last !== null && rng() < 0.8) {
+              return this.endPhrase(this.toneNear(chord, 0, 1, 4), { space, intensity, stepsPerBeat });
+            }
             this.inPhrase = false;
             this.queue = [];
-            const beats = 0.5 + rng() * (0.5 + breath * 4);
-            this.restLeft = Math.max(1, Math.round(beats * stepsPerBeat)) - 1;
+            this.restLeft = this.breathSteps({ space, intensity, stepsPerBeat }) - 1;
             return null;
           }
           // A new phrase: longer as it builds. Sometimes it opens with the motif again.

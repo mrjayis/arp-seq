@@ -39,6 +39,8 @@ Make the drums and break move through sections instead of looping one bar.
   - **Chromatic runs:** half steps into a chord tone, only within a chord (never a chromatic note on the downbeat of a change).
   - **Motifs:** a phrase's opening figure comes back later, moved to fit the chords it lands on (sequenced through the changes) and sometimes upside down, and a new phrase sometimes opens with it again.
 
+  - **Phrase endings:** a phrase usually comes down on a downbeat: when it's done and the next step is a chord change or beat 1 or 3, it plays one last note there, a chord tone of the new chord close to the line, held for about a beat, and then breathes. An enclosure often leads into that last note. Now and then a phrase still stops just before the beat instead.
+
   **Build** shapes the solo over 1, 2 or 4 choruses (a chorus is once through the progression, or 8 bars without one), then starts again like the next soloist. Early on it plays lower, softer, with more breath and mostly pentatonics; as it builds it climbs about two-thirds of an octave, plays harder and in longer phrases, uses more runs, and near the top side-slips: a cell a half step outside the chord that resolves straight back in. **Steady** keeps it in the middle. These are his methods, not his recorded licks; every line is generated fresh. The chord comes from the progression, or from the keys you hold. Rate, Gate, Swing, Level and Oscillator 2 all still apply; sequencer steps switched off still rest, but their pitch offsets are ignored.
 - **Rate:** 1/4D (dotted quarter), 1/4, 1/8D (dotted 8th), 1/8, 1/8T, 1/16D (dotted 16th), 1/16, 1/16T, 1/32, placed on a 24 PPQN grid so rate changes stay in time
 - **Octaves:** 1–4 · **Gate:** 5–100% · **Swing:** 0–75% (delays off-beat steps)
