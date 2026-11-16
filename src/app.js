@@ -8,27 +8,28 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=177';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=177';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=177';
-import { Midi } from './midi.js?v=177';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=177';
+} from './core.js?v=183';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=183';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=183';
+import { Midi } from './midi.js?v=183';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=183';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=177';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=177';
-import { BASS_STYLES, styleForSong, bassLine } from './bass.js?v=177';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=177';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=177';
+} from './percussion.js?v=183';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=183';
+import { ColtraneSolo } from './coltrane.js?v=183';
+import { BASS_STYLES, styleForSong, bassLine } from './bass.js?v=183';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=183';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=183';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=177';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=177';
+} from './breaks.js?v=183';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=183';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=177';
+} from './mono.js?v=183';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -39,7 +40,8 @@ const settings = {
   bpm: 120,
   sync: 'internal',
   clockOut: false,
-  mode: 'up',
+  mode: 'up', // an arp mode, or 'coltrane': a solo line over the chords (coltrane.js)
+  soloSpace: 20, // %: Coltrane solo, breath between phrases
   rate: '1/16',
   octaves: 1,
   gate: 50,
@@ -263,7 +265,7 @@ function save(now = false) {
 window.addEventListener('pagehide', () => save(true));
 
 function applyEngineSettings() {
-  engine.setMode(settings.mode);
+  engine.setMode(settings.mode === 'coltrane' ? 'up' : settings.mode); // the solo still steps the engine
   engine.setOctaves(settings.octaves);
   engine.setLatch(settings.latch);
   engine.setLength(settings.length);
@@ -354,7 +356,7 @@ function ensureAudio() {
         sends[fx][src] = { pre, post };
       }
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=177', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=183', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -594,9 +596,44 @@ function gateLength(step, gatePct) {
   return room * Math.min(gatePct / 100, 0.98);
 }
 
+// ---- Coltrane solo: the arp plays a pentatonic line over the chords instead of the
+// held notes (coltrane.js); the arp's rate, gate, swing, steps and oscillator 2 still apply.
+const solo = new ColtraneSolo();
+
+/** The chord sounding now as {root, type}: the progression's, else worked out from held keys. */
+function currentChord() {
+  if (settings.progOn && progIndex >= 0) {
+    const slot = settings.progression[progIndex];
+    if (!slot || slot.type === 'rest') return null;
+    return { root: (((slot.root + progShift) % 12) + 12) % 12, type: slot.type };
+  }
+  return heldChord(engine.notes.map((n) => n.note));
+}
+
+/** A chord type for some held notes, from the intervals above their root. */
+function heldChord(notes) {
+  if (!notes.length) return null;
+  const root = chordRootPc(notes);
+  const pcs = new Set(notes.map((n) => (((n - root) % 12) + 12) % 12));
+  const type = pcs.has(3)
+    ? (pcs.has(6) && !pcs.has(7) ? (pcs.has(9) ? 'dim7' : pcs.has(10) ? 'hdim7' : 'dim') : pcs.has(10) ? 'min7' : 'min')
+    : pcs.has(10) ? 'dom7' : pcs.has(11) ? 'maj7' : 'maj';
+  return { root, type };
+}
+
 function playArp(step) {
-  const ev = engine.next();
+  let ev = engine.next();
   if (!ev) return;
+  if (settings.mode === 'coltrane') {
+    const note = ev.rest ? null : solo.next(currentChord(), { space: settings.soloSpace / 100, stepsPerBeat: PPQN / RATES[settings.rate] });
+    if (note === null) {
+      // A breath (or a step switched off): nothing struck.
+      uiEvents.push({ kind: 'arp', time: step.time, off: step.time, ...ev, velocity: 0, note2: null });
+      return;
+    }
+    // The line's note stands in for the arp's; oscillator 2 follows it (offset 0).
+    ev = { ...ev, note, sourceNote: note, offset: 0 };
+  }
   if (!settings.arpOn) {
     // Silent: still step, so the sequencer display and following chords keep moving.
     uiEvents.push({ kind: 'arp', time: step.time, off: step.time, ...ev, note2: null, silent: true });
@@ -659,11 +696,9 @@ function planBass(pulse) {
     return makePlan(start, end, chord, next, `p${i}|${start}`, barBeats);
   }
   // No progression: follow the keys held, a bar at a time (a new chord starts a new line).
-  const notes = engine.notes.map((n) => n.note);
-  if (!notes.length) return null;
-  const root = chordRootPc(notes);
-  const pcs = new Set(notes.map((n) => (((n - root) % 12) + 12) % 12));
-  const type = pcs.has(3) ? (pcs.has(6) && !pcs.has(7) ? 'hdim7' : 'min7') : pcs.has(10) ? 'dom7' : pcs.has(11) ? 'maj7' : 'maj';
+  const held = heldChord(engine.notes.map((n) => n.note));
+  if (!held) return null;
+  const { root, type } = held;
   const bar = PPQN * barBeats;
   const end = (Math.floor(pulse / bar) + 1) * bar;
   return makePlan(pulse, end, { root, type }, { root, type }, `h${root}${type}`, barBeats);
@@ -1099,6 +1134,7 @@ function setPlaying(on, { fromClock = false } = {}) {
     if (on) {
       ensureAudio();
       engine.reset();
+      solo.reset();
       resetProgression();
       runSeed = (Math.random() * 2 ** 32) >>> 0; // each run evolves differently
       if (settings.clockOut) midi.send([0xfa]);
@@ -1476,7 +1512,14 @@ onRecall(() => { $('clock-out').checked = settings.clockOut; });
 onRecall(() => setLatch(!!settings.latch));
 $('clock-out').addEventListener('change', () => { settings.clockOut = $('clock-out').checked; save(); });
 
-bindSelect('mode', 'mode', MODES.map((m) => [m, MODE_LABELS[m]]), (m) => engine.setMode(m));
+bindSelect('mode', 'mode', [...MODES.map((m) => [m, MODE_LABELS[m]]), ['coltrane', 'Coltrane solo']], (m) => {
+  engine.setMode(m === 'coltrane' ? 'up' : m);
+  solo.reset();
+  $('solo-row').hidden = m !== 'coltrane';
+});
+$('solo-row').hidden = settings.mode !== 'coltrane';
+onRecall(() => { $('solo-row').hidden = settings.mode !== 'coltrane'; });
+bindRange('solo-space', 'soloSpace', (v) => (v ? `${v}%` : 'none'));
 bindSelect('rate', 'rate', Object.keys(RATES).map((r) => [r, r]));
 bindSelect('octaves', 'octaves', null, (n) => engine.setOctaves(n));
 bindRange('gate', 'gate', (v) => `${v}%`);
