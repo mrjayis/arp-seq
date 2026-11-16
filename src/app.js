@@ -8,29 +8,29 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=218';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=218';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=218';
-import { Midi } from './midi.js?v=218';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=218';
+} from './core.js?v=220';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=220';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=220';
+import { Midi } from './midi.js?v=220';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=220';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, presetConds, presetLens, TRIPLET_FEEL, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=218';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=218';
-import { Invention, parseSubject } from './invention.js?v=218';
-import { ColtraneSolo } from './coltrane.js?v=218';
-import { BASS_STYLES, styleForSong, bassLine } from './bass.js?v=218';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=218';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=218';
+} from './percussion.js?v=220';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=220';
+import { Invention, parseSubject } from './invention.js?v=220';
+import { ColtraneSolo } from './coltrane.js?v=220';
+import { BASS_STYLES, styleForSong, bassLine } from './bass.js?v=220';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=220';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=220';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=218';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=218';
+} from './breaks.js?v=220';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=220';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=218';
+} from './mono.js?v=220';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -164,6 +164,9 @@ const settings = {
   reverbSendDrums: 15,
   delaySendBass: 20,
   // Each send: before the section's fader (pre) or after it — e.g. delayPreDrums.
+  // The breakbeat's sends (and Pre switches) start from the old shared Drums ones when unset.
+  delaySendBreak: undefined, reverbSendBreak: undefined, harmSendBreak: undefined,
+  delayPreBreak: undefined, reverbPreBreak: undefined, harmPreBreak: undefined,
   delayPreArp: false, delayPreChords: false, delayPreDrums: false, delayPreBass: false,
   reverbPreArp: false, reverbPreChords: false, reverbPreDrums: false, reverbPreBass: false,
   harmPreArp: false, harmPreChords: false, harmPreDrums: false, harmPreBass: false,
@@ -266,6 +269,16 @@ const osc2EnvFromOsc1 = () => {
 };
 osc2EnvFromOsc1();
 onRecall(osc2EnvFromOsc1);
+// The percussion and the breakbeat used to share their effect sends ("Drums"): the
+// breakbeat's own start from those, so older saves and scenes sound the same.
+const breakSendsFromDrums = () => {
+  for (const fx of ['delay', 'reverb', 'harm']) {
+    if (!Number.isFinite(settings[`${fx}SendBreak`])) settings[`${fx}SendBreak`] = settings[`${fx}SendDrums`] ?? 0;
+    if (typeof settings[`${fx}PreBreak`] !== 'boolean') settings[`${fx}PreBreak`] = !!settings[`${fx}PreDrums`];
+  }
+};
+breakSendsFromDrums();
+onRecall(breakSendsFromDrums);
 
 let saveTimer;
 /** Save settings, debounced for slider drags; `now` writes immediately. */
@@ -340,19 +353,17 @@ function ensureAudio() {
       buses[k] = ctx.createGain();
       faders[k] = ctx.createGain();
     }
-    buses.drums = ctx.createGain(); // percussion + break after their faders
-    buses.drumsPre = ctx.createGain(); // percussion + break before them
+    buses.drums = ctx.createGain(); // percussion + break after their faders, to the mix
     buses.arp.connect(faders.arp).connect(synth.master);
     buses.chords.connect(faders.chords).connect(synth.master);
     buses.bass.connect(faders.bass).connect(synth.master);
     buses.perc.connect(faders.perc).connect(buses.drums);
     buses.break.connect(faders.break).connect(buses.drums);
-    buses.perc.connect(buses.drumsPre);
-    buses.break.connect(buses.drumsPre);
     buses.drums.connect(synth.out);
     const taps = {
-      post: { arp: faders.arp, chords: faders.chords, bass: faders.bass, drums: buses.drums },
-      pre: { arp: buses.arp, chords: buses.chords, bass: buses.bass, drums: buses.drumsPre },
+      // ("drums" is the percussion; the breakbeat has sends of its own)
+      post: { arp: faders.arp, chords: faders.chords, bass: faders.bass, drums: faders.perc, break: faders.break },
+      pre: { arp: buses.arp, chords: buses.chords, bass: buses.bass, drums: buses.perc, break: buses.break },
     };
     applyFaders();
     delayFx = new Delay(ctx, synth.master);
@@ -362,7 +373,7 @@ function ensureAudio() {
     harmOut = ctx.createGain();
     harmOut.connect(synth.master);
     for (const [fx, input] of [['delay', delayFx.input], ['reverb', reverbFx.input], ['harm', harmIn]]) {
-      for (const src of ['arp', 'chords', 'drums', 'bass']) {
+      for (const src of ['arp', 'chords', 'drums', 'break', 'bass']) {
         const pre = ctx.createGain();
         const post = ctx.createGain();
         pre.gain.value = 0;
@@ -372,7 +383,7 @@ function ensureAudio() {
         sends[fx][src] = { pre, post };
       }
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=218', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=220', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -4774,7 +4785,7 @@ function updateDelayTime() {
 }
 let reverbTimer;
 // ---- section faders and pre/post-fader sends
-const SEND_SOURCES = { arp: 'Arp', chords: 'Chords', drums: 'Drums', bass: 'Bass' };
+const SEND_SOURCES = { arp: 'Arp', chords: 'Chords', drums: 'Drums', break: 'Break', bass: 'Bass' }; // Drums: the percussion
 const FADER_LEVELS = { arp: 'arpLevel', chords: 'chordLevel', bass: 'monoLevel', perc: 'drumLevel', break: 'breakLevel' };
 /** Each section's Level is its fader. */
 function applyFaders() {
@@ -4836,7 +4847,7 @@ function applyFx() {
   delayFx.out.gain.setTargetAtTime(settings.delayMuted ? 0 : settings.delayReturn / 100, ctx.currentTime, 0.01);
   reverbFx.out.gain.setTargetAtTime(settings.reverbMuted ? 0 : settings.reverbReturn / 100, ctx.currentTime, 0.01);
   for (const fx of ['delay', 'reverb']) {
-    for (const src of ['arp', 'chords', 'drums', 'bass']) setSend(fx, src);
+    for (const src of ['arp', 'chords', 'drums', 'break', 'bass']) setSend(fx, src);
   }
 }
 bindSelect('delay-time', 'delayTime', DELAY_TIMES.map((d) => [d, d]), applyFx);
@@ -4857,7 +4868,7 @@ for (const fx of ['delay', 'reverb', 'harm']) {
     box.checked = !!settings[key];
     const label = document.createElement('label');
     label.className = 'check pre-send';
-    label.title = `Pre-fader: take this send before the ${src === 'Drums' ? 'percussion and break' : src.toLowerCase()} Level, so turning that down (even to 0) doesn't change what goes to the effect. Off: after it (post-fader).`;
+    label.title = `Pre-fader: take this send before the ${src === 'Drums' ? 'percussion' : src === 'Break' ? 'breakbeat' : src.toLowerCase()} Level, so turning that down (even to 0) doesn't change what goes to the effect. Off: after it (post-fader).`;
     label.append(box, ' Pre');
     // Keep the send and its Pre switch together, so they wrap as one on narrow screens.
     const field = slider.closest('label');
@@ -4912,7 +4923,7 @@ function applyHarm() {
     set('delayOut', settings.harmDelayLevel / 100);
   }
   harmOut.gain.setTargetAtTime(settings.harmMuted ? 0 : settings.harmLevel / 100, now, 0.02);
-  for (const src of ['arp', 'chords', 'drums', 'bass']) setSend('harm', src);
+  for (const src of ['arp', 'chords', 'drums', 'break', 'bass']) setSend('harm', src);
 }
 
 // Older saves had one Mode menu (0 Pitch … 6 Repeat): carry it over once.
@@ -4974,7 +4985,7 @@ for (const [id, key, fmt] of [
   bindRange(id, key, fmt, applyHarm);
   harmControls.push([id, key, fmt]);
 }
-for (const src of ['Arp', 'Chords', 'Drums', 'Bass']) {
+for (const src of ['Arp', 'Chords', 'Drums', 'Break', 'Bass']) {
   bindRange(`harm-send-${src.toLowerCase()}`, `harmSend${src}`, (v) => `${v}%`, applyHarm);
 }
 
@@ -5033,7 +5044,7 @@ harmPreset.addEventListener('change', () => {
   save();
 });
 for (const fx of ['delay', 'reverb']) {
-  for (const src of ['Arp', 'Chords', 'Drums', 'Bass']) {
+  for (const src of ['Arp', 'Chords', 'Drums', 'Break', 'Bass']) {
     bindRange(`${fx}-send-${src.toLowerCase()}`, `${fx}Send${src}`, (v) => `${v}%`, applyFx);
   }
 }

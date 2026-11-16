@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=218" />
-  <link rel="stylesheet" href="mac.css?v=218" />
+  <link rel="stylesheet" href="styles.css?v=220" />
+  <link rel="stylesheet" href="mac.css?v=220" />
 </head>
 <body>
   <main class="device">
@@ -799,8 +799,11 @@
         <label class="field slider">Chords send <output id="delay-send-chords-val"></output>
           <input id="delay-send-chords" type="range" min="0" max="100" />
         </label>
-        <label class="field slider">Drums send <output id="delay-send-drums-val"></output>
+        <label class="field slider" title="The percussion">Perc send <output id="delay-send-drums-val"></output>
           <input id="delay-send-drums" type="range" min="0" max="100" />
+        </label>
+        <label class="field slider" title="The breakbeat">Break send <output id="delay-send-break-val"></output>
+          <input id="delay-send-break" type="range" min="0" max="100" />
         </label>
         <label class="field slider">Bass send <output id="delay-send-bass-val"></output>
           <input id="delay-send-bass" type="range" min="0" max="100" />
@@ -824,8 +827,11 @@
         <label class="field slider">Chords send <output id="reverb-send-chords-val"></output>
           <input id="reverb-send-chords" type="range" min="0" max="100" />
         </label>
-        <label class="field slider">Drums send <output id="reverb-send-drums-val"></output>
+        <label class="field slider" title="The percussion">Perc send <output id="reverb-send-drums-val"></output>
           <input id="reverb-send-drums" type="range" min="0" max="100" />
+        </label>
+        <label class="field slider" title="The breakbeat">Break send <output id="reverb-send-break-val"></output>
+          <input id="reverb-send-break" type="range" min="0" max="100" />
         </label>
         <label class="field slider">Bass send <output id="reverb-send-bass-val"></output>
           <input id="reverb-send-bass" type="range" min="0" max="100" />
@@ -866,8 +872,10 @@
           <input id="harm-send-arp" type="range" min="0" max="100" /></label>
         <label class="field slider">Chords send <output id="harm-send-chords-val"></output>
           <input id="harm-send-chords" type="range" min="0" max="100" /></label>
-        <label class="field slider" title="The percussion and the breakbeat">Drums send <output id="harm-send-drums-val"></output>
+        <label class="field slider" title="The percussion">Perc send <output id="harm-send-drums-val"></output>
           <input id="harm-send-drums" type="range" min="0" max="100" /></label>
+        <label class="field slider" title="The breakbeat">Break send <output id="harm-send-break-val"></output>
+          <input id="harm-send-break" type="range" min="0" max="100" /></label>
         <label class="field slider">Bass send <output id="harm-send-bass-val"></output>
           <input id="harm-send-bass" type="range" min="0" max="100" /></label>
       </div>
@@ -907,6 +915,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=218"></script>
+  <script type="module" src="src/app.js?v=220"></script>
 </body>
 </html>
