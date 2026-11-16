@@ -8,29 +8,29 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=220';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=220';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=220';
-import { Midi } from './midi.js?v=220';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=220';
+} from './core.js?v=221';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=221';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=221';
+import { Midi } from './midi.js?v=221';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=221';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, presetConds, presetLens, TRIPLET_FEEL, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=220';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=220';
-import { Invention, parseSubject } from './invention.js?v=220';
-import { ColtraneSolo } from './coltrane.js?v=220';
-import { BASS_STYLES, styleForSong, bassLine } from './bass.js?v=220';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=220';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=220';
+} from './percussion.js?v=221';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=221';
+import { Invention, parseSubject } from './invention.js?v=221';
+import { ColtraneSolo } from './coltrane.js?v=221';
+import { BASS_STYLES, styleForSong, bassLine } from './bass.js?v=221';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=221';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=221';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=220';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=220';
+} from './breaks.js?v=221';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=221';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=220';
+} from './mono.js?v=221';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -119,6 +119,7 @@ const settings = {
   monoKbOctave: 2, // the mono panel's little keyboard starts at C of this octave
   breakOff: [], // slices switched off (shift-click): not played, not picked by Evolve/Randomize
   breakRollHold: true, // a roll keeps going until the next filled row (Polyend style); off = one step
+  audioOut: '', // the audio output device id ('' = the system default); this device only
   breakStepsOpen: true, // the Breakbeat tracker's steps shown (a view choice, not part of scenes)
   breakTrim: { start: 0, end: 1 }, // the part of the loaded break that's used (fractions of the file)
   arpLevel: 100, // %: overall level of the arp (both voices)
@@ -249,7 +250,7 @@ const DEFAULTS = structuredClone(settings);
 const DEVICE_KEYS = [
   'theme', 'themeV2', 'collapsed', 'showHelp', 'midiIn', 'midiInCh', 'midiOut', 'midiOutCh', 'volume', 'synthOn',
   'midiInChord', 'midiInMono', 'midiInDrums', 'midiInBreak', 'aftertouch', 'aftertouchDepth', 'midiMap',
-  'sync', 'baseOctave', 'chordRoot', 'monoKbOctave', 'breakStepsOpen',
+  'sync', 'baseOctave', 'chordRoot', 'monoKbOctave', 'breakStepsOpen', 'audioOut',
 ];
 // Live scene recall: each part of the page registers how to re-read its settings,
 // in page order (repairs first, then controls, then drawing). See recallLive().
@@ -383,7 +384,7 @@ function ensureAudio() {
         sends[fx][src] = { pre, post };
       }
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=220', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=221', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -404,6 +405,7 @@ function ensureAudio() {
     synth.setPwmRate(settings.chordPwmRate);
     drums.setLevel(1); // its Level is the percussion fader
   }
+  applyAudioOut();
   // Safari's state after a phone lock or a call is "interrupted", not "suspended".
   if (ctx.state !== 'running' && ctx.state !== 'closed') ctx.resume().catch(() => {});
   return ctx;
@@ -1628,6 +1630,66 @@ bindRange('swing', 'swing', (v) => `${v}%`);
 
 $('latch').setAttribute('aria-pressed', String(settings.latch));
 $('latch').addEventListener('click', () => setLatch(!settings.latch));
+
+// ---- Audio out: the device this app's sound goes to (Chrome and Edge can choose).
+const canPickOutput = typeof AudioContext !== 'undefined' && 'setSinkId' in AudioContext.prototype;
+let audioOutBusy = false;
+async function applyAudioOut() {
+  if (!ctx || !canPickOutput || audioOutBusy) return;
+  const want = settings.audioOut || '';
+  if ((ctx.sinkId || '') === want) return;
+  audioOutBusy = true;
+  try {
+    await ctx.setSinkId(want);
+    $('audio-out-status').textContent = want ? `Playing to ${$('audio-out').selectedOptions[0]?.textContent || 'the chosen output'}.` : '';
+  } catch (e) {
+    // Gone (unplugged) or not allowed: back to the default, and say so.
+    $('audio-out-status').textContent = `Couldn't use that output (${e.name || 'error'}): playing to the system default.`;
+    try { await ctx.setSinkId(''); } catch { /* the default is always there */ }
+  } finally {
+    audioOutBusy = false;
+  }
+}
+async function listAudioOutputs() {
+  const sel = $('audio-out');
+  if (!canPickOutput || !navigator.mediaDevices?.enumerateDevices) {
+    sel.disabled = true;
+    $('audio-out-list').hidden = true;
+    $('audio-out-status').textContent = 'Choosing an output needs Chrome or Edge; this browser plays to the system default.';
+    return;
+  }
+  let outs = [];
+  try { outs = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audiooutput'); } catch { /* none */ }
+  // Without permission the browser hides devices (no ids or names).
+  const hidden = !outs.some((d) => d.deviceId && d.label);
+  sel.replaceChildren(new Option('System default', ''));
+  outs.filter((d) => d.deviceId && d.deviceId !== 'default' && d.deviceId !== 'communications')
+    .forEach((d, i) => sel.add(new Option(d.label || `Output ${i + 1}`, d.deviceId)));
+  if (settings.audioOut && ![...sel.options].some((o) => o.value === settings.audioOut)) {
+    sel.add(new Option(hidden ? 'Your chosen output' : 'Your chosen output (not connected)', settings.audioOut));
+  }
+  sel.value = settings.audioOut || '';
+  $('audio-out-list').hidden = !hidden;
+  if (hidden && !settings.audioOut) $('audio-out-status').textContent = 'Press List outputs to see your devices.';
+}
+$('audio-out').addEventListener('change', () => {
+  settings.audioOut = $('audio-out').value;
+  save();
+  if (ctx) applyAudioOut();
+  else $('audio-out-status').textContent = settings.audioOut ? 'It will play there once the sound starts.' : '';
+});
+$('audio-out-list').addEventListener('click', async () => {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream.getTracks().forEach((t) => t.stop()); // only for the device names: nothing is recorded
+    $('audio-out-status').textContent = '';
+  } catch {
+    $('audio-out-status').textContent = 'Without microphone permission the browser won\'t show its outputs.';
+  }
+  listAudioOutputs();
+});
+navigator.mediaDevices?.addEventListener?.('devicechange', () => { listAudioOutputs().then(() => applyAudioOut()); });
+listAudioOutputs();
 
 $('synth-on').checked = settings.synthOn;
 $('synth-on').addEventListener('change', () => {

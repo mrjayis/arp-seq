@@ -14,7 +14,7 @@
 // each note is a step (or leap) along the chord's scale from the one before, and notes on
 // the beat are chord tones. The lower voice keeps below the upper.
 
-import { chordScale } from './bass.js?v=220';
+import { chordScale } from './bass.js?v=221';
 
 const pc12 = (n) => ((n % 12) + 12) % 12;
 

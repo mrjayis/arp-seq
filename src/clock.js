@@ -1,7 +1,7 @@
 // Clock sources. Both emit 24-PPQN pulses via onPulse(time, pulseIndex, pulseDuration),
 // where `time` is in the same domain as getTime() (AudioContext seconds in the app).
 
-import { PPQN } from './core.js?v=220';
+import { PPQN } from './core.js?v=221';
 
 /** Look-ahead scheduler driven by an internal tempo. */
 export class InternalClock {
