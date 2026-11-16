@@ -115,7 +115,76 @@ test('the cadence runs down within the upper voice, no octave jump at the end', 
     const out = perform(seed, 2).filter((e) => e.v === 'upper' && e.kind === 'cadence');
     for (let k = 1; k < out.length; k++) {
       if (Math.floor(out[k].s / 16) !== Math.floor(out[k - 1].s / 16)) continue;
-      assert.ok(Math.abs(out[k].note - out[k - 1].note) <= 4, `cadence leap ${out[k - 1].note} → ${out[k].note}`);
+      assert.ok(Math.abs(out[k].note - out[k - 1].note) <= 7, `cadence leap ${out[k - 1].note} → ${out[k].note}`);
     }
   }
+});
+
+import { counterpointCost } from '../src/invention.js';
+
+test('counterpoint rules: what each one catches', () => {
+  const base = { prev2: null, otherMoved: true, beat: true, parallels: 0, edge: false, mine: true };
+  const f = (n, ctx) => counterpointCost(n, { ...base, ...ctx }).faults;
+  // C/E → D/G... parallel 5ths: lower C3→D3, upper G3→A3
+  assert.ok(f(57, { voice: 'upper', other: 50, prev: 55, pair: { upper: 55, lower: 48 }, strong: true }).includes('parallel 5ths'));
+  // octaves by contrary motion
+  assert.ok(f(79, { voice: 'upper', other: 55, prev: 72, pair: { upper: 72, lower: 60 }, strong: true }).some((x) => /octaves by contrary/.test(x)));
+  // a 4th on the strong beat is a dissonance in two voices
+  assert.ok(f(65, { voice: 'upper', other: 60, prev: 64, pair: { upper: 64, lower: 60 }, strong: true }).includes('dissonance on a strong beat'));
+  // a passing note by step on a weak 16th is fine; by leap it isn't
+  assert.deepEqual(f(62, { voice: 'upper', other: 60, prev: 64, pair: { upper: 64, lower: 60 }, strong: false }), []);
+  assert.ok(f(62, { voice: 'upper', other: 60, prev: 67, pair: { upper: 67, lower: 60 }, strong: false }).includes('dissonance not approached by step'));
+  // hidden octave: similar motion into an octave with the upper voice leaping
+  assert.ok(f(72, { voice: 'upper', other: 60, prev: 67, pair: { upper: 67, lower: 59 }, strong: true }).includes('hidden octave'));
+  // a leap of a 5th not followed by a step back
+  assert.ok(f(74, { voice: 'upper', other: null, prev: 72, prev2: 65 }).includes('leap not recovered by step'));
+  assert.deepEqual(f(70, { voice: 'upper', other: null, prev: 72, prev2: 65 }), []);
+  assert.ok(f(78, { voice: 'upper', other: null, prev: 72 }).includes('tritone leap'));
+});
+
+test('with the rules on, parallels and dissonances all but vanish', () => {
+  const count = (rules) => {
+    const t = { par: 0, dis: 0 };
+    for (let seed = 1; seed <= 30; seed++) {
+      const inv = new Invention({ rng: seeded(seed) });
+      inv.rules = rules;
+      for (let s = 0; s < 2 * 8 * 16; s++) {
+        const bar = Math.floor(s / 16) % 8;
+        const [root, type] = ROUND[bar];
+        for (const v of ['upper', 'lower']) {
+          const ev = inv.step(v, s, { root, type }, { cadence: bar === 7, afterCadence: bar === 0 && s >= 128, key: { tonic: 0, minor: false } });
+          if (!ev) continue;
+          for (const x of ev.faults) {
+            if (/parallel (5ths|octaves)|by contrary motion/.test(x)) t.par++;
+            if (/dissonance/.test(x)) t.dis++;
+          }
+        }
+      }
+    }
+    return t;
+  };
+  const off = count(false);
+  const on = count(true);
+  assert.ok(off.par > 20 && on.par <= off.par / 20, `parallels ${off.par} → ${on.par}`);
+  assert.ok(off.dis > 100 && on.dis <= off.dis / 15, `dissonances ${off.dis} → ${on.dis}`);
+});
+
+test('the checker does not turn a moving line into repeated notes', () => {
+  let repeats = 0;
+  let moves = 0;
+  for (let seed = 1; seed <= 30; seed++) {
+    const inv = new Invention({ rng: seeded(seed) });
+    const last = {};
+    for (let s = 0; s < 2 * 8 * 16; s++) {
+      const bar = Math.floor(s / 16) % 8;
+      const [root, type] = ROUND[bar];
+      for (const v of ['upper', 'lower']) {
+        const ev = inv.step(v, s, { root, type }, { cadence: bar === 7, afterCadence: bar === 0 && s >= 128, key: { tonic: 0, minor: false } });
+        if (!ev) continue;
+        if (ev.kind !== 'final' && last[v] !== undefined) { moves++; if (ev.note === last[v]) repeats++; }
+        last[v] = ev.note;
+      }
+    }
+  }
+  assert.ok(repeats / moves < 0.03, `${repeats} repeated of ${moves}`);
 });

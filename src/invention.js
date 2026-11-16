@@ -14,7 +14,7 @@
 // each note is a step (or leap) along the chord's scale from the one before, and notes on
 // the beat are chord tones. The lower voice keeps below the upper.
 
-import { chordScale } from './bass.js?v=203';
+import { chordScale } from './bass.js?v=212';
 
 const pc12 = (n) => ((n % 12) + 12) % 12;
 
@@ -90,13 +90,20 @@ export function makeSubject(rng = Math.random) {
   // (each a different size from the one before, so the line doesn't just bounce)
   let d = -Math.sign(moves[7]);
   let size = 0;
+  // A leap of a 4th or more is answered by a step back the other way (G–c–B–c in the C
+  // major Invention), as counterpoint asks.
+  const prevLeap = Math.abs(moves[7]);
   for (let k = 0; k < 4; k++) {
     let next;
-    do next = pick([1, 2, 2, 3, 3, 4, 5], rng); while (next === size);
+    if ((k === 0 ? prevLeap : size) >= 3) {
+      next = 1;
+      d = k === 0 ? -Math.sign(moves[7]) : -d;
+    } else {
+      do next = pick([1, 2, 2, 3, 3, 4, 5], rng); while (next === size);
+      if (k > 0 && rng() < 0.7) d = -d; // mostly turning; sometimes carrying on the same way
+    }
     size = next;
     out.push({ at: 8 + 2 * k, len: 2, move: d * size });
-    // Mostly turning; sometimes carrying on the same way.
-    if (rng() < 0.7) d = -d;
   }
   return out;
 }
@@ -120,9 +127,12 @@ function episode(subject) {
   const head = subject.slice(0, 4);
   const out = [];
   for (let r = 0; r < 4; r++) {
+    // Each repeat starts a step below the last one's start; if the head itself ends a
+    // step down, that would repeat its last note, so then a third below instead.
+    const back = -1 - head.slice(1).reduce((sum, x) => sum + x.move, 0);
     head.forEach((e, k) => out.push({
       at: r * 4 + k, len: 1, dir: -1, // a falling sequence
-      move: k === 0 ? (r === 0 ? null : -1 - (head.slice(1).reduce((s, x) => s + x.move, 0))) : e.move,
+      move: k === 0 ? (r === 0 ? null : back || -1) : e.move,
     }));
   }
   return out;
@@ -138,9 +148,77 @@ const cadenceUpper = () => [
   { at: 12, len: 4, move: -1 },
 ];
 const cadenceLower = () => [{ at: 0, len: 8, move: null, tone: 'root' }, { at: 8, len: 8, move: null, tone: 'fifth' }];
-const finalNote = () => [{ at: 0, len: 8, move: null, tone: 'root' }];
+const finalNote = () => [{ at: 0, len: 8, move: null, tone: 'root' }]; // both voices: the octave
 
 export const VOICE_RANGES = { upper: [60, 84], lower: [43, 67] };
+
+// ---- Counterpoint: the rules of two-voice writing, as taught from species counterpoint
+// (Fux) onwards and as Bach keeps them in the Inventions. Each candidate note is scored
+// against them; the planned note is kept unless something nearby breaks fewer rules.
+const PERFECT = [0, 7]; // unison/octave, fifth (as intervals mod 12)
+const CONSONANT = [0, 3, 4, 7, 8, 9]; // the 4th (5) is a dissonance between two voices
+
+/** The interval class between two notes (lower to upper), 0–11. */
+const ic = (lower, upper) => pc12(upper - lower);
+
+/**
+ * What a note would break, as {cost, faults}. `ctx`:
+ *  voice; other — the other voice's note sounding now (null: none);
+ *  prev, prev2 — this voice's last two notes; pair — {upper, lower} at the last moment both
+ *  sounded; otherMoved — whether the other voice struck a new note now (else it holds);
+ *  strong — beat 1 or 3; beat — on a beat; parallels — how many parallel 3rds/6ths in a
+ *  row so far; edge — the first or last note of a section (unisons allowed).
+ */
+export function counterpointCost(n, ctx) {
+  const faults = [];
+  const add = (w, why) => { faults.push(why); return w; };
+  let cost = 0;
+  const { prev, prev2, other, pair, voice } = ctx;
+  // Each line on its own.
+  if (prev !== null && prev !== undefined) {
+    const leap = n - prev;
+    const size = Math.abs(leap);
+    if (size === 6) cost += add(40, 'tritone leap');
+    if (size === 10 || size === 11) cost += add(40, 'leap of a 7th');
+    if (size > 12) cost += add(80, 'leap over an octave');
+    if (size === 0 && ctx.moving) cost += add(25, 'repeated note'); // the line was meant to move
+    // A leap of a 4th or more is recovered by step the other way.
+    if (prev2 !== null && prev2 !== undefined && Math.abs(prev - prev2) >= 5) {
+      const back = Math.sign(prev - prev2) !== Math.sign(leap) && size <= 2;
+      if (!back) cost += add(25, 'leap not recovered by step');
+    }
+  }
+  if (other === null || other === undefined) return { cost, faults };
+  const upper = voice === 'upper' ? n : other;
+  const lower = voice === 'upper' ? other : n;
+  if (lower >= upper) cost += add(300, 'voices cross');
+  if (upper - lower > 24) cost += add(30, 'more than two octaves apart');
+  if (upper === lower && !ctx.edge) cost += add(50, 'unison');
+  const i = ic(lower, upper);
+  // Consonance: always on the strong beats; elsewhere a dissonance must come by step
+  // (a passing or neighbour note).
+  if (!CONSONANT.includes(i)) {
+    if (ctx.strong) cost += add(100, 'dissonance on a strong beat');
+    else if (prev === null || prev === undefined || Math.abs(n - prev) > 2 || !ctx.mine) cost += add(35, 'dissonance not approached by step');
+  }
+  // Motion from the last moment both sounded.
+  if (pair && pair.upper !== undefined && pair.lower !== undefined && pair.upper !== null && pair.lower !== null) {
+    const du = upper - pair.upper;
+    const dl = lower - pair.lower;
+    const pi = ic(pair.lower, pair.upper);
+    if (du !== 0 || dl !== 0) {
+      if (PERFECT.includes(i) && i === pi && (du !== 0 && dl !== 0)) {
+        cost += Math.sign(du) === Math.sign(dl) ? add(200, `parallel ${i ? '5ths' : 'octaves'}`) : add(150, `${i ? '5ths' : 'octaves'} by contrary motion`);
+      } else if (PERFECT.includes(i) && !(PERFECT.includes(pi) && i === pi) && Math.sign(du) === Math.sign(dl) && du !== 0 && Math.abs(du) > 2) {
+        cost += add(60, `hidden ${i ? '5th' : 'octave'}`); // similar motion into a perfect interval, the upper voice leaping
+      }
+      if ([3, 4, 8, 9].includes(i) && [3, 4, 8, 9].includes(pi) && Math.sign(du) === Math.sign(dl) && du !== 0 && (ctx.parallels || 0) >= 3) {
+        cost += add(20, 'more than three parallel 3rds/6ths');
+      }
+    }
+  }
+  return { cost, faults };
+}
 
 /**
  * The invention. Call step(voice, sixteenth, chord, info) on every 16th for each voice
@@ -162,6 +240,12 @@ export class Invention {
     this.last = { upper: null, lower: null };
     this.prevPair = null;
     this.kinds = { upper: 'rest', lower: 'rest' };
+    this.sound = { upper: null, lower: null }; // {note, until (16th)} sounding in each voice
+    this.prev2 = { upper: null, lower: null };
+    this.pair = null; // both voices' notes the last time both sounded
+    this.parallels = 0;
+    this.rules = true; // the counterpoint check (off: notes as planned, for comparison)
+    this.faults = []; // what the chosen notes still broke (for tests and display)
   }
 
   /** What each voice plays in a bar. `info`: {cadence, afterCadence} from the form. */
@@ -228,13 +312,93 @@ export class Invention {
       // sequences keep falling); on 2 and 4 a passing note is fine.
       if (at % 8 === 0) note = nearestTone(note, chord, Math.sign(ev.move) || ev.dir || 0);
     }
-    // Keep to the voice's range, and the lower voice under the upper.
+    // Keep to the voice's range.
     while (note > hi) note -= 12;
     while (note < lo) note += 12;
-    if (voice === 'lower' && info.other !== undefined && info.other !== null) {
-      while (note > info.other - 3 && note - 12 >= lo - 5) note -= 12;
+    // The other voice, if it's sounding now.
+    const otherVoice = voice === 'upper' ? 'lower' : 'upper';
+    const os = this.sound[otherVoice];
+    const other = os && os.until > sixteenth ? os.note : null;
+    const otherMoved = !!(os && os.from === sixteenth);
+    const strong = at % 8 === 0;
+    const ctx = {
+      voice, other, prev, prev2: this.prev2[voice], pair: this.pair, otherMoved, strong, beat: at % 4 === 0,
+      parallels: this.parallels, edge: ev.tone === 'root' && this.kinds[voice] === 'final', mine: true,
+      moving: ev.move !== 0 && this.kinds[voice] !== 'final', // (a new statement shouldn't start on the note just played either)
+    };
+    if (this.rules) {
+      // The planned note, or a near alternative that keeps the rules better: a scale step
+      // either side, the octave, a chord tone close by. Moving off the plan costs a little
+      // (more the further), so the line keeps its shape where it can.
+      const key = info.key || null;
+      const scale = lineScale(chord, key);
+      const cands = new Map();
+      const consider = (m, away) => {
+        if (m < lo - (voice === 'lower' ? 5 : 0) || m > hi) return;
+        if (!scale.includes(pc12(m))) return;
+        if (strong && !chordScale(chord.type).tones.includes(pc12(m - chord.root))) return; // chord tones on 1 and 3
+        // Further from the plan costs more, so a run keeps its shape.
+        if (!cands.has(m)) cands.set(m, away + 3 * Math.abs(m - note));
+      };
+      consider(note, 0);
+      for (const d of [1, -1, 2, -2]) consider(scaleStep(note, d, chord, key), 6 * Math.abs(d));
+      // (an octave only where a statement starts, and only if the rest of the figure then
+      // stays in range: mid-run it would break the line)
+      const fits = (start) => {
+        let n = start;
+        for (const e of this.plan[voice].filter((x) => x.at > at)) {
+          if (e.move === null) break;
+          n = scaleStep(n, e.move, chord, key);
+          if (n < lo - 2 || n > hi + 2) return false;
+        }
+        return true;
+      };
+      if (ev.move === null) for (const d of [12, -12]) if (fits(note + d)) consider(note + d, 12);
+      for (let d = -4; d <= 4; d++) {
+        const t = nearestTone(note + d, chord);
+        if (d && Math.abs(t - note) <= 4) consider(t, 8);
+      }
+      if (!cands.size) cands.set(note, 0);
+      let best = null;
+      const choose = () => {
+        for (const [m, away] of cands) {
+          const { cost, faults } = counterpointCost(m, ctx);
+          const total = cost + away;
+          if (!best || total < best.total) best = { m, total, faults };
+        }
+      };
+      choose();
+      // Never cross, nor drift more than two octaves apart: if everything near does, an
+      // octave away it is.
+      if (best.faults.includes('voices cross') || best.faults.includes('more than two octaves apart')) {
+        for (const d of [12, -12, 24, -24]) {
+          const m = note + d;
+          if (!cands.has(m) && m >= lo - (voice === 'lower' ? 5 : 0) && m <= hi) cands.set(m, 12);
+        }
+        best = null;
+        choose();
+      }
+      note = best.m;
+      this.faults = best.faults;
+    } else {
+      // (unchecked: only keep the lower voice under the upper)
+      if (voice === 'lower' && other !== null) while (note > other - 3 && note - 12 >= lo - 5) note -= 12;
+      this.faults = counterpointCost(note, ctx).faults;
     }
+    // Remember what's sounding, for the other voice and the next note.
+    this.prev2[voice] = prev;
     this.last[voice] = note;
-    return { note, len: ev.len, kind: this.kinds[voice] };
+    this.sound[voice] = { note, from: sixteenth, until: sixteenth + ev.len };
+    if (other !== null) {
+      const now = voice === 'upper' ? { upper: note, lower: other } : { upper: other, lower: note };
+      const i = ic(now.lower, now.upper);
+      const pi = this.pair ? ic(this.pair.lower, this.pair.upper) : -1;
+      const imperfect = [3, 4, 8, 9];
+      const parallel = this.pair && imperfect.includes(i) && imperfect.includes(pi)
+        && Math.sign(now.upper - this.pair.upper) === Math.sign(now.lower - this.pair.lower) && now.upper !== this.pair.upper;
+      this.parallels = parallel ? this.parallels + 1 : 0;
+      this.pair = now;
+    }
+    return { note, len: ev.len, kind: this.kinds[voice], faults: this.faults };
   }
 }
