@@ -8,29 +8,29 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=214';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=214';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=214';
-import { Midi } from './midi.js?v=214';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=214';
+} from './core.js?v=217';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=217';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=217';
+import { Midi } from './midi.js?v=217';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=217';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, presetConds, presetLens, TRIPLET_FEEL, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=214';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=214';
-import { Invention, parseSubject } from './invention.js?v=214';
-import { ColtraneSolo } from './coltrane.js?v=214';
-import { BASS_STYLES, styleForSong, bassLine } from './bass.js?v=214';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=214';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=214';
+} from './percussion.js?v=217';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=217';
+import { Invention, parseSubject } from './invention.js?v=217';
+import { ColtraneSolo } from './coltrane.js?v=217';
+import { BASS_STYLES, styleForSong, bassLine } from './bass.js?v=217';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=217';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=217';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=214';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=214';
+} from './breaks.js?v=217';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=217';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=214';
+} from './mono.js?v=217';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -117,6 +117,7 @@ const settings = {
   monoKbOctave: 2, // the mono panel's little keyboard starts at C of this octave
   breakOff: [], // slices switched off (shift-click): not played, not picked by Evolve/Randomize
   breakRollHold: true, // a roll keeps going until the next filled row (Polyend style); off = one step
+  breakStepsOpen: true, // the Breakbeat tracker's steps shown (a view choice, not part of scenes)
   breakTrim: { start: 0, end: 1 }, // the part of the loaded break that's used (fractions of the file)
   arpLevel: 100, // %: overall level of the arp (both voices)
   osc2Sound: 'west', // 'west' (the west-coast voice) | 'bass' (upright bass)
@@ -243,7 +244,7 @@ const DEFAULTS = structuredClone(settings);
 const DEVICE_KEYS = [
   'theme', 'themeV2', 'collapsed', 'showHelp', 'midiIn', 'midiInCh', 'midiOut', 'midiOutCh', 'volume', 'synthOn',
   'midiInChord', 'midiInMono', 'midiInDrums', 'midiInBreak', 'aftertouch', 'aftertouchDepth', 'midiMap',
-  'sync', 'baseOctave', 'chordRoot', 'monoKbOctave',
+  'sync', 'baseOctave', 'chordRoot', 'monoKbOctave', 'breakStepsOpen',
 ];
 // Live scene recall: each part of the page registers how to re-read its settings,
 // in page order (repairs first, then controls, then drawing). See recallLive().
@@ -361,7 +362,7 @@ function ensureAudio() {
         sends[fx][src] = { pre, post };
       }
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=214', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=217', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -3111,18 +3112,83 @@ function applyBreakTrim() {
   renderTrim();
 }
 
-// ---- trim controls: Start/End sliders over an overview of the whole file.
-const TRIM_STEPS = 1000;
+// ---- trim controls: Start/End sliders over an overview of the whole file, and a
+// close-up around one edge for fine work.
 let trimTimer = null;
+let trimEdge = 'start'; // the edge the zoom shows (and the nudge buttons move)
+const TRIM_ZOOM = 0.2; // seconds either side of the edge in the close-up
+/** Slider steps: one per millisecond of the file. */
+const trimSteps = () => Math.max(1000, Math.round((breakSource?.duration || 1) * 1000));
 function renderTrim() {
   const t = settings.breakTrim || { start: 0, end: 1 };
-  $('break-trim-start').value = String(Math.round(t.start * TRIM_STEPS));
-  $('break-trim-end').value = String(Math.round(t.end * TRIM_STEPS));
+  const steps = trimSteps();
+  for (const id of ['break-trim-start', 'break-trim-end']) $(id).max = String(steps);
+  $('break-trim-start').value = String(Math.round(t.start * steps));
+  $('break-trim-end').value = String(Math.round(t.end * steps));
   const dur = breakSource ? breakSource.duration : 0;
   $('break-trim-start-val').textContent = `${(t.start * dur).toFixed(3)} s`;
   $('break-trim-end-val').textContent = `${(t.end * dur).toFixed(3)} s`;
   $('break-trim-reset').disabled = t.start <= 0 && t.end >= 1;
+  $('trim-zoom-edge').querySelectorAll('button').forEach((b) => {
+    const on = b.dataset.edge === trimEdge;
+    b.setAttribute('aria-pressed', String(on));
+    b.setAttribute('aria-checked', String(on));
+  });
+  $('trim-zoom-at').textContent = breakSource ? `${trimEdge === 'start' ? 'Start' : 'End'} at ${(t[trimEdge] * dur).toFixed(3)} s` : '';
   drawTrimOverview();
+  drawTrimZoom();
+}
+
+/** The close-up: ±0.2 s of the file around the chosen edge, at full detail. */
+function drawTrimZoom() {
+  const canvas = $('break-trim-zoom');
+  if (!canvas.clientWidth) return;
+  const dpr = window.devicePixelRatio || 1;
+  const w = Math.min(canvas.parentElement.clientWidth || 0, canvas.clientWidth || Infinity);
+  const h = canvas.clientHeight || 52;
+  if (canvas.width !== w * dpr || canvas.height !== h * dpr) { canvas.width = w * dpr; canvas.height = h * dpr; }
+  const g = canvas.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const css = getComputedStyle(canvas);
+  const ink = css.getPropertyValue('--ink').trim() || '#000';
+  const mod = css.getPropertyValue('--mod').trim() || ink;
+  g.fillStyle = css.getPropertyValue('--field').trim() || '#fff';
+  g.fillRect(0, 0, w, h);
+  if (!breakSource) return;
+  const t = settings.breakTrim || { start: 0, end: 1 };
+  const data = breakSource.getChannelData(0);
+  const rate = breakSource.sampleRate;
+  const centre = t[trimEdge] * data.length;
+  const half = TRIM_ZOOM * rate;
+  const from = centre - half;
+  const per = (2 * half) / w; // samples per pixel
+  const mid = h / 2;
+  const max = trimPeaks.max || 1;
+  const keepFrom = t.start * data.length;
+  const keepTo = t.end * data.length;
+  for (let x = 0; x < w; x++) {
+    const a = Math.floor(from + x * per);
+    const b = Math.floor(from + (x + 1) * per);
+    if (b <= 0 || a >= data.length) continue;
+    let lo = 0;
+    let hi = 0;
+    for (let i = Math.max(0, a); i < Math.min(data.length, Math.max(b, a + 1)); i++) { const v = data[i]; if (v < lo) lo = v; if (v > hi) hi = v; }
+    g.globalAlpha = a >= keepFrom && a <= keepTo ? 1 : 0.25; // the cut-off part faint
+    g.fillStyle = ink;
+    g.fillRect(x, mid - (hi / max) * (mid - 3), 1, Math.max(1, ((hi - lo) / max) * (mid - 3)));
+  }
+  g.globalAlpha = 1;
+  g.fillStyle = mod;
+  g.fillRect(Math.round(w / 2) - 1, 0, 2, h); // the edge
+  // Ticks every 50 ms.
+  g.globalAlpha = 0.5;
+  g.fillStyle = ink;
+  for (let ms = -200; ms <= 200; ms += 50) {
+    if (!ms) continue;
+    const x = Math.round(w / 2 + (ms / 1000) * rate / per);
+    g.fillRect(x, h - 5, 1, 5);
+  }
+  g.globalAlpha = 1;
 }
 
 let trimPeaks = { buffer: null, cols: 0, pk: null, max: 1 };
@@ -3176,37 +3242,92 @@ function setTrim(start, end) {
   trimTimer = setTimeout(() => { applyBreakTrim(); save(); }, 120);
 }
 $('break-trim-start').addEventListener('input', () => {
-  setTrim(Number($('break-trim-start').value) / TRIM_STEPS, settings.breakTrim.end);
+  trimEdge = 'start';
+  setTrim(Number($('break-trim-start').value) / trimSteps(), settings.breakTrim.end);
 });
 $('break-trim-end').addEventListener('input', () => {
-  setTrim(settings.breakTrim.start, Number($('break-trim-end').value) / TRIM_STEPS);
+  trimEdge = 'end';
+  setTrim(settings.breakTrim.start, Number($('break-trim-end').value) / trimSteps());
 });
-// Drag on the overview: moves whichever edge is nearer.
-{
-  const view = $('break-trim-view');
-  let edge = null;
-  const at = (e) => {
-    const r = view.getBoundingClientRect();
-    return Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
-  };
+
+/** Move one edge to `pos` (a fraction of the file). */
+const moveEdge = (edge, pos) => setTrim(edge === 'start' ? pos : settings.breakTrim.start, edge === 'end' ? pos : settings.breakTrim.end);
+
+/**
+ * Scrubbing: the edge follows the finger's movement, not its position, and the further the
+ * finger slides up or down away from the strip, the slower (like scrubbing on an iPhone):
+ * full speed on it, half at ~50 px away, a quarter at ~100, an eighth from ~150. Shift
+ * gives a tenth on a computer.
+ */
+function scrubber(view, { span, pickEdge }) {
+  let drag = null;
   view.addEventListener('pointerdown', (e) => {
     if (!breakSource) return;
-    const x = at(e);
-    const t = settings.breakTrim;
-    edge = Math.abs(x - t.start) <= Math.abs(x - t.end) ? 'start' : 'end';
+    const r = view.getBoundingClientRect();
+    const edge = pickEdge((e.clientX - r.left) / r.width);
+    trimEdge = edge;
+    drag = { edge, x: e.clientX, pos: settings.breakTrim[edge] };
     view.setPointerCapture(e.pointerId);
-    setTrim(edge === 'start' ? x : t.start, edge === 'end' ? x : t.end);
+    renderTrim();
   });
   view.addEventListener('pointermove', (e) => {
-    if (!edge) return;
-    const x = at(e);
-    setTrim(edge === 'start' ? x : settings.breakTrim.start, edge === 'end' ? x : settings.breakTrim.end);
+    if (!drag) return;
+    const r = view.getBoundingClientRect();
+    const away = Math.max(0, e.clientY < r.top ? r.top - e.clientY : e.clientY - r.bottom);
+    const fine = (e.shiftKey ? 0.1 : 1) / Math.pow(2, Math.min(3, Math.floor(away / 50)));
+    // Each pixel of movement: the strip's span over its width, slowed by `fine`.
+    const pos = drag.pos + ((e.clientX - drag.x) / r.width) * span() * fine;
+    // Re-anchor so a change of speed doesn't jump.
+    drag.x = e.clientX;
+    drag.pos = Math.min(1, Math.max(0, pos));
+    moveEdge(drag.edge, drag.pos);
   });
-  const up = () => { edge = null; };
+  const up = () => { drag = null; };
   view.addEventListener('pointerup', up);
   view.addEventListener('pointercancel', up);
 }
+// The overview: the whole file; drags the nearer edge.
+scrubber($('break-trim-view'), {
+  span: () => 1,
+  pickEdge: (x) => (Math.abs(x - settings.breakTrim.start) <= Math.abs(x - settings.breakTrim.end) ? 'start' : 'end'),
+});
+// The close-up: ±0.2 s across its width, so the same drag is far finer.
+scrubber($('break-trim-zoom'), {
+  span: () => (breakSource ? (2 * TRIM_ZOOM) / breakSource.duration : 0),
+  pickEdge: () => trimEdge,
+});
+$('trim-zoom-edge').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => { trimEdge = b.dataset.edge; renderTrim(); }));
+// Nudge: 1 ms a tap; held, it keeps going (faster after a moment).
+for (const [id, dir] of [['trim-nudge-back', -1], ['trim-nudge-fwd', 1]]) {
+  const btn = $(id);
+  let timer = null;
+  let count = 0;
+  const nudge = () => {
+    if (!breakSource) return;
+    const ms = count++ > 15 ? 5 : 1;
+    moveEdge(trimEdge, Math.min(1, Math.max(0, settings.breakTrim[trimEdge] + (dir * ms) / 1000 / breakSource.duration)));
+  };
+  const stop = () => { clearInterval(timer); timer = null; };
+  btn.addEventListener('pointerdown', (e) => { e.preventDefault(); count = 0; nudge(); stop(); timer = setInterval(nudge, 70); });
+  for (const type of ['pointerup', 'pointerleave', 'pointercancel']) btn.addEventListener(type, stop);
+  btn.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); count = 0; nudge(); } });
+}
 $('break-trim-reset').addEventListener('click', () => setTrim(0, 1));
+
+// The tracker's steps fold away (the pattern plays on; the waveform still shows the slice).
+function renderBreakStepsFold() {
+  const open = settings.breakStepsOpen !== false;
+  $('break-rows').hidden = !open;
+  const btn = $('break-steps-toggle');
+  btn.setAttribute('aria-expanded', String(open));
+  btn.textContent = `Steps (${settings.breakSteps})${open ? '' : ': hidden'}`;
+}
+$('break-steps-toggle').addEventListener('click', () => {
+  settings.breakStepsOpen = settings.breakStepsOpen === false;
+  renderBreakStepsFold();
+  save();
+});
+renderBreakStepsFold();
 
 function updateBreakStatus(message = '') {
   if (message) { $('break-status').textContent = message; return; }
@@ -3541,6 +3662,7 @@ bindRange('break-sensitivity', 'breakSensitivity', (v) => `${v}%`, () => {
 bindSelect('break-steps', 'breakSteps', null, () => {
   settings.breakPattern = settings.breakPatternAuto ? orderedPattern() : resizePattern(settings.breakPattern, settings.breakSteps);
   buildBreakRows();
+  renderBreakStepsFold(); // its label counts them
 });
 bindSelect('break-bars', 'breakBars', null, () => {
   // An in-order pattern needs room for the whole break: lengthen it (never shorten) if needed.
@@ -5646,7 +5768,7 @@ function setCollapsed(panel, collapsed) {
   panel.querySelector('.collapse-btn')?.setAttribute('aria-expanded', String(!collapsed));
   if (collapsed) settings.collapsed[key] = true;
   else delete settings.collapsed[key];
-  if (!collapsed && panel.id === 'break-panel') requestAnimationFrame(() => { drawBreak(); drawTrimOverview(); }); // canvases need their width again
+  if (!collapsed && panel.id === 'break-panel') requestAnimationFrame(() => { drawBreak(); drawTrimOverview(); drawTrimZoom(); }); // canvases need their width again
 }
 
 document.querySelectorAll('main > .panel').forEach((panel) => {
