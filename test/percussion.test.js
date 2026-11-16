@@ -50,7 +50,7 @@ test('every kit has unique voices with sounds and valid 16-step presets', () => 
     assert.ok(Object.keys(presets).length >= 3, `${key} presets`);
     for (const [name, preset] of Object.entries(presets)) {
       for (const [id, row] of Object.entries(preset)) {
-        if (id === 'conds' || id === 'lens') continue; // chance conditions and row lengths, checked below
+        if (id === 'conds' || id === 'lens' || id === 'feel') continue; // conditions, lengths and feel: checked below
         assert.ok(ids.has(id), `${key}/${name}: ${id} is not in this kit`);
         assert.equal(row.length, preset.lens || DRUM_STEPS, `${key}/${name}.${id}`);
         assert.match(row, /^[Xx.]+$/);
@@ -243,4 +243,29 @@ test('jazz kit: triplet feel, ride pattern, comping by chance, a 3/4 waltz', () 
   const waltz = presetLens(jazz.presets['Jazz waltz (3/4)'], jazz.voices);
   assert.ok(Object.values(waltz).every((n) => n === 12));
   assert.deepEqual(presetLens(swing, jazz.voices), {});
+});
+
+import { mapJazzPreset } from '../src/percussion.js';
+
+test('every kit has the jazz patterns, on its own sounds, swung', () => {
+  for (const key of ['latin', '808', 'linn', 'user']) {
+    const { presets, voices } = KITS[key];
+    const names = Object.keys(presets).filter((n) => /^Jazz /.test(n));
+    assert.equal(names.length, Object.keys(KITS.jazz.presets).length, key);
+    for (const n of names) assert.equal(presets[n].feel, 'triplet', `${key}/${n}`);
+    const swing = parsePattern(presets['Jazz swing'], voices);
+    // some row carries the ride: every beat plus the swung "ands" of 2 and 4
+    const ride = Object.entries(swing).find(([, r]) => r.map((v, i) => (v ? i : -1)).filter((i) => i >= 0).join() === '0,4,6,8,12,14');
+    assert.ok(ride, `${key}: no ride row`);
+  }
+  // the 808's ride isn't on the open hat (its closed hat, the foot hi-hat, would choke it)
+  assert.ok(!KITS['808'].presets['Jazz swing'].oh808);
+});
+
+test('mapping a jazz pattern: a sure hit on a shared row wins over a chance', () => {
+  const p = { a: 'x...', b: 'x.x.', conds: { b: { 0: '50%', 2: '25%' } } };
+  const out = mapJazzPreset(p, { a: 'r', b: 'r' });
+  assert.equal(out.r, 'x.x.');
+  assert.deepEqual(out.conds, { r: { 2: '25%' } }); // cell 0: row a always plays it
+  assert.equal(out.feel, 'triplet');
 });

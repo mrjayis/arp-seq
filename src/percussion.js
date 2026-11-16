@@ -382,15 +382,72 @@ const PRESETS_JAZZ = {
   },
 };
 
+// Every jazz pattern swings on the triplet.
+for (const preset of Object.values(PRESETS_JAZZ)) preset.feel = 'triplet';
+
+// The jazz patterns on the other kits, each with its nearest sounds. (The 808 and Linn
+// open hats are choked by their closed hats, so the ride can't go there: it would be cut
+// off on 2 and 4 by the foot hi-hat.)
+const JAZZ_ON = {
+  latin: {
+    jRide: 'maracas', jBell: 'cowbell', jHat: 'claves', jSnare: 'congaHi', jRim: 'bongoHi', jKick: 'kick',
+    jTom: 'congaLo', jBrush: 'guiro', jTap: 'maracas',
+  },
+  808: {
+    jRide: 'cy808', jBell: 'cb808', jHat: 'ch808', jSnare: 'sd808', jRim: 'rs808', jKick: 'bd808',
+    jTom: 'lt808', jBrush: 'ma808', jTap: 'ma808',
+  },
+  linn: {
+    jRide: 'chLinn', jBell: 'cbLinn', jHat: 'cabasa', jSnare: 'sdLinn', jRim: 'sdLinn', jKick: 'bdLinn',
+    jTom: 'tomLinn', jBrush: 'cabasa', jTap: 'tamb',
+  },
+  user: {
+    jRide: 'u_cymbal', jBell: 'u_cowbell', jHat: 'u_chh', jSnare: 'u_snare', jRim: 'u_rim', jKick: 'u_kick',
+    jTom: 'u_tomlo', jBrush: 'u_cabasa', jTap: 'u_tamb',
+  },
+};
+
+/**
+ * A jazz preset moved onto another kit: its rows (merged where two land on one row), its
+ * chance conditions (kept only where no other source hits that cell for sure), its
+ * length and its feel.
+ */
+export function mapJazzPreset(preset, idMap) {
+  const out = mapPreset(preset, idMap);
+  const rows = Object.keys(preset).filter((k) => k !== 'conds' && k !== 'lens' && k !== 'feel');
+  const conds = {};
+  for (const [id, at] of Object.entries(preset.conds || {})) {
+    const to = idMap[id];
+    if (!to) continue;
+    for (const [i, c] of Object.entries(at)) {
+      // Another source row playing this cell every time wins over a chance.
+      const sure = rows.some((other) => other !== id && idMap[other] === to && preset[other][i] !== '.'
+        && !preset.conds?.[other]?.[i]);
+      if (!sure) (conds[to] ??= {})[i] = c;
+    }
+  }
+  if (Object.keys(conds).length) out.conds = conds;
+  if (preset.lens) out.lens = preset.lens;
+  out.feel = 'triplet';
+  return out;
+}
+
+/** The jazz presets for a kit, named so they don't clash with its own ("Ballad"). */
+function jazzFor(kit) {
+  return Object.fromEntries(Object.entries(PRESETS_JAZZ).map(([name, preset]) => [
+    /^jazz/i.test(name) ? name : `Jazz ${name[0].toLowerCase()}${name.slice(1)}`, mapJazzPreset(preset, JAZZ_ON[kit]),
+  ]));
+}
+
 /** Menu order (a numeric key like '808' would otherwise sort first). */
 export const KIT_ORDER = ['latin', '808', 'linn', 'jazz', 'user'];
 
 export const KITS = {
-  latin: { label: 'Latin', voices: VOICES, presets: DRUM_PRESETS },
-  808: { label: '808-style', voices: VOICES_808, presets: { ...PRESETS_808, ...LATIN_ON_808 } },
-  linn: { label: 'Linn-style', voices: VOICES_LINN, presets: PRESETS_LINN },
+  latin: { label: 'Latin', voices: VOICES, presets: { ...DRUM_PRESETS, ...jazzFor('latin') } },
+  808: { label: '808-style', voices: VOICES_808, presets: { ...PRESETS_808, ...LATIN_ON_808, ...jazzFor('808') } },
+  linn: { label: 'Linn-style', voices: VOICES_LINN, presets: { ...PRESETS_LINN, ...jazzFor('linn') } },
   jazz: { label: 'Jazz', voices: VOICES_JAZZ, presets: PRESETS_JAZZ, feel: 'triplet' },
-  user: { label: 'Your samples', voices: VOICES_USER, presets: PRESETS_USER },
+  user: { label: 'Your samples', voices: VOICES_USER, presets: { ...PRESETS_USER, ...jazzFor('user') } },
 };
 
 /** A preset's chance conditions as {voiceId: [16 condition strings]} (presets may have none). */
