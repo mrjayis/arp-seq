@@ -8,29 +8,29 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=199';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=199';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=199';
-import { Midi } from './midi.js?v=199';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=199';
+} from './core.js?v=203';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=203';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=203';
+import { Midi } from './midi.js?v=203';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=203';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, presetConds, presetLens, TRIPLET_FEEL, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=199';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=199';
-import { Invention } from './invention.js?v=199';
-import { ColtraneSolo } from './coltrane.js?v=199';
-import { BASS_STYLES, styleForSong, bassLine } from './bass.js?v=199';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=199';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=199';
+} from './percussion.js?v=203';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=203';
+import { Invention } from './invention.js?v=203';
+import { ColtraneSolo } from './coltrane.js?v=203';
+import { BASS_STYLES, styleForSong, bassLine } from './bass.js?v=203';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=203';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=203';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=199';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=199';
+} from './breaks.js?v=203';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=203';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=199';
+} from './mono.js?v=203';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -360,7 +360,7 @@ function ensureAudio() {
         sends[fx][src] = { pre, post };
       }
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=199', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=203', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -3818,8 +3818,41 @@ function inventionInfo(pulse) {
   const bars = round ? round * Math.ceil(8 / round) : 8;
   const span = bars * bar;
   const inRound = Math.floor((pulse % span) / bar);
-  return { cadence: inRound === bars - 1, afterCadence: inRound === 0 && pulse >= span };
+  return { cadence: inRound === bars - 1, afterCadence: inRound === 0 && pulse >= span, key: inventionKey() };
 }
+
+/** The key the invention keeps to: the tuning Key (or the progression's, found on Auto), minor
+ * when the progression's chord on that tonic is minor. null without one. */
+function inventionKey() {
+  const tonic = tonicPc();
+  if (tonic === null) return null;
+  const home = settings.progOn ? settings.progression.slice(0, settings.progLength).find((s) => (((s.root + progShift) % 12) + 12) % 12 === tonic && s.type !== 'rest') : null;
+  return { tonic, minor: !!(home && CHORDS[home.type]?.minor) };
+}
+
+// One tap to hear it: a Baroque progression, both voices, a Bach tempo, from the top.
+$('bach-try').addEventListener('click', () => {
+  const preset = $('prog-preset');
+  preset.value = 'Bach: circle of fifths (C)';
+  preset.dispatchEvent(new Event('change'));
+  if (!settings.progOn) { settings.progOn = true; progIndex = -1; renderProgression(); }
+  settings.monoSource = 'bach';
+  $('mono-source').value = 'bach';
+  // Switched on directly (their buttons would start the transport before we're ready).
+  settings.monoOn = true;
+  renderMonoPanel();
+  settings.arpOn = true;
+  renderArpOn();
+  renderSoloRow();
+  if (settings.sync === 'internal') {
+    setBpm(84);
+    if (playing) setPlaying(false);
+    ensureAudio();
+    invention.reset();
+    setPlaying(true);
+  }
+  save();
+});
 
 function inventionPulse(time, pulse, pulseDuration) {
   const arpBach = settings.mode === 'bach' && settings.arpOn;

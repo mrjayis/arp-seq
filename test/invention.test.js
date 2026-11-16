@@ -90,3 +90,32 @@ test('episodes fall: each repeat of the head a step lower; the walking bass step
     assert.ok(starts[3] < starts[0], `episode starts ${starts}`);
   }
 });
+
+import { lineScale } from '../src/invention.js';
+
+test('in a key the lines keep to it: C major over F and G; harmonic minor over E7 in A minor', () => {
+  const C = { tonic: 0, minor: false };
+  assert.deepEqual(lineScale({ root: 5, type: 'maj' }, C).sort((a, b) => a - b), [0, 2, 4, 5, 7, 9, 11]); // B, not B-flat
+  assert.deepEqual(lineScale({ root: 7, type: 'maj' }, C).sort((a, b) => a - b), [0, 2, 4, 5, 7, 9, 11]); // F, not F-sharp
+  const Am = { tonic: 9, minor: true };
+  assert.deepEqual(lineScale({ root: 4, type: 'dom7' }, Am).sort((a, b) => a - b), [0, 2, 4, 5, 8, 9, 11]); // G-sharp
+  // without a key, the chord's own scale
+  assert.ok(lineScale({ root: 5, type: 'maj' }).includes(10));
+});
+
+test('the subject\'s 8ths never just bounce between two notes', () => {
+  for (let s = 1; s < 200; s++) {
+    const e8 = makeSubject(seeded(s)).slice(8).map((e) => Math.abs(e.move));
+    for (let k = 1; k < 4; k++) assert.notEqual(e8[k], e8[k - 1]);
+  }
+});
+
+test('the cadence runs down within the upper voice, no octave jump at the end', () => {
+  for (let seed = 1; seed <= 40; seed++) {
+    const out = perform(seed, 2).filter((e) => e.v === 'upper' && e.kind === 'cadence');
+    for (let k = 1; k < out.length; k++) {
+      if (Math.floor(out[k].s / 16) !== Math.floor(out[k - 1].s / 16)) continue;
+      assert.ok(Math.abs(out[k].note - out[k - 1].note) <= 4, `cadence leap ${out[k - 1].note} → ${out[k].note}`);
+    }
+  }
+});

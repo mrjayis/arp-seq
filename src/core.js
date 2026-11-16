@@ -560,6 +560,12 @@ export const PROGRESSION_PRESETS = {
   'I–vi–ii–V (C)': [[0, 'maj7'], [9, 'min7'], [2, 'min7'], [7, 'dom7']],
   'i–VI–III–VII (Am)': [[9, 'min'], [5, 'maj'], [0, 'maj'], [7, 'maj']],
   'i–iv–v–i (Am)': [[9, 'min7'], [2, 'min7'], [4, 'min7'], [9, 'min7']],
+  // Baroque: for the Bach invention. Each ends on the dominant, so the invention's
+  // cadence falls there and resolves as the progression comes round. (The leading-tone
+  // chord is a half-diminished 7th, so its scale stays in the key.)
+  'Bach: circle of fifths (C)': [[0, 'maj'], [5, 'maj'], [11, 'hdim7'], [4, 'min'], [9, 'min'], [2, 'min'], [7, 'maj'], [7, 'dom7']],
+  'Bach: tonic and dominant (C)': [[0, 'maj'], [7, 'dom7'], [0, 'maj'], [5, 'maj'], [2, 'min'], [7, 'dom7'], [0, 'maj'], [7, 'dom7']],
+  'Bach: minor circle (Am)': [[9, 'min'], [2, 'min'], [7, 'maj'], [0, 'maj'], [5, 'maj'], [11, 'hdim7'], [4, 'maj'], [4, 'dom7b9']],
 };
 
 export function defaultProgression() {

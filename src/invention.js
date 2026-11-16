@@ -14,14 +14,41 @@
 // each note is a step (or leap) along the chord's scale from the one before, and notes on
 // the beat are chord tones. The lower voice keeps below the upper.
 
-import { chordScale } from './bass.js?v=199';
+import { chordScale } from './bass.js?v=203';
 
 const pc12 = (n) => ((n % 12) + 12) % 12;
 
-/** A note `moves` scale steps from `from`, along the chord's scale (Lydian-free: plain modes). */
-export function scaleStep(from, moves, chord) {
-  const { scale } = chordScale(chord.type);
-  const inScale = (n) => scale.includes(pc12(n - chord.root));
+const MAJOR = [0, 2, 4, 5, 7, 9, 11];
+const MINOR = [0, 2, 3, 5, 7, 8, 10];
+
+/**
+ * The scale the lines move along over a chord, as pitch classes. In a key (as Bach
+ * writes): the key's scale, with the chord's own tones put in place of the scale notes a
+ * half step from them (so V in a minor key brings its leading note: harmonic minor).
+ * Without a key, the chord's own scale.
+ */
+export function lineScale(chord, key = null) {
+  if (!key) return chordScale(chord.type).scale.map((i) => pc12(chord.root + i));
+  const set = new Set((key.minor ? MINOR : MAJOR).map((i) => pc12(key.tonic + i)));
+  // A chord tone outside the key replaces the one scale note it alters: in minor most
+  // often a raised note (G becomes G-sharp), in major a lowered one (B becomes B-flat);
+  // never the key's tonic or fifth.
+  const fixed = new Set([pc12(key.tonic), pc12(key.tonic + 7)]);
+  const tones = chordScale(chord.type).tones.map((i) => pc12(chord.root + i));
+  for (const t of tones) {
+    if (set.has(t)) continue;
+    const order = key.minor ? [t - 1, t + 1] : [t + 1, t - 1];
+    const out = order.map(pc12).find((n) => set.has(n) && !fixed.has(n) && !tones.includes(n));
+    if (out !== undefined) set.delete(out);
+    set.add(t);
+  }
+  return [...set];
+}
+
+/** A note `moves` scale steps from `from`, along the line's scale (see lineScale). */
+export function scaleStep(from, moves, chord, key = null) {
+  const scale = lineScale(chord, key);
+  const inScale = (n) => scale.includes(pc12(n));
   let n = from;
   // Start from a scale note (the line may arrive from another chord).
   if (!inScale(n)) { let up = n; let dn = n; while (!inScale(up)) up++; while (!inScale(dn)) dn--; n = moves >= 0 ? dn : up; }
@@ -60,10 +87,16 @@ export function makeSubject(rng = Math.random) {
   moves.push((rng() < 0.5 ? 1 : -1) * (3 + Math.floor(rng() * 2))); // a 4th or 5th up or down
   const out = moves.map((move, k) => ({ at: k, len: 1, move }));
   // Then four 8ths, leaping: thirds, fourths, sixths, turning each time.
+  // (each a different size from the one before, so the line doesn't just bounce)
   let d = -Math.sign(moves[7]);
+  let size = 0;
   for (let k = 0; k < 4; k++) {
-    out.push({ at: 8 + 2 * k, len: 2, move: d * pick([2, 2, 3, 3, 1, 5], rng) });
-    d = -d;
+    let next;
+    do next = pick([1, 2, 2, 3, 3, 4, 5], rng); while (next === size);
+    size = next;
+    out.push({ at: 8 + 2 * k, len: 2, move: d * size });
+    // Mostly turning; sometimes carrying on the same way.
+    if (rng() < 0.7) d = -d;
   }
   return out;
 }
@@ -100,7 +133,7 @@ const walkDown = () => [0, 4, 8, 12].map((at, k) => ({ at, len: 4, move: k ? -1 
 
 /** The cadence: the upper voice runs down to the tonic's chord; the bass goes 5 → 1. */
 const cadenceUpper = () => [
-  { at: 0, len: 2, move: null }, { at: 2, len: 2, move: -1 }, { at: 4, len: 2, move: -1 }, { at: 6, len: 2, move: 1 },
+  { at: 0, len: 2, move: null, high: true }, { at: 2, len: 2, move: -1 }, { at: 4, len: 2, move: -1 }, { at: 6, len: 2, move: 1 },
   { at: 8, len: 1, move: -1 }, { at: 9, len: 1, move: -1 }, { at: 10, len: 1, move: 1 }, { at: 11, len: 1, move: -1 },
   { at: 12, len: 4, move: -1 },
 ];
@@ -163,8 +196,9 @@ export class Invention {
    * @param voice 'upper' | 'lower'
    * @param sixteenth 16ths since Play
    * @param chord {root, type} sounding now (null: nothing to play over)
-   * @param info {cadence, afterCadence, other} — form marks for this bar (read on its
-   *   first 16th) and, for the lower voice, the upper voice's last note
+   * @param info {cadence, afterCadence, other, key} — form marks for this bar (read on its
+   *   first 16th), for the lower voice the upper voice's last note, and the key
+   *   ({tonic, minor}) the lines keep to (null: each chord's own scale)
    */
   step(voice, sixteenth, chord, info = {}) {
     const bar = Math.floor(sixteenth / 16);
@@ -184,9 +218,12 @@ export class Invention {
       if (ev.tone === 'root' || ev.tone === 'fifth') {
         const pc = pc12(chord.root + (ev.tone === 'fifth' ? 7 : 0));
         note = near + ((((pc - near) % 12) + 18) % 12) - 6;
+      } else if (ev.high) {
+        // (the cadence starts high, so its run down stays in the voice's range)
+        note = nearestTone(hi - 6, chord, -1);
       } else note = nearestTone(Math.round((near + mid) / 2), chord);
     } else {
-      note = scaleStep(prev, ev.move, chord);
+      note = scaleStep(prev, ev.move, chord, info.key || null);
       // On the strong beats (1 and 3) a chord tone, reached the way the line is going (so
       // sequences keep falling); on 2 and 4 a passing note is fine.
       if (at % 8 === 0) note = nearestTone(note, chord, Math.sign(ev.move) || ev.dir || 0);
