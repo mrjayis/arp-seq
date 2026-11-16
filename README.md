@@ -91,7 +91,7 @@ The arp has two monophonic voices: **Oscillator 1**, and **Oscillator 2**, which
   - **VCA** works the same way without the filter.
   - **LP** is filter only: the note holds for exactly the arp's Gate time.
 - **Resonance** for the gate's filter.
-- **Attack** and **Release** (shared by both oscillators): Attack is how quickly each note fades in. Release adds tail: on top of the ring in Combo/VCA, or as the fade after the gate in LP. At their minimums the voices sound as before.
+- **Attack** and **Release** (each oscillator has its own: Oscillator 1's in its window, Oscillator 2's in the Envelope row of its window; a sound saved before they were separate gives Oscillator 2 the same values): Attack is how quickly each note fades in. Release adds tail: on top of the ring in Combo/VCA, or as the fade after the gate in LP. At their minimums the voices sound as before.
 - **Bass line** (Oscillator 2's third Sequence choice): instead of following the arp's steps, oscillator 2 plays its own bass line over the chords, the way a play-along app such as iReal Pro has its bassist do. It plays on the beat, following the progression (or, with the progression off, the keys you hold), even with the arp switched off. **Style:**
   - **Walking:** a quarter note a beat. Each chord starts on its root; the last beat before the next chord leads into it by a half step from below or above, or from its fifth; the beats between move by step through the chord's scale (Dorian for minor 7ths, Mixolydian for 7ths, altered for 7alt, and so on), with chord tones on the stronger beats. The line carries on from its last note and keeps to the bass's range.
   - **Two-feel:** root and fifth in half notes.

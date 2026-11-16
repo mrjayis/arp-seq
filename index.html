@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=217" />
-  <link rel="stylesheet" href="mac.css?v=217" />
+  <link rel="stylesheet" href="styles.css?v=218" />
+  <link rel="stylesheet" href="mac.css?v=218" />
 </head>
 <body>
   <main class="device">
@@ -222,12 +222,12 @@
       <div class="row">
         <span class="row-label">Envelope</span>
         <label class="field slider">Attack <output id="arp-attack-val"></output>
-          <input id="arp-attack" type="range" min="0" max="1000" step="1" title="How quickly each note fades in (both arp oscillators)" />
+          <input id="arp-attack" type="range" min="0" max="1000" step="1" title="How quickly each note fades in (oscillator 1; oscillator 2 has its own)" />
         </label>
         <label class="field slider">Release <output id="arp-release-val"></output>
-          <input id="arp-release" type="range" min="0" max="1000" step="1" title="Extra tail on each note (both arp oscillators)" />
+          <input id="arp-release" type="range" min="0" max="1000" step="1" title="Extra tail on each note (oscillator 1; oscillator 2 has its own)" />
         </label>
-        <span class="status hint">Applies to Oscillator 1 and 2.</span>
+        <span class="status hint">Oscillator 1. Oscillator 2 has its own, in its window.</span>
       </div>
     </section>
 
@@ -292,6 +292,15 @@
         </label>
         <label class="field slider">Resonance <output id="osc2-res-val"></output>
           <input id="osc2-res" type="range" min="0.5" max="12" step="0.1" />
+        </label>
+      </div>
+      <div class="row west-row">
+        <span class="row-label">Envelope</span>
+        <label class="field slider">Attack <output id="osc2-attack-val"></output>
+          <input id="osc2-attack" type="range" min="0" max="1000" step="1" title="How quickly each oscillator 2 note fades in" />
+        </label>
+        <label class="field slider">Release <output id="osc2-release-val"></output>
+          <input id="osc2-release" type="range" min="0" max="1000" step="1" title="Extra tail on each oscillator 2 note" />
         </label>
       </div>
       <div class="row mod-row">
@@ -898,6 +907,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=217"></script>
+  <script type="module" src="src/app.js?v=218"></script>
 </body>
 </html>

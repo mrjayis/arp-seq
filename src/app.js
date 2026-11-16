@@ -8,29 +8,29 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=217';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=217';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=217';
-import { Midi } from './midi.js?v=217';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=217';
+} from './core.js?v=218';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=218';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=218';
+import { Midi } from './midi.js?v=218';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=218';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, presetConds, presetLens, TRIPLET_FEEL, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=217';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=217';
-import { Invention, parseSubject } from './invention.js?v=217';
-import { ColtraneSolo } from './coltrane.js?v=217';
-import { BASS_STYLES, styleForSong, bassLine } from './bass.js?v=217';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=217';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=217';
+} from './percussion.js?v=218';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=218';
+import { Invention, parseSubject } from './invention.js?v=218';
+import { ColtraneSolo } from './coltrane.js?v=218';
+import { BASS_STYLES, styleForSong, bassLine } from './bass.js?v=218';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=218';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=218';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=217';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=217';
+} from './breaks.js?v=218';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=218';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=217';
+} from './mono.js?v=218';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -61,8 +61,10 @@ const settings = {
   arpTimbre: 25,
   lpgMode: 'combo',
   arpResonance: 1.5,
-  arpAttack: 4, // ms, both arp oscillators
-  arpRelease: 15, // ms of extra tail, both arp oscillators
+  arpAttack: 4, // ms, arp oscillator 1
+  arpRelease: 15, // ms of extra tail, arp oscillator 1
+  osc2Attack: undefined, // ms, oscillator 2 (from oscillator 1's when unset: older saves shared one pair)
+  osc2Release: undefined, // ms
   volume: 50,
   midiIn: '',
   midiInCh: -1,
@@ -256,6 +258,14 @@ try {
   const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
   if (saved && typeof saved === 'object') Object.assign(settings, saved);
 } catch { /* storage unavailable */ }
+// Oscillator 2's attack and release used to be oscillator 1's: start from those, so a saved
+// sound (or scene) keeps sounding the same.
+const osc2EnvFromOsc1 = () => {
+  if (!Number.isFinite(settings.osc2Attack)) settings.osc2Attack = settings.arpAttack;
+  if (!Number.isFinite(settings.osc2Release)) settings.osc2Release = settings.arpRelease;
+};
+osc2EnvFromOsc1();
+onRecall(osc2EnvFromOsc1);
 
 let saveTimer;
 /** Save settings, debounced for slider drags; `now` writes immediately. */
@@ -362,7 +372,7 @@ function ensureAudio() {
         sends[fx][src] = { pre, post };
       }
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=217', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=218', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -424,8 +434,8 @@ function westVoice(n) {
       resonance: settings.osc2Resonance,
       detune: pure() ? 0 : settings.osc2Detune,
       level: settings.osc2Level / 100, // (the Arpeggiator Level is the arp fader)
-      attack: settings.arpAttack / 1000,
-      release: settings.arpRelease / 1000,
+      attack: settings.osc2Attack / 1000,
+      release: settings.osc2Release / 1000,
     };
   }
   return {
@@ -1626,6 +1636,8 @@ bindRange('arp-res', 'arpResonance', (v) => v.toFixed(1));
 const arMs = (v) => (v < 1000 ? `${v} ms` : `${(v / 1000).toFixed(2)} s`);
 bindLog('arp-attack', 'arpAttack', 2, 2000, arMs);
 bindLog('arp-release', 'arpRelease', 10, 4000, arMs);
+bindLog('osc2-attack', 'osc2Attack', 2, 2000, arMs);
+bindLog('osc2-release', 'osc2Release', 10, 4000, arMs);
 bindRange('volume', 'volume', (v) => `${v}%`, (v) => synth?.setVolume(v / 100));
 
 for (let c = 1; c <= 16; c++) {
