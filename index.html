@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=243" />
-  <link rel="stylesheet" href="mac.css?v=243" />
+  <link rel="stylesheet" href="styles.css?v=244" />
+  <link rel="stylesheet" href="mac.css?v=244" />
 </head>
 <body>
   <main class="device">
@@ -930,6 +930,9 @@
       <h2>Sound &amp; MIDI</h2>
       <div class="row">
         <label class="check"><input id="synth-on" type="checkbox" checked /> Built-in synth</label>
+        <label class="check" title="For screen recording or a slow device: a bigger audio buffer (no crackles when the device is busy; keys respond a little later), notes scheduled further ahead, and a lighter display (playback highlights and meters about 15 times a second)"><input id="stable-mode" type="checkbox" /> Steadier playback</label>
+        <button id="stable-reload" hidden>Reload</button>
+        <span id="stable-status" class="status"></span>
         <label class="field slider">Volume <output id="volume-val"></output>
           <input id="volume" type="range" min="0" max="100" value="50" />
         </label>
@@ -969,6 +972,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=243"></script>
+  <script type="module" src="src/app.js?v=244"></script>
 </body>
 </html>
