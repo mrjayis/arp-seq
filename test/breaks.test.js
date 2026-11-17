@@ -280,3 +280,11 @@ test('R is hits per 8th note: R1 8ths, R2 16ths, R4 32nds; older rows are conver
   assert.equal(migrateRow(migrateRow({ slice: 0, roll: 2 })).roll, 4); // once only
   assert.equal(migrateRow({ slice: 0, roll: 12 }).roll, 16); // held to the maximum
 });
+
+test('a Tracks 2–4 cell can name a slice of its sample', () => {
+  const r = migrateRow({ tracks: [{ slice: 2, part: 5 }, { slice: null, part: 3 }, { slice: 1, part: 99 }] });
+  assert.equal(r.tracks[0].part, 5);
+  assert.equal(r.tracks[1].part, null); // no sample: no slice
+  assert.equal(r.tracks[2].part, 31); // held to 32 slices
+  assert.equal(migrateRow({ tracks: [{ slice: 0 }] }).tracks[0].part, null); // the whole sample
+});

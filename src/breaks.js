@@ -27,7 +27,8 @@ export const TRACK_SAMPLES = 8;
 export const EXTRA_TRACKS = 3;
 // rr: 8 marks R as hits per 8th note (R1 = 8ths, R2 = 16ths, R4 = 32nds, R8 = 64ths). Rows
 // without it are older, when R counted hits per 16th step: their R is doubled on the way in.
-export const emptyCell = () => ({ slice: null, vol: 100, pitch: 0, chance: 100, roll: 0, rollType: 'R', fx: '', rollChance: 100, fxChance: 100, rr: 8 });
+// part (Tracks 2–4): which slice of a sliced sample (0-based), or null for the whole sample.
+export const emptyCell = () => ({ slice: null, vol: 100, pitch: 0, chance: 100, roll: 0, rollType: 'R', fx: '', rollChance: 100, fxChance: 100, rr: 8, part: null });
 export const emptyRow = () => ({ ...emptyCell(), tracks: Array.from({ length: EXTRA_TRACKS }, emptyCell) });
 
 /** One cell's fields made current: old Ratchet ×2/×3/×4 effects become R rolls. */
@@ -53,6 +54,7 @@ export function migrateRow(row) {
     const c = migrateCell(tracks[k]);
     delete c.tracks;
     if (c.slice !== null) c.slice = Math.max(0, Math.min(TRACK_SAMPLES - 1, Math.round(Number(c.slice) || 0)));
+    c.part = c.part === null || c.part === undefined || c.slice === null ? null : Math.max(0, Math.min(MAX_TRANSIENT_SLICES - 1, Math.round(Number(c.part) || 0)));
     return c;
   });
   // The old Smp column (a one-shot beside the slice) moves to Track 2.
