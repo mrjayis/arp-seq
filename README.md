@@ -266,7 +266,8 @@ A drum break cut into slices and re-sequenced tracker style, for jungle, drum & 
   - **R (Roll):** divides the step into 0–16 retriggers. Types: **R** regular, **Rv**/**RV** volume down/up, **Rn**/**RN** a semitone down/up per hit, **RR** random notes.
   - **FX:** Reverse or Cut.
 - **In order** places each slice on the 16th nearest where it falls in the break, so hit-sliced breaks still play back as recorded.
-- **Editing:** select a row and click a slice in the waveform to put it there; the selection moves to the next row, and you hear the slice. **In order**, **Chop** (a jungle-style rearrangement), **Randomize** and **Clear** fill the pattern.
+- **Hearing slices:** tap (or click) a slice in the waveform to hear it; the tracker isn't touched. Each row chooses its slice in its own Slice menu. **In order**, **Chop** (a jungle-style rearrangement), **Randomize** and **Clear** fill the pattern.
+- **Moving slice points:** drag a slice line in the waveform (each has a small handle at its foot) to move where a slice starts: sideways moves it, up and down still scrolls the page. A line can't pass its neighbours (a slice stays at least 10 ms long). With the pattern in order, it follows the new points. The moved points are saved with the break and kept until you change the break, its trim or the slicing (Equal's count, or On the hits' sensitivity); **Reset slices** puts them back where the slicing had them.
 - **Evolve** (0–100%): each loop, a few rows get a different slice, an extra roll or a reverse, and the odd slice lands on an empty row. Your pattern itself isn't changed.
 - **Mixing:** it plays on the drum bus, so the drum delay/reverb sends apply. It has its own **Level** and follows the clock and swing.
 
