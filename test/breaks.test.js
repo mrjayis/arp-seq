@@ -208,3 +208,27 @@ test('a live pad hit goes to the nearest step, early or late', () => {
   assert.deepEqual(mpcOrder().slice(0, 4), [12, 13, 14, 15]); // the top row on screen is pads 13–16
   assert.deepEqual(mpcOrder().slice(12), [0, 1, 2, 3]); // the bottom row is pads 1–4
 });
+
+import { rowThisTime } from '../src/breaks.js';
+
+test('rolls and effects have their own chance', () => {
+  const row = { slice: 2, vol: 100, pitch: 0, chance: 100, roll: 3, rollType: 'R', fx: 'rev', rollChance: 25, fxChance: 60 };
+  let rolled = 0;
+  let reversed = 0;
+  let seed = 1;
+  const rng = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; };
+  for (let k = 0; k < 4000; k++) {
+    const r = rowThisTime(row, rng);
+    assert.equal(r.slice, 2); // the hit itself always plays (that's the row's own Chance)
+    if (r.roll > 0) rolled++;
+    if (r.fx === 'rev') reversed++;
+  }
+  assert.ok(Math.abs(rolled / 4000 - 0.25) < 0.03, `rolled ${rolled}`);
+  assert.ok(Math.abs(reversed / 4000 - 0.6) < 0.03, `reversed ${reversed}`);
+  // at 100% (and on older rows without them) nothing changes
+  const plain = { slice: 1, vol: 100, pitch: 0, chance: 100, roll: 2, rollType: 'R', fx: 'rev' };
+  assert.equal(rowThisTime(plain, () => 0.99), plain);
+  // a Cut that doesn't happen leaves the row as if empty
+  const cut = { slice: null, fx: 'cut', fxChance: 0 };
+  assert.equal(rowThisTime(cut, Math.random).fx, '');
+});

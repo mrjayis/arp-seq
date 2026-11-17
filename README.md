@@ -265,7 +265,10 @@ A drum break cut into slices and re-sequenced tracker style, for jungle, drum & 
   - **Vol**, and **Pitch** (±12).
   - **C (Chance):** 0–100% that the row plays. When it doesn't, the previous slice plays on.
   - **R (Roll):** divides the step into 0–16 retriggers. Types: **R** regular, **Rv**/**RV** volume down/up, **Rn**/**RN** a semitone down/up per hit, **RR** random notes.
+  - **R % (roll chance):** 0–100% that the roll happens; when it doesn't, the step plays a single hit. Decided once on the row, so a roll held through the empty rows after it is all or nothing.
   - **FX:** Reverse or Cut.
+  - **FX % (effect chance):** 0–100% that the effect happens; when it doesn't, the step plays as normal (a Cut that doesn't happen lets the previous slice play on). Each of C, R % and FX % is decided on its own, so a row can, say, always play, roll half the time and reverse a quarter of the time.
+  - On a phone the tracker scrolls sideways in its own box; on a narrower window a long pattern is listed in one column.
 - **In order** places each slice on the 16th nearest where it falls in the break, so hit-sliced breaks still play back as recorded.
 - **Hearing slices:** tap (or click) a slice in the waveform to hear it; the tracker isn't touched. Each row chooses its slice in its own Slice menu. **In order**, **Chop** (a jungle-style rearrangement), **Randomize** and **Clear** fill the pattern.
 - **Moving slice points:** drag a slice line in the waveform (each has a small handle at its foot) to move where a slice starts: sideways moves it, up and down still scrolls the page. A line can't pass its neighbours (a slice stays at least 10 ms long). With the pattern in order, it follows the new points. The moved points are saved with the break and kept until you change the break, its trim or the slicing (Equal's count, or On the hits' sensitivity); **Reset slices** puts them back where the slicing had them.

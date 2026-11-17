@@ -8,29 +8,29 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=230';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=230';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=230';
-import { Midi } from './midi.js?v=230';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=230';
+} from './core.js?v=234';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=234';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=234';
+import { Midi } from './midi.js?v=234';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=234';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, presetConds, presetLens, TRIPLET_FEEL, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=230';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=230';
-import { Invention, parseSubject } from './invention.js?v=230';
-import { ColtraneSolo } from './coltrane.js?v=230';
-import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=230';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=230';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=230';
+} from './percussion.js?v=234';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=234';
+import { Invention, parseSubject } from './invention.js?v=234';
+import { ColtraneSolo } from './coltrane.js?v=234';
+import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=234';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=234';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=234';
 import {
-  BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
+  BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers, rowThisTime,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=230';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=230';
+} from './breaks.js?v=234';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=234';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=230';
+} from './mono.js?v=234';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -392,7 +392,7 @@ function ensureAudio() {
         sends[fx][src] = { pre, post };
       }
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=230', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=234', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -3073,7 +3073,9 @@ function playBreakStep(step) {
     off.length ? usableSlices(sliceCount(), off) : sliceCount(),
     { rolls: settings.breakEvolveRolls, reverse: settings.breakEvolveReverse });
   // A row on a switched-off slice counts as empty: whatever was playing carries on.
-  const row = evolved && off.includes(evolved.slice) && evolved.fx !== 'cut' ? { ...evolved, slice: null } : evolved;
+  const offed = evolved && off.includes(evolved.slice) && evolved.fx !== 'cut' ? { ...evolved, slice: null } : evolved;
+  // Its roll and effect, each with its own chance this time round.
+  const row = rowThisTime(offed);
   let triggers;
   let rolling = false;
   if (padSkip.has(idx)) {
@@ -3701,7 +3703,9 @@ function buildBreakRows() {
   head.className = 'trow thead';
   head.innerHTML = '<span>Step</span><span>Slice</span><span>Vol</span><span>Pitch</span>'
     + '<span title="Chance: 0–100% that the step plays">C %</span>'
-    + '<span title="Roll: retriggers per 16th step. 1 = 16ths, 2 = 32nds, 4 = 64ths (0 = off). With Roll until next it carries on through the empty rows.">R</span><span>Roll type</span><span>FX</span>';
+    + '<span title="Roll: retriggers per 16th step. 1 = 16ths, 2 = 32nds, 4 = 64ths (0 = off). With Roll until next it carries on through the empty rows.">R</span>'
+    + '<span title="Roll chance: 0–100% that the roll happens (otherwise a single hit)">R %</span><span>Roll type</span><span>FX</span>'
+    + '<span title="FX chance: 0–100% that the effect happens (otherwise the step plays as normal)">FX %</span>';
   wrap.append(head);
   const count = sliceCount();
   const number = (value, min, max, step, label, onChange) => {
@@ -3731,6 +3735,8 @@ function buildBreakRows() {
     const pitch = number(row.pitch, -12, 12, 1, `Step ${i + 1} pitch`, (v) => editBreakRow(i, { pitch: v }));
     const chance = number(row.chance, 0, 100, 5, `Step ${i + 1} chance`, (v) => editBreakRow(i, { chance: v }));
     const roll = number(row.roll, 0, MAX_ROLL, 1, `Step ${i + 1} roll`, (v) => editBreakRow(i, { roll: v }));
+    const rollChance = number(row.rollChance ?? 100, 0, 100, 5, `Step ${i + 1} roll chance`, (v) => editBreakRow(i, { rollChance: v }));
+    const fxChance = number(row.fxChance ?? 100, 0, 100, 5, `Step ${i + 1} effect chance`, (v) => editBreakRow(i, { fxChance: v }));
     const rollType = document.createElement('select');
     rollType.setAttribute('aria-label', `Step ${i + 1} roll type`);
     for (const [k, label] of Object.entries(ROLL_TYPES)) {
@@ -3742,11 +3748,15 @@ function buildBreakRows() {
     rollType.addEventListener('change', () => editBreakRow(i, { rollType: rollType.value }));
     const fx = document.createElement('select');
     fx.setAttribute('aria-label', `Step ${i + 1} effect`);
-    for (const [k, label] of Object.entries(BREAK_FX)) fx.add(new Option(label, k));
+    for (const [k, label] of Object.entries(BREAK_FX)) {
+      const o = new Option({ rev: 'Rev', cut: 'Cut' }[k] || label, k); // short, to fit the column
+      o.title = label;
+      fx.add(o);
+    }
     fx.value = row.fx;
     fx.addEventListener('change', () => editBreakRow(i, { fx: fx.value }));
-    for (const c of [slice, vol, pitch, chance, roll, rollType, fx]) c.addEventListener('focus', () => selectBreakRow(i));
-    el.append(num, slice, vol, pitch, chance, roll, rollType, fx);
+    for (const c of [slice, vol, pitch, chance, roll, rollChance, rollType, fx, fxChance]) c.addEventListener('focus', () => selectBreakRow(i));
+    el.append(num, slice, vol, pitch, chance, roll, rollChance, rollType, fx, fxChance);
     wrap.append(el);
     breakRowEls.push(el);
   });

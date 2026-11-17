@@ -17,7 +17,8 @@ export const ROLL_TYPES = {
 export const MAX_ROLL = 16;
 export const MAX_TRANSIENT_SLICES = 32;
 
-export const emptyRow = () => ({ slice: null, vol: 100, pitch: 0, chance: 100, roll: 0, rollType: 'R', fx: '' });
+// rollChance / fxChance: how likely the row's roll and its effect are to happen (100 = always).
+export const emptyRow = () => ({ slice: null, vol: 100, pitch: 0, chance: 100, roll: 0, rollType: 'R', fx: '', rollChance: 100, fxChance: 100 });
 
 /** A stored row made current: old Ratchet ×2/×3/×4 effects become R rolls. */
 export function migrateRow(row) {
@@ -27,6 +28,8 @@ export function migrateRow(row) {
   if (!BREAK_FX[out.fx]) out.fx = '';
   if (!ROLL_TYPES[out.rollType]) out.rollType = 'R';
   out.chance = Math.max(0, Math.min(100, Number(out.chance ?? 100)));
+  out.rollChance = Math.max(0, Math.min(100, Number(out.rollChance ?? 100)));
+  out.fxChance = Math.max(0, Math.min(100, Number(out.fxChance ?? 100)));
   out.roll = Math.max(0, Math.min(MAX_ROLL, Math.round(Number(out.roll) || 0)));
   return out;
 }
@@ -122,6 +125,20 @@ export function detectTransients(data, rate, { sensitivity = 0.5, minGap = 0.06,
   if (!times.length || times[0] > 0.01) times.unshift(0);
   else times[0] = 0;
   return times.slice(0, max);
+}
+
+/**
+ * A row as it plays this time: its roll kept with the chance `rollChance` (else a single
+ * hit), its effect with `fxChance` (else none: a Cut that doesn't happen leaves the row
+ * as if empty, or playing its slice if it has one). Decided once, where the row is.
+ */
+export function rowThisTime(row, rng = Math.random) {
+  if (!row) return row;
+  const r = migrateRow(row);
+  let out = row;
+  if (r.roll > 0 && r.rollChance < 100 && rng() * 100 >= r.rollChance) out = { ...out, roll: 0 };
+  if (r.fx && r.fxChance < 100 && rng() * 100 >= r.fxChance) out = { ...out, fx: '' };
+  return out;
 }
 
 /**
