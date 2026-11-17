@@ -8,30 +8,30 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=243';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=243';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=243';
-import { Midi } from './midi.js?v=243';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=243';
+} from './core.js?v=244';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=244';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=244';
+import { Midi } from './midi.js?v=244';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=244';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, presetConds, presetLens, TRIPLET_FEEL, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=243';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=243';
-import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=243';
-import { Invention, parseSubject } from './invention.js?v=243';
-import { ColtraneSolo } from './coltrane.js?v=243';
-import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=243';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=243';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=243';
+} from './percussion.js?v=244';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=244';
+import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=244';
+import { Invention, parseSubject } from './invention.js?v=244';
+import { ColtraneSolo } from './coltrane.js?v=244';
+import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=244';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=244';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=244';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers, rowThisTime,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=243';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=243';
+} from './breaks.js?v=244';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=244';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=243';
+} from './mono.js?v=244';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -121,6 +121,7 @@ const settings = {
   monoKbOctave: 2, // the mono panel's little keyboard starts at C of this octave
   breakOff: [], // slices switched off (shift-click): not played, not picked by Evolve/Randomize
   breakRollHold: true, // a roll keeps going until the next filled row (Polyend style); off = one step
+  stableMode: false, // steadier playback (screen recording, slow devices): bigger buffer, earlier scheduling, lighter display
   audioOut: '', // the audio output device id ('' = the system default); this device only
   outputMode: 'mix', // 'mix': one stereo pair; 'split': each module on its own pair of a multichannel output
   breakStepsOpen: true, // the Breakbeat tracker's steps shown (a view choice, not part of scenes)
@@ -260,7 +261,7 @@ Object.assign(DEFAULTS, { drumKitStore: {}, sampleLevels: {}, sampleTunes: {}, d
 const DEVICE_KEYS = [
   'theme', 'themeV2', 'collapsed', 'showHelp', 'midiIn', 'midiInCh', 'midiOut', 'midiOutCh', 'volume', 'synthOn',
   'midiInChord', 'midiInMono', 'midiInDrums', 'midiInBreak', 'aftertouch', 'aftertouchDepth', 'midiMap',
-  'sync', 'baseOctave', 'chordRoot', 'monoKbOctave', 'breakStepsOpen', 'audioOut', 'outputMode',
+  'sync', 'baseOctave', 'chordRoot', 'monoKbOctave', 'breakStepsOpen', 'audioOut', 'outputMode', 'stableMode',
 ];
 // Live scene recall: each part of the page registers how to re-read its settings,
 // in page order (repairs first, then controls, then drawing). See recallLive().
@@ -346,6 +347,7 @@ let harmIn = null; // sends mix here, into the Harmonizer worklet once it has lo
 let harmOut = null;
 let harmNode = null;
 let delayFx = null;
+let ctxStable = false; // whether the audio was started with the bigger (steadier) buffer
 let outRouter = null; // separate outputs: {merger, gains: Map key -> gain} while split (see applyOutputRouting)
 let reverbFx = null;
 let playing = false;
@@ -353,7 +355,9 @@ const uiEvents = []; // {time, ...} drained by the animation loop
 
 function ensureAudio() {
   if (!ctx) {
-    ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
+    // Steadier playback: a bigger buffer, so a busy device (screen recording) doesn't crackle.
+    ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: settings.stableMode ? 'playback' : 'interactive' });
+    ctxStable = !!settings.stableMode;
     synth = new Synth(ctx);
     synth.wave = settings.wave;
     synth.cutoff = settings.cutoff;
@@ -395,7 +399,7 @@ function ensureAudio() {
         sends[fx][src] = { pre, post };
       }
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=243', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=244', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -1215,6 +1219,9 @@ function playDrums(step) {
 }
 
 const internalClock = new InternalClock({ getTime: audioTime, onPulse, bpm: settings.bpm });
+// Steadier playback schedules further ahead, so a stall on the page doesn't make notes late.
+const applyLookahead = () => { internalClock.lookahead = settings.stableMode ? 0.35 : 0.12; };
+applyLookahead();
 const externalClock = new ExternalClock({
   getTime: audioTime,
   onPulse,
@@ -1794,6 +1801,23 @@ $('audio-out-list').addEventListener('click', async () => {
 });
 navigator.mediaDevices?.addEventListener?.('devicechange', () => { listAudioOutputs().then(() => applyAudioOut()); });
 listAudioOutputs();
+
+// ---- Steadier playback (for screen recording or a slow device).
+function renderStable() {
+  $('stable-mode').checked = !!settings.stableMode;
+  // The buffer size is set when the sound starts: a reload applies a change made since.
+  const needsReload = !!ctx && ctxStable !== !!settings.stableMode;
+  $('stable-reload').hidden = !needsReload;
+  $('stable-status').textContent = needsReload ? 'Reload to change the audio buffer too (the rest applies now).' : '';
+}
+$('stable-mode').addEventListener('change', () => {
+  settings.stableMode = $('stable-mode').checked;
+  applyLookahead();
+  save(true);
+  renderStable();
+});
+$('stable-reload').addEventListener('click', () => { save(true); location.reload(); });
+renderStable();
 
 $('synth-on').checked = settings.synthOn;
 $('synth-on').addEventListener('change', () => {
@@ -6051,9 +6075,14 @@ function showTuning(nowMs) {
   $('out-chord').textContent = chordText;
 }
 
+let lastFrameAt = 0;
 function frame() {
   // A second driver for the clock, in case the timer worker was stopped while the phone slept.
   if (playing && settings.sync === 'internal') internalClock.pump();
+  // Steadier playback: the display updates about 15 times a second, leaving the rest for sound.
+  const nowMs = performance.now();
+  if (settings.stableMode && nowMs - lastFrameAt < 66) { requestAnimationFrame(frame); return; }
+  lastFrameAt = nowMs;
   const now = audioTime();
   showTuning(performance.now());
   while (uiEvents.length && uiEvents[0].time <= now) {
@@ -6838,8 +6867,12 @@ function meterEls(key) {
 }
 
 /** Meters: a peak level per strip, read from an analyser on its output. */
+let meterAt = 0;
 function meterLoop() {
   if ($('mixer').hidden) { mixRaf = 0; return; }
+  // Steadier playback: meters at about 15 frames a second.
+  if (settings.stableMode && performance.now() - meterAt < 66) { mixRaf = requestAnimationFrame(meterLoop); return; }
+  meterAt = performance.now();
   for (const s of MIX_STRIPS) {
     let m = mixMeters.get(s.key);
     const node = ctx ? s.node() : null;
