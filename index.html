@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=223" />
-  <link rel="stylesheet" href="mac.css?v=223" />
+  <link rel="stylesheet" href="styles.css?v=224" />
+  <link rel="stylesheet" href="mac.css?v=224" />
 </head>
 <body>
   <main class="device">
@@ -66,6 +66,7 @@
         </label>
         <button id="tap" title="Tap tempo">Tap</button>
         <button id="mixer-btn" class="arr" aria-pressed="false" title="Open or close the mixer: a fader, meter, mute and solo for every section, the effect returns and the master">Mixer</button>
+        <button id="clear-all" class="arr" title="Put every sound, sequence, pattern, progression and effect back to how the app starts (scenes, loaded samples and breaks, the iReal list, theme, MIDI and audio settings are kept). Undo recall (in Scenes) brings it all back.">Clear all</button>
         <button id="arr" class="arr" aria-pressed="false" title="Arr: arrange automatically. On the bar line, mute a random selection of the sections that are on (at least two keep playing) and change it every few bars. Press again for a new arrangement on the next bar.">Arr</button>
         <button id="arr-cancel" class="arr" disabled title="Cancel Arr: everything plays again, now">Cancel</button>
         <select id="arr-bars" class="arr-bars" aria-label="How often Arr changes the arrangement"></select>
@@ -331,6 +332,7 @@
         <label class="field inline">Preset
           <select id="prog-preset"><option value="">Load…</option></select>
         </label>
+        <button id="prog-clear" title="Empty the progression: every chord a rest, 4 chords long (keys you hold still play)">Clear</button>
         <button id="ireal-btn" aria-pressed="false" title="Load a tune's changes from iReal Pro: an exported playlist or an irealb:// link">iReal Pro…</button>
         <span class="status prog-song" id="prog-song"></span>
       </div>
@@ -924,6 +926,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=223"></script>
+  <script type="module" src="src/app.js?v=224"></script>
 </body>
 </html>
