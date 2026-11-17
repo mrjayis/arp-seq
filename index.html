@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=227" />
-  <link rel="stylesheet" href="mac.css?v=227" />
+  <link rel="stylesheet" href="styles.css?v=229" />
+  <link rel="stylesheet" href="mac.css?v=229" />
 </head>
 <body>
   <main class="device">
@@ -267,6 +267,7 @@
       <div class="row" id="bassline-row" hidden>
         <span class="row-label">Bass line</span>
         <label class="field" title="Walking: quarter notes through the chord and its scale, leading into each next chord. Two-feel: root and fifth in half notes. Bossa: root on 1, fifth on the and of 2. Roots: the root each bar. Auto picks from the iReal Pro song's style (Walking otherwise).">Style <select id="osc2-bass-style"></select></label>
+        <label class="field" title="The bass line's rhythm, as the arpeggiator's Rate: Walking plays a note per value (1/8 for an 8th-note line), Roots repeats the root at it (a pulsing bass), Two-feel alternates root and fifth. Auto: each style's own (quarters, halves, once a bar). Off-beat 8ths and 16ths take the Swing. Bossa keeps its own rhythm.">Rate <select id="osc2-bass-rate"></select></label>
         <span class="status hint" id="bassline-hint">Plays on the beat, following the progression (or the keys you hold), even with the arp off.</span>
       </div>
       <div class="row" id="bass-row" hidden>
@@ -929,6 +930,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=227"></script>
+  <script type="module" src="src/app.js?v=229"></script>
 </body>
 </html>

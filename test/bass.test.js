@@ -81,3 +81,30 @@ test('walking: no wide leaps into the approach, no repeated pitch class, stays n
   const avg = all.reduce((a, b) => a + b, 0) / all.length;
   assert.ok(avg > 44 && avg < 58, `average ${avg}`);
 });
+
+import { BASS_RATES } from '../src/bass.js';
+
+test('Rate: walking in 8ths, triplets and dotted values; roots pulsing; bossa keeps its own', () => {
+  const chord = { root: 2, type: 'min7' };
+  const next = { root: 7, type: 'dom7' };
+  // 8ths over a bar: eight notes, still the root first and an approach into G last
+  const e8 = bassLine({ chord, next, beats: 4, rng: seeded(4), prev: 45, unit: BASS_RATES['1/8'] });
+  assert.deepEqual(e8.map((e) => e.beat), [0, 0.5, 1, 1.5, 2, 2.5, 3, 3.5]);
+  assert.ok(e8.every((e) => e.len === 0.5));
+  assert.equal(pc(e8[0].note), 2);
+  assert.ok([6, 8, 2].includes(pc(e8.at(-1).note)));
+  // triplet 8ths: twelve to a bar
+  assert.equal(bassLine({ chord, next, beats: 4, rng: seeded(4), prev: 45, unit: BASS_RATES['1/8T'] }).length, 12);
+  // dotted quarters: notes at 0, 1.5 — the last takes what's left of the bar
+  const dq = bassLine({ chord, next, beats: 4, rng: seeded(4), prev: 45, unit: BASS_RATES['1/4D'] });
+  assert.deepEqual(dq.map((e) => [e.beat, e.len]), [[0, 1.5], [1.5, 2.5]]);
+  // roots pulsing in 8ths, all the root
+  const r8 = bassLine({ chord, beats: 4, style: 'roots', prev: 45, unit: 0.5 });
+  assert.equal(r8.length, 8);
+  assert.ok(r8.every((e) => pc(e.note) === 2));
+  // Auto (no unit): as before
+  assert.equal(bassLine({ chord, beats: 4, style: 'roots', prev: 45 }).length, 1);
+  assert.equal(bassLine({ chord, next, beats: 4, rng: seeded(4), prev: 45 }).length, 4);
+  // bossa ignores the Rate
+  assert.deepEqual(bassLine({ chord, beats: 4, style: 'bossa', prev: 45, unit: 0.25 }).map((e) => e.beat), [0, 1.5]);
+});

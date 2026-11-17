@@ -8,29 +8,29 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=227';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=227';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=227';
-import { Midi } from './midi.js?v=227';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=227';
+} from './core.js?v=229';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=229';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=229';
+import { Midi } from './midi.js?v=229';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=229';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, presetConds, presetLens, TRIPLET_FEEL, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=227';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=227';
-import { Invention, parseSubject } from './invention.js?v=227';
-import { ColtraneSolo } from './coltrane.js?v=227';
-import { BASS_STYLES, styleForSong, bassLine } from './bass.js?v=227';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=227';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=227';
+} from './percussion.js?v=229';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=229';
+import { Invention, parseSubject } from './invention.js?v=229';
+import { ColtraneSolo } from './coltrane.js?v=229';
+import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=229';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=229';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=229';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=227';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=227';
+} from './breaks.js?v=229';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=229';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=227';
+} from './mono.js?v=229';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -96,6 +96,7 @@ const settings = {
   osc2Mod: 'off', // oscillator 2 → oscillator 1: 'off' | 'am' | 'fm'
   osc2ModDepth: 30,
   osc2BassStyle: 'auto', // with the Bass line sequence: a BASS_STYLES key
+  osc2BassRate: 'auto', // the bass line's note value (BASS_RATES): 'auto' = the style's own
   chordSyncopate: false, // a chord hit in the last 8th before the progression moves on plays the next chord
   chordTie: false, // a syncopated chord holds over the bar line instead of being struck again on the downbeat
   tuningKey: 'auto', // the key's tonic for Just tuning: 'auto' (the progression's first chord) or 0–11
@@ -391,7 +392,7 @@ function ensureAudio() {
         sends[fx][src] = { pre, post };
       }
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=227', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=229', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -790,13 +791,12 @@ function planBass(pulse) {
 
 function makePlan(start, end, chord, next, key, barBeats) {
   const beats = (end - start) / PPQN;
-  const line = bassLine({ chord, next, beats, prev: bassLast, style: bassStyle(), barBeats });
+  const line = bassLine({ chord, next, beats, prev: bassLast, style: bassStyle(), barBeats, unit: BASS_RATES[settings.osc2BassRate] ?? null });
   return { start, end, key, events: line.map((e) => ({ pulse: start + Math.round(e.beat * PPQN), note: e.note, len: e.len * PPQN })) };
 }
 
 function bassPulse(time, pulse, pulseDuration) {
   if (settings.osc2Mode !== 'line' || !settings.osc2On) { bassPlan = null; return; }
-  if (pulse % (PPQN / 2)) return; // the 8th-note grid is enough
   const heldKey = () => { const n = engine.notes.map((x) => x.note); return n.length ? `h${chordRootPc(n)}` : ''; };
   // Re-plan at the end of a chord, or when the held chord changes under it.
   if (!bassPlan || pulse >= bassPlan.end || pulse < bassPlan.start
@@ -806,7 +806,12 @@ function bassPulse(time, pulse, pulseDuration) {
     if (ev.pulse !== pulse) continue;
     bassLast = ev.note;
     const velocity = humanLevel(ev.pulse === bassPlan.start ? 104 : 92);
-    playBassNote(ev.note + settings.osc2Transpose, velocity, human({ time, duration: (PPQN / 2) * pulseDuration }).time, ev.len * pulseDuration * 0.95);
+    // Swing, as the arp's: off-beat 8ths (or 16ths) played late.
+    const unit = BASS_RATES[settings.osc2BassRate];
+    let late = 0;
+    if (unit === 0.5 && pulse % PPQN === PPQN / 2) late = (settings.swing / 100) * 0.5 * (PPQN / 2) * pulseDuration;
+    if (unit === 0.25 && pulse % (PPQN / 2) === PPQN / 4) late = (settings.swing / 100) * 0.5 * (PPQN / 4) * pulseDuration;
+    playBassNote(ev.note + settings.osc2Transpose, velocity, human({ time: time + late, duration: (PPQN / 2) * pulseDuration }).time, ev.len * pulseDuration * 0.95 - late);
   }
 }
 
@@ -2339,6 +2344,7 @@ function loadIrealSong(song) {
   settings.progLength = used.length;
   settings.progSong = `${song.title}${song.composer ? ` (${song.composer})` : ''}`;
   settings.progStyle = song.style || '';
+  renderBassRate(); // Auto style may now be bossa
   if (song.bpm > 0 && settings.sync === 'internal') setBpm(song.bpm);
   if (!settings.progOn) { settings.progOn = true; progIndex = -1; }
   renderProgression();
@@ -5363,7 +5369,12 @@ for (let t = -24; t <= 24; t++) {
   $('osc2-transpose').add(new Option(`${t > 0 ? '+' : ''}${t}${oct}`, String(t)));
 }
 bindSelect('osc2-wave', 'osc2Wave');
-bindSelect('osc2-bass-style', 'osc2BassStyle', Object.entries(BASS_STYLES), () => { bassPlan = null; });
+bindSelect('osc2-bass-style', 'osc2BassStyle', Object.entries(BASS_STYLES), () => { bassPlan = null; renderBassRate(); });
+bindSelect('osc2-bass-rate', 'osc2BassRate', Object.keys(BASS_RATES).map((r) => [r, r === 'auto' ? 'Auto (the style\'s)' : r]), () => { bassPlan = null; });
+/** Bossa has its own rhythm: the Rate doesn't apply to it. */
+function renderBassRate() { $('osc2-bass-rate').disabled = bassStyle() === 'bossa'; }
+renderBassRate();
+onRecall(renderBassRate);
 bindSelect('osc2-transpose', 'osc2Transpose');
 bindRange('osc2-detune', 'osc2Detune', (v) => `${v > 0 ? '+' : ''}${v} ct`);
 bindRange('osc2-level', 'osc2Level', (v) => `${v}%`);

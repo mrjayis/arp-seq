@@ -100,6 +100,7 @@ The arp has two monophonic voices: **Oscillator 1**, and **Oscillator 2**, which
   - **Two-feel:** root and fifth in half notes.
   - **Bossa:** root on 1, the fifth on the "and" of 2, held over.
   - **Roots:** the root once a bar.
+  - **Rate**, as the arpeggiator's: the bass line's rhythm, **1/1** to **1/16** with dotted and triplet values. Walking plays a note per value (1/8 gives an 8th-note walking line, 1/8T triplets), still starting each chord on its root and leading into the next; Roots repeats the root at it (a pulsing 8th-note rock or disco bass); Two-feel alternates root and fifth at it. A dotted value's leftover goes to the chord's last note. Off-beat 8ths and 16ths take the arpeggiator's **Swing**. **Auto** keeps each style's own rhythm (Walking in quarters, Two-feel in halves, Roots once a bar). Bossa keeps its own pattern, so the Rate is greyed out for it.
   - **Auto** picks from the style of the iReal Pro song you loaded: Walking for swing (and anything else), Bossa for bossa, samba and Latin styles, Two-feel for ballads, Roots for rock, pop, funk and even-8ths styles.
   Choose **Sound: Upright bass** for the full effect (Transpose −12 puts it in the bass's real register). The bass line is written from E2 up, so with Transpose 0 on the West-coast sound it plays an octave higher, like a synth bass. MIDI Out Ch sends it on oscillator 2's channel.
 - **Mod → Osc 1** (in Oscillator 2's panel): oscillator 2 modulates oscillator 1 with **AM** or **FM**, using its own pitch for each step (Same/Inverted, Transpose, Detune) and its own Wave.
