@@ -8,30 +8,30 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=242';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=242';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=242';
-import { Midi } from './midi.js?v=242';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=242';
+} from './core.js?v=243';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=243';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=243';
+import { Midi } from './midi.js?v=243';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=243';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, presetConds, presetLens, TRIPLET_FEEL, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=242';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=242';
-import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=242';
-import { Invention, parseSubject } from './invention.js?v=242';
-import { ColtraneSolo } from './coltrane.js?v=242';
-import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=242';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=242';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=242';
+} from './percussion.js?v=243';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=243';
+import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=243';
+import { Invention, parseSubject } from './invention.js?v=243';
+import { ColtraneSolo } from './coltrane.js?v=243';
+import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=243';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=243';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=243';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers, rowThisTime,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=242';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=242';
+} from './breaks.js?v=243';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=243';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=242';
+} from './mono.js?v=243';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -235,6 +235,7 @@ const settings = {
   songChain: ['A', 'A', 'B', 'A'], // one section (A–D) per bar; runs of the same make the song's blocks
   songAll: true, // the song moves every module through the sections (off: only drums and break)
   breakEvolve: 0, // 0–100: per-bar variation of the break pattern
+  breakSlotEvolve: {}, // the other break slots' Evolve settings: {A: {evolve, rolls, reverse}, …}
   breakCustom: null, // slice points moved by hand: {key (what they were made for), points (fractions)}
   breakEvolveRolls: 'fast', // Evolve's rolls: 'fast' (32nds in the step), 'sixteenths' or 'eighths' (a stutter in 16ths or 8ths)
   breakEvolveReverse: true, // Evolve may reverse a step
@@ -394,7 +395,7 @@ function ensureAudio() {
         sends[fx][src] = { pre, post };
       }
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=242', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=243', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -1158,8 +1159,8 @@ function onPulse(time, pulse, pulseDuration) {
 // Evolve: a new seed each time Play starts; each bar's variation is derived from it.
 let runSeed = (Math.random() * 2 ** 32) >>> 0;
 let evolveCache = { bar: -1, rows: null, src: null, amount: -1 };
-function evolvedDrumRows(stepNumber, rows, conds) {
-  const amount = settings.drumEvolve / 100;
+function evolvedDrumRows(stepNumber, rows, conds, evolve = settings.drumEvolve) {
+  const amount = evolve / 100;
   if (amount <= 0) return rows;
   const bar = Math.floor(stepNumber / DRUM_STEPS);
   const c = evolveCache;
@@ -1181,7 +1182,8 @@ function playDrums(step) {
   }
   const voices = kitVoices();
   const data = drumSlotData(songSlot(step.stepNumber) || settings.drumSlot);
-  const played = evolvedDrumRows(step.stepNumber, data.rows, data.conds);
+  const variation = drumSlotVariation(songSlot(step.stepNumber) || settings.drumSlot);
+  const played = evolvedDrumRows(step.stepNumber, data.rows, data.conds, variation.evolve);
   // Once a bar (and on the first step): tell the grid how this bar differs from what's on screen.
   if (step.stepNumber % DRUM_STEPS === 0 || !drumOverlayShown) {
     drumOverlayShown = true;
@@ -1189,7 +1191,7 @@ function playDrums(step) {
   }
   const hits = drumHits(played, step.stepNumber, {
     conds: data.conds, lens: data.lens, muted: settings.drumMuted, voices,
-    fill: isFillBar(step.stepNumber, settings.drumFillEvery),
+    fill: isFillBar(step.stepNumber, variation.fill),
   });
   // The triplet feel (jazz) places each beat's four cells on the triplet: the
   // beat, the triplet's middle, the swung "and" at two-thirds, the last sixth. (The
@@ -2466,7 +2468,17 @@ const SLOTS = ['A', 'B', 'C', 'D'];
 const drumSlotCache = {};
 
 function currentDrumState() {
-  return { preset: settings.drumPreset, rows: settings.drumRows, conds: settings.drumConds, lens: settings.drumLens };
+  // (with its variation: Evolve and Fill every belong to the slot too)
+  return {
+    preset: settings.drumPreset, rows: settings.drumRows, conds: settings.drumConds, lens: settings.drumLens,
+    evolve: settings.drumEvolve, fill: settings.drumFillEvery,
+  };
+}
+
+/** A slot's Evolve and Fill every (the edited slot's are live; older slots use those). */
+function drumSlotVariation(slot) {
+  const s = slot && slot !== settings.drumSlot ? settings.drumSlots[slot] : null;
+  return { evolve: s?.evolve ?? settings.drumEvolve, fill: s?.fill ?? settings.drumFillEvery };
 }
 
 /** Pattern data for a slot (the edited one is live; empty slots fall back to it). */
@@ -2488,6 +2500,11 @@ function selectDrumSlot(slot) {
   delete settings.drumSlots[slot];
   settings.drumSlot = slot;
   Object.assign(settings, { drumPreset: next.preset, drumRows: next.rows, drumConds: next.conds, drumLens: next.lens });
+  if (Number.isFinite(next.evolve)) settings.drumEvolve = next.evolve;
+  if (Number.isFinite(next.fill)) settings.drumFillEvery = next.fill;
+  $('drum-evolve').value = String(settings.drumEvolve);
+  $('drum-evolve-val').textContent = settings.drumEvolve ? `${settings.drumEvolve}%` : 'off';
+  $('drum-fill-every').value = String(settings.drumFillEvery);
   loadKitState();
   buildDrumGrid();
   fillDrumPresets();
@@ -3073,10 +3090,11 @@ function playBreakStep(step) {
   if (padErasing && !songSlot(step.stepNumber)) eraseRow(idx);
   const pattern = breakPatternFor(songSlot(step.stepNumber) || settings.breakSlot);
   const off = settings.breakOff || [];
-  const evolved = evolveBreakRow(pattern[idx], settings.breakEvolve / 100,
+  const variation = breakSlotVariation(songSlot(step.stepNumber) || settings.breakSlot);
+  const evolved = evolveBreakRow(pattern[idx], variation.evolve / 100,
     barRng(runSeed, Math.floor(step.stepNumber / settings.breakSteps), idx + 101),
     off.length ? usableSlices(sliceCount(), off) : sliceCount(),
-    { rolls: settings.breakEvolveRolls, reverse: settings.breakEvolveReverse });
+    { rolls: variation.rolls, reverse: variation.reverse });
   // A row on a switched-off slice counts as empty: whatever was playing carries on.
   const offed = evolved && off.includes(evolved.slice) && evolved.fx !== 'cut' ? { ...evolved, slice: null } : evolved;
   // Its roll and effect, each with its own chance this time round.
@@ -4259,8 +4277,27 @@ function breakPatternFor(slot) {
   return rows;
 }
 
+// A break slot's Evolve settings (the edited slot's are the live ones).
+const breakVariationNow = () => ({ evolve: settings.breakEvolve, rolls: settings.breakEvolveRolls, reverse: settings.breakEvolveReverse });
+function breakSlotVariation(slot) {
+  return (slot && slot !== settings.breakSlot && settings.breakSlotEvolve?.[slot]) || breakVariationNow();
+}
+function renderBreakEvolve() {
+  $('break-evolve').value = String(settings.breakEvolve);
+  $('break-evolve-val').textContent = settings.breakEvolve ? `${settings.breakEvolve}%` : 'off';
+  $('break-evolve-rolls').value = settings.breakEvolveRolls;
+  $('break-evolve-reverse').checked = settings.breakEvolveReverse !== false;
+}
+
 function selectBreakSlot(slot) {
   if (slot === settings.breakSlot) return;
+  if (!settings.breakSlotEvolve || typeof settings.breakSlotEvolve !== 'object') settings.breakSlotEvolve = {};
+  settings.breakSlotEvolve[settings.breakSlot] = breakVariationNow();
+  const v = settings.breakSlotEvolve[slot]; // (a new slot keeps the current ones: a copy)
+  delete settings.breakSlotEvolve[slot];
+  if (v) Object.assign(settings, { breakEvolve: v.evolve, breakEvolveRolls: v.rolls, breakEvolveReverse: v.reverse });
+  renderBreakEvolve();
+  breakStutter = null;
   settings.breakSlots[settings.breakSlot] = structuredClone(settings.breakPattern);
   const next = settings.breakSlots[slot] ? structuredClone(settings.breakSlots[slot]) : structuredClone(settings.breakPattern);
   delete settings.breakSlots[slot];
@@ -4280,6 +4317,8 @@ function copySlot(kind, to) {
   } else {
     if (to === settings.breakSlot) return;
     settings.breakSlots[to] = structuredClone(settings.breakPattern);
+    if (!settings.breakSlotEvolve || typeof settings.breakSlotEvolve !== 'object') settings.breakSlotEvolve = {};
+    settings.breakSlotEvolve[to] = breakVariationNow();
   }
   renderSlotButtons();
   save();
@@ -4372,6 +4411,7 @@ onRecall(repairSong)();
 function repairSong() {
   if (!SLOTS.includes(settings.breakSlot)) settings.breakSlot = 'A';
   if (!settings.breakSlots || typeof settings.breakSlots !== 'object') settings.breakSlots = {};
+  if (!settings.breakSlotEvolve || typeof settings.breakSlotEvolve !== 'object') settings.breakSlotEvolve = {};
   for (const k of Object.keys(breakSlotCache)) delete breakSlotCache[k];
   if (!Array.isArray(settings.songChain)) settings.songChain = ['A', 'A', 'B', 'A'];
   settings.songChain = settings.songChain.filter((s) => SLOTS.includes(s));
