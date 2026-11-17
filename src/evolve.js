@@ -55,7 +55,12 @@ export function evolveDrums(rows, amount, rng, conds = {}) {
  * A breakbeat tracker row varied for one play, by `amount` (0–1): a different
  * slice, an added roll or reverse, or a slice dropped onto an empty row.
  */
-export function evolveBreakRow(row, amount, rng, slices) {
+/**
+ * `opts.rolls`: 'fast' (the default: 32nd-note rolls inside the step) or 'eighths' (a
+ * stutter instead: the slice again every 8th note, 2–4 hits, set as `eighths`).
+ * `opts.reverse`: false to never flip a step's direction.
+ */
+export function evolveBreakRow(row, amount, rng, slices, opts = {}) {
   if (amount <= 0 || !row) return row;
   const r = rng();
   // `slices`: a count, or the list of slices it may use (switched-off ones left out).
@@ -77,8 +82,11 @@ export function evolveBreakRow(row, amount, rng, slices) {
     const slice = pick();
     return slice === null ? row : { ...row, slice };
   }
-  if (r < amount * 0.35) return { ...row, roll: Math.max(row.roll || 0, 2 + Math.floor(rng() * 2)), rollType: 'R' };
-  if (r < amount * 0.4) return { ...row, fx: row.fx === 'rev' ? '' : 'rev' };
+  if (r < amount * 0.35) {
+    if (opts.rolls === 'eighths') return { ...row, roll: 0, eighths: 2 + Math.floor(rng() * 3) };
+    return { ...row, roll: Math.max(row.roll || 0, 2 + Math.floor(rng() * 2)), rollType: 'R' };
+  }
+  if (r < amount * 0.4) return opts.reverse === false ? row : { ...row, fx: row.fx === 'rev' ? '' : 'rev' };
   return row;
 }
 
@@ -110,6 +118,7 @@ export function breakRowChange(base, played) {
   const parts = [];
   if (played.slice !== base.slice && played.slice !== null && played.slice !== undefined) parts.push(`→${played.slice + 1}`);
   if ((played.roll || 0) !== (base.roll || 0)) parts.push(`R${played.roll}`);
+  if (played.eighths) parts.push(`8ths×${played.eighths}`);
   if (played.fx !== base.fx) parts.push(played.fx === 'rev' ? 'rev' : played.fx || 'fwd');
   return parts.join(' ');
 }

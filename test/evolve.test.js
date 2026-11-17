@@ -73,3 +73,31 @@ test('breakRowChange describes what Evolve did to a row', () => {
   assert.equal(breakRowChange(base, { ...base, roll: 3 }), 'R3');
   assert.equal(breakRowChange(base, { ...base, fx: 'rev' }), 'rev');
 });
+
+test('break Evolve options: 8th-note rolls instead of fast ones; no reverse', () => {
+  const row = { slice: 3, vol: 100, pitch: 0, chance: 100, roll: 0, rollType: 'R', fx: '' };
+  let eighths = 0;
+  let fast = 0;
+  let rev = 0;
+  for (let seed = 1; seed < 3000; seed++) {
+    const e = evolveBreakRow(row, 1, prng(seed), 16, { rolls: 'eighths', reverse: false });
+    if (e.eighths) { eighths++; assert.ok(e.eighths >= 2 && e.eighths <= 4); assert.equal(e.roll, 0); }
+    if (e.roll > 0) fast++;
+    if (e.fx === 'rev') rev++;
+  }
+  assert.ok(eighths > 100, `8th-note rolls: ${eighths}`);
+  assert.equal(fast, 0, 'no fast rolls');
+  assert.equal(rev, 0, 'no reverse');
+  // the defaults are as before: fast rolls and reverse
+  let f2 = 0;
+  let r2 = 0;
+  for (let seed = 1; seed < 3000; seed++) {
+    const e = evolveBreakRow(row, 1, prng(seed), 16);
+    if (e.roll > 1) f2++;
+    if (e.fx === 'rev') r2++;
+    assert.equal(e.eighths, undefined);
+  }
+  assert.ok(f2 > 100 && r2 > 50);
+  // and it shows in the tracker as what Evolve did
+  assert.equal(breakRowChange(row, { ...row, eighths: 3 }), '8ths×3');
+});

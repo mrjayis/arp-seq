@@ -8,29 +8,29 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=224';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=224';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=224';
-import { Midi } from './midi.js?v=224';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=224';
+} from './core.js?v=225';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=225';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=225';
+import { Midi } from './midi.js?v=225';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=225';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, presetConds, presetLens, TRIPLET_FEEL, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=224';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=224';
-import { Invention, parseSubject } from './invention.js?v=224';
-import { ColtraneSolo } from './coltrane.js?v=224';
-import { BASS_STYLES, styleForSong, bassLine } from './bass.js?v=224';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=224';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=224';
+} from './percussion.js?v=225';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=225';
+import { Invention, parseSubject } from './invention.js?v=225';
+import { ColtraneSolo } from './coltrane.js?v=225';
+import { BASS_STYLES, styleForSong, bassLine } from './bass.js?v=225';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=225';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=225';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=224';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=224';
+} from './breaks.js?v=225';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=225';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=224';
+} from './mono.js?v=225';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -232,6 +232,8 @@ const settings = {
   songOn: false,
   songChain: ['A', 'A', 'B', 'A'], // one slot per bar
   breakEvolve: 0, // 0–100: per-bar variation of the break pattern
+  breakEvolveRolls: 'fast', // Evolve's rolls: 'fast' (32nds in the step) or 'eighths' (a stutter in 8th notes)
+  breakEvolveReverse: true, // Evolve may reverse a step
   breakOn: false,
   breakSlices: 16,
   breakSteps: 32,
@@ -388,7 +390,7 @@ function ensureAudio() {
         sends[fx][src] = { pre, post };
       }
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=224', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=225', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -1252,6 +1254,7 @@ function setPlaying(on, { fromClock = false } = {}) {
     midi.allNotesOff();
     uiEvents.length = 0;
     breakRoll = null;
+    breakStutter = null;
     breakStepTimes.length = 0;
     padSkip.clear();
     // Back to showing the patterns as written.
@@ -3034,6 +3037,7 @@ function orderedPattern() {
 }
 
 let breakRoll = null; // a roll carrying on through empty rows: {row, span, part}
+let breakStutter = null; // Evolve's 8th-note roll: {row, left (hits still to come), k (steps since it began)}
 
 function playBreakStep(step) {
   const idx = step.stepNumber % settings.breakSteps;
@@ -3046,7 +3050,8 @@ function playBreakStep(step) {
   const off = settings.breakOff || [];
   const evolved = evolveBreakRow(pattern[idx], settings.breakEvolve / 100,
     barRng(runSeed, Math.floor(step.stepNumber / settings.breakSteps), idx + 101),
-    off.length ? usableSlices(sliceCount(), off) : sliceCount());
+    off.length ? usableSlices(sliceCount(), off) : sliceCount(),
+    { rolls: settings.breakEvolveRolls, reverse: settings.breakEvolveReverse });
   // A row on a switched-off slice counts as empty: whatever was playing carries on.
   const row = evolved && off.includes(evolved.slice) && evolved.fx !== 'cut' ? { ...evolved, slice: null } : evolved;
   let triggers;
@@ -3055,7 +3060,23 @@ function playBreakStep(step) {
     // Just recorded from a pad that already sounded: don't play it twice.
     padSkip.delete(idx);
     breakRoll = null;
+    breakStutter = null;
     triggers = [];
+  } else if (breakStutter) {
+    // An 8th-note roll from Evolve: the slice again on every other step, ringing on in
+    // between; the pattern waits until it's done.
+    breakStutter.k += 1;
+    if (breakStutter.k % 2 === 0) {
+      triggers = rowTriggers(breakStutter.row, step.duration, Math.random);
+      rolling = true;
+      breakStutter.left -= 1;
+      if (breakStutter.left <= 0) breakStutter = null;
+    } else triggers = [];
+  } else if (isFilled(row) && row.eighths > 1 && row.fx !== 'cut') {
+    const plain = { ...row, eighths: 0, roll: 0, chance: 100 };
+    triggers = rowTriggers(row.chance < 100 ? { ...plain, chance: row.chance } : plain, step.duration, Math.random);
+    breakRoll = null;
+    breakStutter = triggers.length ? { row: plain, left: row.eighths - 1, k: 0 } : null;
   } else if (isFilled(row)) {
     // A new row stops any roll; a roll here holds until the next filled row (Roll hold).
     const span = settings.breakRollHold && row.roll > 0 && row.fx !== 'cut' ? rollSpan(pattern, idx) : 1;
@@ -3869,6 +3890,10 @@ onRecall(() => { $('break-roll-hold').checked = settings.breakRollHold; });
 bindRange('break-pitch', 'breakPitch', (v) => `${v > 0 ? '+' : ''}${v.toFixed(1)} st`);
 bindRange('break-level', 'breakLevel', (v) => `${v}%`, applyFaders);
 bindRange('break-evolve', 'breakEvolve', (v) => (v ? `${v}%` : 'off'));
+bindSelect('break-evolve-rolls', 'breakEvolveRolls', [['fast', '32nds'], ['eighths', '8ths']], () => { breakStutter = null; });
+$('break-evolve-reverse').checked = settings.breakEvolveReverse !== false;
+$('break-evolve-reverse').addEventListener('change', () => { settings.breakEvolveReverse = $('break-evolve-reverse').checked; save(); });
+onRecall(() => { $('break-evolve-reverse').checked = settings.breakEvolveReverse !== false; });
 document.querySelectorAll('[data-gen]').forEach((b) => b.addEventListener('click', () => {
   const steps = settings.breakSteps;
   settings.breakPattern = {
