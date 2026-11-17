@@ -25,7 +25,9 @@ export const MAX_TRANSIENT_SLICES = 32;
 // sample (0–7: S1–S8 of the sample slots).
 export const TRACK_SAMPLES = 8;
 export const EXTRA_TRACKS = 3;
-export const emptyCell = () => ({ slice: null, vol: 100, pitch: 0, chance: 100, roll: 0, rollType: 'R', fx: '', rollChance: 100, fxChance: 100 });
+// rr: 8 marks R as hits per 8th note (R1 = 8ths, R2 = 16ths, R4 = 32nds, R8 = 64ths). Rows
+// without it are older, when R counted hits per 16th step: their R is doubled on the way in.
+export const emptyCell = () => ({ slice: null, vol: 100, pitch: 0, chance: 100, roll: 0, rollType: 'R', fx: '', rollChance: 100, fxChance: 100, rr: 8 });
 export const emptyRow = () => ({ ...emptyCell(), tracks: Array.from({ length: EXTRA_TRACKS }, emptyCell) });
 
 /** One cell's fields made current: old Ratchet ×2/×3/×4 effects become R rolls. */
@@ -33,6 +35,7 @@ function migrateCell(row) {
   const out = { ...emptyCell(), ...row };
   const ratchet = { r2: 2, r3: 3, r4: 4 }[out.fx];
   if (ratchet) { out.roll = ratchet; out.rollType = 'R'; out.fx = ''; }
+  if (row?.rr !== 8) { out.roll = (Number(out.roll) || 0) * 2; out.rr = 8; } // per 16th → per 8th
   if (!BREAK_FX[out.fx]) out.fx = '';
   if (!ROLL_TYPES[out.rollType]) out.rollType = 'R';
   out.chance = Math.max(0, Math.min(100, Number(out.chance ?? 100)));
@@ -196,14 +199,20 @@ export function rowTriggers(row, stepDur, rng = Math.random, { span = 1, part = 
   if (part === 0 && r.chance < 100 && rng() * 100 >= r.chance) return [];
   if (r.fx === 'cut') return part === 0 ? [{ at: 0, cut: true }] : [];
   if (r.slice === null || r.slice === undefined) return [];
-  // Roll R = retriggers per 16th step: 1 = 16ths, 2 = 32nds, 4 = 64ths. 0 = no roll.
-  const n = r.roll > 0 ? r.roll : 1;
+  // Roll R = hits per 8th note: 1 = 8ths, 2 = 16ths, 3 = 16th triplets, 4 = 32nds, 8 = 64ths.
+  // 0 = no roll. The hits run on from the row (through the `span` steps it holds for), so
+  // an 8th-note roll hits every other step.
   if (!(r.roll > 0) && part > 0) return []; // no roll: nothing to carry on
   const gain = Math.max(0, Math.min(100, r.vol)) / 100;
-  // A roll held over `span` steps ramps across all of them: this is step `part` of it.
-  const total = n * Math.max(1, span);
-  return Array.from({ length: n }, (_, j) => {
-    const i = part * n + j;
+  const every = r.roll > 0 ? (2 * stepDur) / r.roll : stepDur;
+  const total = r.roll > 0 ? Math.max(1, Math.ceil((Math.max(1, span) * stepDur) / every - 1e-9)) : 1;
+  // This step's share of the run (step `part` of it): the hits that fall within it.
+  const mine = [];
+  for (let i = 0; i < total; i++) {
+    const t = i * every - part * stepDur;
+    if (t >= -1e-9 && t < stepDur - 1e-9) mine.push([i, Math.max(0, t)]);
+  }
+  return mine.map(([i, at]) => {
     let g = gain;
     let pitch = r.pitch;
     if (total > 1) {
@@ -214,7 +223,7 @@ export function rowTriggers(row, stepDur, rng = Math.random, { span = 1, part = 
       if (r.rollType === 'RR' && i > 0) pitch += Math.round(rng() * 24) - 12;
     }
     pitch = Math.max(-24, Math.min(24, pitch));
-    return { at: (j * stepDur) / n, slice: r.slice, reverse: r.fx === 'rev', send: FX_SENDS[r.fx] || null, pitch, gain: g };
+    return { at, slice: r.slice, reverse: r.fx === 'rev', send: FX_SENDS[r.fx] || null, pitch, gain: g };
   });
 }
 
@@ -261,10 +270,10 @@ export function chop(base) {
   const at = (i, patch) => { if (i >= 0 && i < steps) rows[i] = { ...rows[i], ...patch }; };
   const q = Math.max(1, Math.round(steps / 16));
   at(half + 4 * q, { slice: pick(0.25) });
-  at(half + 6 * q, { slice: pick(0.25), roll: 2 });
+  at(half + 6 * q, { slice: pick(0.25), roll: 4 });
   at(steps - 6 * q, { slice: pick(0.4), fx: 'rev' });
-  at(steps - 2 * q, { slice: pick(0.75), roll: 3, rollType: 'RV', vol: 85 });
-  at(steps - q, { slice: pick(0.75), roll: 6, rollType: 'RN', vol: 80 });
+  at(steps - 2 * q, { slice: pick(0.75), roll: 6, rollType: 'RV', vol: 85 });
+  at(steps - q, { slice: pick(0.75), roll: 12, rollType: 'RN', vol: 80 });
   return rows;
 }
 
@@ -295,7 +304,7 @@ export function randomize(steps, slices, rng = Math.random) {
       ...emptyRow(),
       slice,
       fx: r < 0.08 ? 'rev' : '',
-      roll: r > 0.08 && r < 0.18 ? 2 + Math.floor(rng() * 3) : 0,
+      roll: r > 0.08 && r < 0.18 ? 2 * (2 + Math.floor(rng() * 3)) : 0,
       rollType: ['R', 'Rv', 'RV', 'Rn', 'RN', 'RR'][Math.floor(rng() * 6)],
       chance: rng() < 0.15 ? 50 : 100,
     };

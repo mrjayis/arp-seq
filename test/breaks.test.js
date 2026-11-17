@@ -70,7 +70,7 @@ test('Chance skips rows; a skipped row lets the previous slice play on', () => {
 });
 
 test('Roll divides the step, shaped by its type', () => {
-  const base = { ...emptyRow(), slice: 3, vol: 80, pitch: 2, roll: 4 };
+  const base = { ...emptyRow(), slice: 3, vol: 80, pitch: 2, roll: 8 }; // 64ths: 4 a step
   const at = (r) => r.map((t) => +t.at.toFixed(3));
   const R = rowTriggers({ ...base, rollType: 'R' }, 0.2);
   assert.deepEqual(at(R), [0, 0.05, 0.1, 0.15]);
@@ -82,7 +82,7 @@ test('Roll divides the step, shaped by its type', () => {
   const RR = rowTriggers({ ...base, rollType: 'RR' }, 0.2, seeded(9)).map((t) => t.pitch);
   assert.equal(RR[0], 2);
   assert.ok(RR.every((p) => p >= -10 && p <= 14) && new Set(RR).size > 1);
-  assert.equal(rowTriggers({ ...base, roll: 16 }, 0.2).length, 16);
+  assert.equal(rowTriggers({ ...base, roll: 16 }, 0.2).length, 8);
   assert.equal(rowTriggers({ ...base, roll: 0 }, 0.2).length, 1);
   assert.deepEqual(rowTriggers({ ...emptyRow(), fx: 'cut' }, 0.1), [{ at: 0, cut: true }]);
   assert.deepEqual(rowTriggers(emptyRow(), 0.1), []);
@@ -92,7 +92,7 @@ test('Roll divides the step, shaped by its type', () => {
 test('old ratchet effects become R rolls', () => {
   assert.deepEqual(
     (({ roll, rollType, fx, chance }) => ({ roll, rollType, fx, chance }))(migrateRow({ slice: 1, vol: 90, pitch: 0, fx: 'r3' })),
-    { roll: 3, rollType: 'R', fx: '', chance: 100 },
+    { roll: 6, rollType: 'R', fx: '', chance: 100 }, // ×3 a 16th = R6 in 8ths
   );
   assert.equal(migrateRow({ slice: 1, fx: 'rev' }).fx, 'rev');
 });
@@ -175,7 +175,7 @@ test('rolls hold until the next filled row and ramp over the whole run', () => {
   assert.deepEqual(rowTriggers({ ...row, roll: 0 }, 0.1, Math.random, { span: 3, part: 1 }), []);
 });
 
-test('roll 1 = 16th notes: one retrigger per step, carried through the empty rows', () => {
+test('an older R1 (16th notes, saved before R counted 8ths): one hit a step, carried through the empty rows', () => {
   const row = { slice: 2, vol: 100, pitch: 0, chance: 100, roll: 1, rollType: 'Rv', fx: '' };
   const parts = [0, 1, 2, 3].map((part) => rowTriggers(row, 0.125, Math.random, { span: 4, part }));
   assert.ok(parts.every((tr) => tr.length === 1 && tr[0].at === 0 && tr[0].slice === 2));
@@ -263,4 +263,20 @@ test('generators keep the other tracks; a track column reads them', () => {
   assert.equal(trackColumn(fresh, 2)[0].slice, 4);
   assert.equal(trackColumn(fresh, 1), fresh);
   assert.equal(rollSpan(trackColumn(fresh, 2), 0), 4);
+});
+
+test('R is hits per 8th note: R1 8ths, R2 16ths, R4 32nds; older rows are converted', () => {
+  const row = { ...emptyRow(), slice: 0, roll: 1 };
+  const hits = (r, span) => Array.from({ length: span }, (_, part) => rowTriggers(r, 0.1, Math.random, { span, part }).map((t) => +(part * 0.1 + t.at).toFixed(3))).flat();
+  assert.deepEqual(hits(row, 4), [0, 0.2]); // 8ths: every other step
+  assert.deepEqual(hits({ ...row, roll: 2 }, 4), [0, 0.1, 0.2, 0.3]); // 16ths
+  assert.deepEqual(hits({ ...row, roll: 4 }, 2), [0, 0.05, 0.1, 0.15]); // 32nds
+  assert.deepEqual(hits({ ...row, roll: 3 }, 2), [0, 0.067, 0.133]); // 16th triplets
+  assert.equal(rowTriggers(row, 0.1).length, 1); // an 8th roll held for one step: just the hit
+  // Ramps run over the whole run's hits.
+  assert.deepEqual(Array.from({ length: 4 }, (_, part) => rowTriggers({ ...row, rollType: 'Rv' }, 0.1, Math.random, { span: 4, part }).map((t) => t.gain)).flat(), [1, 0.5]);
+  // A row saved when R counted per 16th step: doubled, so it sounds the same.
+  assert.equal(migrateRow({ slice: 0, roll: 2 }).roll, 4);
+  assert.equal(migrateRow(migrateRow({ slice: 0, roll: 2 })).roll, 4); // once only
+  assert.equal(migrateRow({ slice: 0, roll: 12 }).roll, 16); // held to the maximum
 });
