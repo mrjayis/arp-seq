@@ -8,31 +8,31 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=249';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=249';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=249';
-import { Midi } from './midi.js?v=249';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=249';
+} from './core.js?v=250';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=250';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=250';
+import { Midi } from './midi.js?v=250';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=250';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, presetConds, presetLens, TRIPLET_FEEL, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=249';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=249';
-import { AUDIO_ACCEPT, looksLikeAudio, decodeAudioFile } from './audiofile.js?v=249';
-import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=249';
-import { Invention, parseSubject } from './invention.js?v=249';
-import { ColtraneSolo } from './coltrane.js?v=249';
-import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=249';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=249';
-import { saveTrackSample, deleteTrackSample, loadTrackSamples, saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=249';
+} from './percussion.js?v=250';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=250';
+import { AUDIO_ACCEPT, looksLikeAudio, decodeAudioFile } from './audiofile.js?v=250';
+import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=250';
+import { Invention, parseSubject } from './invention.js?v=250';
+import { ColtraneSolo } from './coltrane.js?v=250';
+import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=250';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=250';
+import { saveTrackSample, deleteTrackSample, loadTrackSamples, saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=250';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers, rowThisTime,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, TRACK_SAMPLES, EXTRA_TRACKS, emptyCell, trackColumn, keepTracks, reverseBuffer, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=249';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=249';
+} from './breaks.js?v=250';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=250';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=249';
+} from './mono.js?v=250';
 
 const $ = (id) => document.getElementById(id);
 // Every audio file picker offers any kind of audio (and video, for its sound).
@@ -128,6 +128,7 @@ const settings = {
   audioOut: '', // the audio output device id ('' = the system default); this device only
   outputMode: 'mix', // 'mix': one stereo pair; 'split': each module on its own pair of a multichannel output
   breakStepsOpen: true, // the Breakbeat tracker's steps shown (a view choice, not part of scenes)
+  breakTrimOpen: true, // the Breakbeat's trim controls shown (likewise)
   breakTrim: { start: 0, end: 1 }, // the part of the loaded break that's used (fractions of the file)
   arpLevel: 100, // %: overall level of the arp (both voices)
   osc2Sound: 'west', // 'west' (the west-coast voice) | 'bass' (upright bass)
@@ -265,7 +266,7 @@ Object.assign(DEFAULTS, { drumKitStore: {}, sampleLevels: {}, sampleTunes: {}, d
 const DEVICE_KEYS = [
   'theme', 'themeV2', 'collapsed', 'showHelp', 'midiIn', 'midiInCh', 'midiOut', 'midiOutCh', 'volume', 'synthOn',
   'midiInChord', 'midiInMono', 'midiInDrums', 'midiInBreak', 'aftertouch', 'aftertouchDepth', 'midiMap',
-  'sync', 'baseOctave', 'chordRoot', 'monoKbOctave', 'breakStepsOpen', 'audioOut', 'outputMode', 'stableMode',
+  'sync', 'baseOctave', 'chordRoot', 'monoKbOctave', 'breakStepsOpen', 'breakTrimOpen', 'audioOut', 'outputMode', 'stableMode',
 ];
 // Live scene recall: each part of the page registers how to re-read its settings,
 // in page order (repairs first, then controls, then drawing). See recallLive().
@@ -407,7 +408,7 @@ function ensureAudio() {
       throwIn[fx] = ctx.createGain();
       throwIn[fx].connect(input);
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=249', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=250', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -3472,16 +3473,29 @@ function renderTrim() {
     b.setAttribute('aria-checked', String(on));
   });
   $('trim-zoom-at').textContent = breakSource ? `${trimEdge === 'start' ? 'Start' : 'End'} at ${(t[trimEdge] * dur).toFixed(3)} s` : '';
+  // Folded: the button says what the trim is.
+  const open = settings.breakTrimOpen !== false;
+  const btn = $('break-trim-toggle');
+  btn.setAttribute('aria-expanded', String(open));
+  const whole = t.start <= 0 && t.end >= 1;
+  btn.textContent = open ? 'Trim' : `Trim: ${whole ? 'whole file' : `${(t.start * dur).toFixed(3)} to ${(t.end * dur).toFixed(3)} s`}`;
+  $('break-trim-body').hidden = !open;
+  if (!open) return; // nothing to draw
   drawTrimOverview();
   drawTrimZoom();
 }
+$('break-trim-toggle').addEventListener('click', () => {
+  settings.breakTrimOpen = settings.breakTrimOpen === false;
+  renderTrim();
+  save();
+});
 
 /** The close-up: ±0.2 s of the file around the chosen edge, at full detail. */
 function drawTrimZoom() {
   const canvas = $('break-trim-zoom');
   if (!canvas.clientWidth) return;
   const dpr = window.devicePixelRatio || 1;
-  const w = Math.min(canvas.parentElement.clientWidth || 0, canvas.clientWidth || Infinity);
+  const w = Math.min(canvas.closest('.break-trim').clientWidth || 0, canvas.clientWidth || Infinity);
   const h = canvas.clientHeight || 52;
   if (canvas.width !== w * dpr || canvas.height !== h * dpr) { canvas.width = w * dpr; canvas.height = h * dpr; }
   const g = canvas.getContext('2d');
@@ -3534,7 +3548,7 @@ function drawTrimOverview() {
   if (!canvas.clientWidth) return;
   const dpr = window.devicePixelRatio || 1;
   // Size from the space around the canvas, never from the canvas itself (which could feed back).
-  const w = Math.min(canvas.parentElement.clientWidth || 0, canvas.clientWidth || Infinity);
+  const w = Math.min(canvas.closest('.break-trim').clientWidth || 0, canvas.clientWidth || Infinity);
   const h = canvas.clientHeight || 28;
   if (canvas.width !== w * dpr || canvas.height !== h * dpr) { canvas.width = w * dpr; canvas.height = h * dpr; }
   const g = canvas.getContext('2d');
