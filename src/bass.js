@@ -2,7 +2,7 @@
 // a walking line in quarter notes, a two-feel, a bossa pattern, or just roots. Each
 // chord's line is planned when it starts, knowing the chord that comes next.
 
-import { CHORDS } from './core.js?v=227';
+import { CHORDS } from './core.js?v=229';
 
 export const BASS_STYLES = {
   auto: 'Auto (from the song)', walk: 'Walking', two: 'Two-feel', bossa: 'Bossa', roots: 'Roots',
@@ -59,7 +59,12 @@ const pick = (items, rng) => items[Math.min(items.length - 1, Math.floor(rng() *
  * in lo..hi, written register). `chord` and `next` are {root (pitch class), type};
  * `prev` is the last note played (or null), so the line carries on from it.
  */
-export function bassLine({ chord, next = null, beats, prev = null, style = 'walk', rng = Math.random, lo = 40, hi = 64, barBeats = 4 }) {
+/** Note values for the bass line's Rate (in beats); 'auto' leaves each style its own. */
+export const BASS_RATES = {
+  auto: null, '1/1': 4, '1/2': 2, '1/4D': 1.5, '1/4': 1, '1/8D': 0.75, '1/8': 0.5, '1/8T': 1 / 3, '1/16': 0.25,
+};
+
+export function bassLine({ chord, next = null, beats, prev = null, style = 'walk', rng = Math.random, lo = 40, hi = 64, barBeats = 4, unit = null }) {
   if (!chord || chord.type === 'rest' || beats <= 0) return [];
   // The root nearest the last note (a walking line has just led into it). The other
   // styles jump back towards the middle of the range when they've drifted, so a run of
@@ -72,14 +77,18 @@ export function bassLine({ chord, next = null, beats, prev = null, style = 'walk
   }
   const fifth = place((chord.root + fifthOf(chord.type)) % 12, root, lo, hi);
   const out = [];
+  const EPS = 1e-6;
   if (style === 'roots') {
-    for (let b = 0; b < beats; b += barBeats) out.push({ beat: b, note: root, len: Math.min(barBeats, beats - b) });
+    // The root once a bar, or repeated at the Rate (a pulsing bass).
+    const step = unit || barBeats;
+    for (let b = 0; b < beats - EPS; b += step) out.push({ beat: b, note: root, len: Math.min(step, beats - b) });
     return out;
   }
   if (style === 'two') {
-    // Half notes: the root, then the fifth, and so on.
-    for (let b = 0, k = 0; b < beats; b += 2, k++) {
-      out.push({ beat: b, note: k % 2 === 0 ? root : fifth, len: Math.min(2, beats - b) });
+    // Half notes (or the Rate): the root, then the fifth, and so on.
+    const step = unit || 2;
+    for (let b = 0, k = 0; b < beats - EPS; b += step, k++) {
+      out.push({ beat: b, note: k % 2 === 0 ? root : fifth, len: Math.min(step, beats - b) });
     }
     return out;
   }
@@ -112,15 +121,20 @@ export function bassLine({ chord, next = null, beats, prev = null, style = 'walk
     const near = all.filter((n) => Math.abs(n - p) <= 7 && Math.abs(n - goal) <= 7);
     return near.length ? near : all.sort((a, b) => Math.abs(a - p) - Math.abs(b - p)).slice(0, 1);
   };
-  for (let b = 1; b < beats; b++) {
+  // A note per beat (or per the Rate): `count` notes, the last taking what's left.
+  const step = unit || 1;
+  const count = Math.max(1, Math.floor(beats / step + EPS));
+  for (let b = 1; b < count; b++) {
+    const at = b * step; // where this note falls, in beats from the chord
     const p = lineFrom[b - 1];
-    if (b === beats - 1) {
+    if (b === count - 1) {
       const choices = approachFrom(p);
       if (choices.length) { lineFrom.push(pick(choices, rng)); continue; }
     }
     // A new bar over the same chord: back to a chord tone.
-    const strong = b % barBeats === 0;
-    const left = beats - 1 - b; // beats still to fill before the approach
+    const strong = Math.abs(at % barBeats) < EPS;
+    const onBeat = Math.abs(at - Math.round(at)) < EPS;
+    const left = count - 1 - b; // notes still to fill before the approach
     const dir = Math.sign(goal - p) || (rng() < 0.5 ? 1 : -1);
     const cands = [];
     for (let d = -5; d <= 5; d++) {
@@ -131,7 +145,7 @@ export function bassLine({ chord, next = null, beats, prev = null, style = 'walk
       if (Math.sign(d) === dir) w += 2; // towards where the line is going
       if (Math.abs(d) <= 2) w += 3; // stepwise
       else if (Math.abs(d) >= 5) w *= 0.5; // leaps now and then
-      if (isTone(n)) w += b % 2 === 0 ? 2 : 0.5; // chord tones on the stronger beats
+      if (isTone(n)) w += onBeat && Math.round(at) % 2 === 0 ? 2 : onBeat ? 1 : 0.5; // chord tones on the stronger beats
       if (Math.abs(goal - n) > (left + 1) * 4) w *= 0.2; // don't wander too far to get back
       cands.push({ n, w });
     }
@@ -141,5 +155,5 @@ export function bassLine({ chord, next = null, beats, prev = null, style = 'walk
     for (const c of cands) { r -= c.w; if (r <= 0) { chosen = c.n; break; } }
     lineFrom.push(chosen);
   }
-  return lineFrom.map((note, beat) => ({ beat, note, len: 1 }));
+  return lineFrom.map((note, k) => ({ beat: k * step, note, len: k === count - 1 ? beats - k * step : step }));
 }
