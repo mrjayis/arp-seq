@@ -8,30 +8,30 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=235';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=235';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=235';
-import { Midi } from './midi.js?v=235';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=235';
+} from './core.js?v=239';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=239';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=239';
+import { Midi } from './midi.js?v=239';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=239';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, presetConds, presetLens, TRIPLET_FEEL, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=235';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=235';
-import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=235';
-import { Invention, parseSubject } from './invention.js?v=235';
-import { ColtraneSolo } from './coltrane.js?v=235';
-import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=235';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=235';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=235';
+} from './percussion.js?v=239';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=239';
+import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=239';
+import { Invention, parseSubject } from './invention.js?v=239';
+import { ColtraneSolo } from './coltrane.js?v=239';
+import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=239';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=239';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=239';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers, rowThisTime,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=235';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=235';
+} from './breaks.js?v=239';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=239';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=235';
+} from './mono.js?v=239';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -393,7 +393,7 @@ function ensureAudio() {
         sends[fx][src] = { pre, post };
       }
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=235', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=239', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -1103,6 +1103,7 @@ const humanLevel = (v, max) => humanizeLevel(v, settings.humanize / 100, Math.ra
 function onPulse(time, pulse, pulseDuration) {
   // A recalled scene takes over on a bar's downbeat, before anything on it is scheduled.
   if (pendingScene && pulse % (PPQN * 4) === 0) applyPendingScene();
+  if (pendingSections.size && pulse % (PPQN * 4) === 0) applyPendingSections();
   arrPulse(pulse, time);
   if (settings.clockOut && settings.sync === 'internal') midi.clock(toPerfMs(time));
   stepProgression(time, pulse);
@@ -2053,7 +2054,7 @@ $('chord-follow').addEventListener('change', () => {
 });
 for (let c = 1; c <= 16; c++) $('chord-midi-ch').add(new Option(String(c), String(c - 1)));
 bindSelect('chord-midi-ch', 'chordMidiCh', null, () => midi.allNotesOff());
-renderChordRhythm();
+onRecall(renderChordRhythm)(); // (also for scenes and sections: steps, hits and rotate)
 
 // ---------------------------------------------------------------- UI: progression
 const NOTE_CLASSES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -6066,6 +6067,133 @@ function frame() {
   }
   requestAnimationFrame(frame);
 }
+
+// ---------------------------------------------------------------- sections A–D
+// Every module with a pattern has four of them, A–D: the Sequencer, Progression, Chord
+// rhythm and Mono here (what each keeps is in SECTION_KEYS), Percussion and Breakbeat with
+// their own pattern slots. The one in use lives in the settings as usual; the others wait
+// in settings.sectionStore. A new section starts as a copy of the one you were on. While
+// playing, a switch comes in on the next bar line. Section (top bar) switches them all.
+const SECTION_KEYS = {
+  seq: ['steps', 'length'],
+  prog: ['progression', 'progLength', 'progSong', 'progStyle'],
+  chords: ['chordRate', 'chordSteps', 'chordHits', 'chordRotate', 'chordMode', 'chordSyncopate', 'chordTie'],
+  mono: ['monoSeq'],
+};
+const SECTION_HOME = { seq: 'length', prog: 'prog-length', chords: 'chord-on', mono: 'mono-on' }; // where the buttons go
+const SECTION_NAMES = { seq: 'sequencer', prog: 'progression', chords: 'chord rhythm', mono: 'mono sequence', drum: 'percussion', break: 'breakbeat' };
+const pendingSections = new Map(); // module -> section, waiting for the bar line
+
+function sectionsOk() {
+  if (!settings.sectionSlot || typeof settings.sectionSlot !== 'object') settings.sectionSlot = {};
+  if (!settings.sectionStore || typeof settings.sectionStore !== 'object') settings.sectionStore = {};
+  for (const m of Object.keys(SECTION_KEYS)) {
+    if (!SLOTS.includes(settings.sectionSlot[m])) settings.sectionSlot[m] = 'A';
+    if (!settings.sectionStore[m] || typeof settings.sectionStore[m] !== 'object') settings.sectionStore[m] = {};
+  }
+}
+sectionsOk();
+Object.assign(DEFAULTS, { sectionSlot: { seq: 'A', prog: 'A', chords: 'A', mono: 'A' }, sectionStore: { seq: {}, prog: {}, chords: {}, mono: {} } });
+
+/** The section a module is on (drums and break keep their own slot settings). */
+const sectionOf = (m) => (m === 'drum' ? settings.drumSlot : m === 'break' ? settings.breakSlot : settings.sectionSlot[m]);
+
+/** Switch one module now (to `slot`). */
+function switchSection(m, slot) {
+  if (m === 'drum') { selectDrumSlot(slot); return; }
+  if (m === 'break') { selectBreakSlot(slot); return; }
+  const cur = settings.sectionSlot[m];
+  if (slot === cur) return;
+  const keys = SECTION_KEYS[m];
+  const store = settings.sectionStore[m];
+  store[cur] = structuredClone(Object.fromEntries(keys.map((k) => [k, settings[k]])));
+  const next = store[slot] ? store[slot] : structuredClone(store[cur]);
+  delete store[slot];
+  for (const k of keys) if (k in next) settings[k] = next[k];
+  settings.sectionSlot[m] = slot;
+}
+
+/** Ask for a section: now when stopped, on the next bar line while playing. */
+function requestSections(mods, slot) {
+  if (!playing) {
+    for (const m of mods) switchSection(m, slot);
+    afterSections();
+    return;
+  }
+  for (const m of mods) {
+    if (sectionOf(m) === slot) pendingSections.delete(m);
+    else pendingSections.set(m, slot);
+  }
+  renderSections();
+}
+
+function applyPendingSections() {
+  for (const [m, slot] of pendingSections) switchSection(m, slot);
+  pendingSections.clear();
+  uiEvents.length = 0; // queued display updates refer to the old patterns
+  afterSections();
+}
+
+/** Every window re-reads its settings (as for a scene), then the buttons. */
+function afterSections() {
+  for (const fn of recallHooks) {
+    try { fn(); } catch (err) { console.error('section:', err); }
+  }
+  renderSections();
+  save();
+}
+
+function renderSections() {
+  for (const m of Object.keys(SECTION_KEYS)) {
+    const box = $(`section-${m}`);
+    if (!box) continue;
+    box.querySelectorAll('button').forEach((b) => {
+      const s = b.dataset.slot;
+      b.setAttribute('aria-pressed', String(s === settings.sectionSlot[m]));
+      b.classList.toggle('used', s === settings.sectionSlot[m] || !!settings.sectionStore[m][s]);
+      b.classList.toggle('pending', pendingSections.get(m) === s);
+    });
+  }
+  // Section (all): lit when every module is on the same one.
+  const all = ['seq', 'prog', 'chords', 'mono', 'drum', 'break'];
+  const same = all.every((m) => sectionOf(m) === sectionOf('seq')) ? sectionOf('seq') : null;
+  const want = new Set(all.map((m) => pendingSections.get(m)).filter(Boolean));
+  $('section-all').querySelectorAll('button').forEach((b) => {
+    b.setAttribute('aria-pressed', String(b.dataset.slot === same));
+    b.classList.toggle('pending', want.size === 1 && want.has(b.dataset.slot));
+  });
+  renderSlotButtons();
+}
+
+function sectionButtons(box, label, onPick) {
+  for (const s of SLOTS) {
+    const b = document.createElement('button');
+    b.textContent = s;
+    b.dataset.slot = s;
+    b.title = `${label} ${s}`;
+    b.addEventListener('click', () => onPick(s));
+    box.append(b);
+  }
+}
+for (const m of Object.keys(SECTION_KEYS)) {
+  const wrap = document.createElement('div');
+  wrap.className = 'field inline section-field';
+  wrap.title = `Sections A–D of the ${SECTION_NAMES[m]}: a new one starts as a copy of the one you're on. While playing, a switch comes in on the next bar line.`;
+  wrap.append('Section ');
+  const box = document.createElement('div');
+  box.className = 'seg slots';
+  box.id = `section-${m}`;
+  box.setAttribute('role', 'group');
+  box.setAttribute('aria-label', `${SECTION_NAMES[m]} section`);
+  sectionButtons(box, `${SECTION_NAMES[m][0].toUpperCase()}${SECTION_NAMES[m].slice(1)} section`, (s) => requestSections([m], s));
+  wrap.append(box);
+  const home = $(SECTION_HOME[m]);
+  (home.closest('label') || home).after(wrap);
+}
+sectionButtons($('section-all'), 'Every module: section', (s) => requestSections(['seq', 'prog', 'chords', 'mono', 'drum', 'break'], s));
+onRecall(() => { sectionsOk(); pendingSections.clear(); });
+onRecall(renderSections);
+renderSections();
 
 // ---------------------------------------------------------------- UI: scenes
 // A scene is a named snapshot of the settings: every sound, sequence, pattern, slot,

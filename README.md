@@ -33,6 +33,9 @@ Record samples (the **Rec** chip in the top bar):
 ### Clear all
 **Clear all** (top bar) puts everything back to how the app starts: every sound, sequence, pattern, progression, drum kit, effect, mixer setting and solo setting. It's kept: your scenes, loaded drum samples and breaks, the iReal Pro list, and what belongs to the device (theme, folded windows, MIDI, audio output, Volume). It asks "Sure?" first; while playing it comes in on the next bar, like a scene; and **Undo recall** in the Scenes window brings back everything as it was.
 
+### Sections A–D
+Every module with a pattern has four sections, **A**, **B**, **C** and **D** (the **Section** buttons in its window): the **Sequencer** (its steps and length), the **Progression** (its chords, length, and the loaded song's title and style), the **Chord rhythm** (rate, steps, hits, rotate, Rhythm/Pad, Syncopate and Tie over), the **Mono Synth** (its sequence), and **Percussion** and **Breakbeat** with their pattern slots. A section you haven't used starts as a copy of the one you're on, ready to change; used ones are underlined. **Section** in the top bar switches every module at once, for a verse, chorus or bridge. While playing, a switch comes in on the next bar line (the button blinks until then); stopped, at once. Sections are saved with your settings and in scenes, and Clear all empties them.
+
 ### Song mode
 Make the drums and break move through sections instead of looping one bar.
 - **Pattern slots A–D** (in the Percussion and Breakbeat windows): you edit the selected slot. A new slot starts as a copy of the one you were on, ready to vary, and **Copy to…** duplicates the current slot. Each drum kit keeps its own slots.
