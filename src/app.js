@@ -8,29 +8,30 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=234';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=234';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=234';
-import { Midi } from './midi.js?v=234';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=234';
+} from './core.js?v=235';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=235';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=235';
+import { Midi } from './midi.js?v=235';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=235';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, presetConds, presetLens, TRIPLET_FEEL, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=234';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=234';
-import { Invention, parseSubject } from './invention.js?v=234';
-import { ColtraneSolo } from './coltrane.js?v=234';
-import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=234';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=234';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=234';
+} from './percussion.js?v=235';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=235';
+import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=235';
+import { Invention, parseSubject } from './invention.js?v=235';
+import { ColtraneSolo } from './coltrane.js?v=235';
+import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=235';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=235';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=235';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers, rowThisTime,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=234';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=234';
+} from './breaks.js?v=235';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=235';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=234';
+} from './mono.js?v=235';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -392,7 +393,7 @@ function ensureAudio() {
         sends[fx][src] = { pre, post };
       }
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=234', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=235', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -1107,6 +1108,7 @@ function onPulse(time, pulse, pulseDuration) {
   stepProgression(time, pulse);
   bassPulse(time, pulse, pulseDuration);
   inventionPulse(time, pulse, pulseDuration);
+  recPulse(time, pulse, pulseDuration);
   const swing = settings.swing / 100;
   // Arp first, so a chord that follows the sequencer uses the same step as the
   // arp note sounding with it.
@@ -3584,6 +3586,200 @@ async function loadBreakFile(file) {
   save();
   try { await saveBreak({ name: file.name, data }); } catch { /* storage unavailable: kept for this visit */ }
 }
+
+// ---------------------------------------------------------------- Recorder
+// Takes from this app's output, a microphone/input, or another tab/the system. The audio
+// thread hands over raw blocks with their start frame (recorder.js); the take is cut to
+// exact times: free (from the press to Stop) or bar-synced (from a bar line, N bars long).
+let recWorkletReady = null;
+let rec = null; // the recording in progress
+let take = null; // {chans, sampleRate, name, bars} — the last finished take
+const REC_MAX_SECONDS = 120;
+
+function recStatus(text, error = false) {
+  $('rec-status').textContent = text;
+  $('rec-status').classList.toggle('error', error);
+}
+
+async function recSourceNode(kind) {
+  if (kind === 'app') {
+    // Everything the app plays: the mix (after its compressor), or every separate pair.
+    const tap = ctx.createGain();
+    synth.out.connect(tap);
+    if (outRouter) for (const g of outRouter.gains.values()) g.connect(tap);
+    return { node: tap, stop: () => { try { synth.out.disconnect(tap); } catch { /* gone */ } if (outRouter) for (const g of outRouter.gains.values()) { try { g.disconnect(tap); } catch { /* gone */ } } } };
+  }
+  const clean = { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 2 };
+  let stream;
+  if (kind === 'mic') {
+    const id = $('rec-device').value;
+    stream = await navigator.mediaDevices.getUserMedia({ audio: id ? { ...clean, deviceId: { exact: id } } : clean });
+    listRecInputs(); // names show once allowed
+  } else {
+    // Screen sharing is the only way a page can hear another tab or the system; the video is dropped.
+    stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: clean, systemAudio: 'include' });
+    stream.getVideoTracks().forEach((t) => t.stop());
+    if (!stream.getAudioTracks().length) throw new Error('noaudio');
+  }
+  const src = ctx.createMediaStreamSource(new MediaStream(stream.getAudioTracks()));
+  return { node: src, stream, stop: () => stream.getTracks().forEach((t) => t.stop()) };
+}
+
+async function startRecording() {
+  ensureAudio();
+  if (!ctx.audioWorklet) { recStatus('Recording needs a browser with AudioWorklet (Chrome, Edge, Safari, Firefox).', true); return; }
+  recWorkletReady ??= ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([RECORDER_WORKLET], { type: 'text/javascript' })));
+  const kind = $('rec-source').value;
+  const bars = Number($('rec-length').value) || 0;
+  let source;
+  try {
+    await recWorkletReady;
+    source = await recSourceNode(kind);
+  } catch (e) {
+    recStatus(e.message === 'noaudio'
+      ? 'Nothing to record: tick "Share audio" (or "Share system audio") in the browser\'s sharing window.'
+      : kind === 'mic' ? 'No microphone: the browser wasn\'t allowed to use it.' : 'Sharing was cancelled (or this browser can\'t share audio).', true);
+    return;
+  }
+  const node = new AudioWorkletNode(ctx, 'take-recorder', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2], channelCount: 2, channelCountMode: 'explicit' });
+  const mute = ctx.createGain();
+  mute.gain.value = 0; // (connected so the audio thread keeps pulling it; heard nowhere)
+  source.node.connect(node).connect(mute).connect(ctx.destination);
+  // An input arrives late by its latency: a bar-synced take from one is shifted to match.
+  const track = source.stream?.getAudioTracks()[0];
+  const late = kind === 'app' ? 0 : (track?.getSettings?.().latency || 0) + (ctx.outputLatency || 0) + (ctx.baseLatency || 0);
+  rec = { kind, bars, source, node, mute, blocks: [], late, peak: 0, began: ctx.currentTime, start: null, end: null };
+  node.port.onmessage = (e) => {
+    if (!rec) return;
+    rec.blocks.push(e.data);
+    rec.peak = Math.max(rec.peak * 0.85, peakOf(e.data.ch));
+    // Keep memory in check: blocks from before a bar-synced start aren't needed.
+    if (rec.start === null && rec.bars && rec.blocks.length > 64) rec.blocks.shift();
+  };
+  $('rec-go').setAttribute('aria-pressed', 'true');
+  $('rec-go').textContent = '■ Stop';
+  if (bars) {
+    rec.armed = true;
+    if (!playing && settings.sync === 'internal') setPlaying(true);
+    recStatus(`Recording ${bars} bar${bars > 1 ? 's' : ''} from the next bar line…`);
+  } else {
+    rec.start = ctx.currentTime;
+    recStatus('Recording… press Stop when done.');
+  }
+  requestAnimationFrame(recTick);
+}
+
+/** The clock: a bar-synced take starts on a bar line and ends exactly `bars` later. */
+function recPulse(time, pulse, pulseDuration) {
+  if (!rec?.armed || pulse % (PPQN * 4)) return;
+  rec.armed = false;
+  rec.start = time + rec.late;
+  rec.end = rec.start + rec.bars * PPQN * 4 * pulseDuration;
+}
+
+function recTick() {
+  if (!rec) return;
+  const fill = Math.min(1, Math.max(0, (20 * Math.log10(Math.max(rec.peak, 1e-5)) + 60) / 60));
+  $('rec-meter-fill').style.width = `${fill * 100}%`;
+  const now = ctx.currentTime;
+  if (rec.start !== null && now >= rec.start) {
+    const secs = now - rec.start;
+    recStatus(rec.end ? `Recording… bar ${Math.min(rec.bars, Math.floor(secs / ((rec.end - rec.start) / rec.bars)) + 1)} of ${rec.bars}` : `Recording… ${secs.toFixed(1)} s`);
+  }
+  // Done: a bar-synced take once its end (and a little after, for the last block) has passed.
+  if ((rec.end && now > rec.end + 0.15) || now - rec.began > REC_MAX_SECONDS) { finishRecording(); return; }
+  requestAnimationFrame(recTick);
+}
+
+function finishRecording(cancel = false) {
+  if (!rec) return;
+  const r = rec;
+  rec = null;
+  try { r.node.port.onmessage = null; r.node.disconnect(); r.mute.disconnect(); } catch { /* gone */ }
+  r.source.stop();
+  $('rec-go').setAttribute('aria-pressed', 'false');
+  $('rec-go').textContent = '● Record';
+  $('rec-meter-fill').style.width = '0';
+  if (cancel || r.start === null) { recStatus(r.start === null ? 'Stopped before it started.' : ''); return; }
+  const sr = ctx.sampleRate;
+  const endTime = r.end ?? ctx.currentTime;
+  let chans = framesBetween(r.blocks, Math.round(r.start * sr), Math.round(endTime * sr));
+  if (!r.end && $('rec-trim').checked) {
+    const [a, z] = soundSpan(chans, sr);
+    if (z > a) chans = chans.map((c) => c.slice(a, z));
+  }
+  if (!chans[0].length || peakOf(chans) < 1e-4) { recStatus('That take was silent.', true); return; }
+  const stamp = new Date().toTimeString().slice(0, 8).replace(/:/g, '');
+  take = { chans, sampleRate: sr, bars: r.end ? r.bars : 0, name: `Recording ${stamp}${r.end ? ` (${r.bars} bar${r.bars > 1 ? 's' : ''})` : ''}.wav` };
+  $('rec-take').hidden = false;
+  drawTake();
+  recStatus(`${take.name}: ${(chans[0].length / sr).toFixed(2)} s.`);
+}
+
+function drawTake() {
+  const canvas = $('rec-wave');
+  if (!take || !canvas.clientWidth) return;
+  const dpr = window.devicePixelRatio || 1;
+  const w = Math.min(canvas.parentElement.clientWidth || 0, canvas.clientWidth);
+  const h = canvas.clientHeight || 56;
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  const g = canvas.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const css = getComputedStyle(canvas);
+  g.fillStyle = css.getPropertyValue('--field').trim() || '#fff';
+  g.fillRect(0, 0, w, h);
+  g.fillStyle = css.getPropertyValue('--ink').trim() || '#000';
+  const pk = peaks(take.chans[0], Math.floor(w));
+  const max = Math.max(1e-3, ...pk.map(([lo, hi]) => Math.max(-lo, hi)));
+  pk.forEach(([lo, hi], x) => g.fillRect(x, h / 2 - (hi / max) * (h / 2 - 2), 1, Math.max(1, ((hi - lo) / max) * (h / 2 - 2))));
+}
+
+const takeFile = () => new File([encodeWav(take.chans, take.sampleRate)], take.name, { type: 'audio/wav' });
+
+$('rec-go').addEventListener('click', () => { if (rec) finishRecording(); else startRecording(); });
+$('rec-source').addEventListener('change', () => { $('rec-device-field').hidden = $('rec-source').value !== 'mic'; if ($('rec-source').value === 'mic') listRecInputs(); });
+async function listRecInputs() {
+  if (!navigator.mediaDevices?.enumerateDevices) return;
+  const sel = $('rec-device');
+  const keep = sel.value;
+  const ins = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'audioinput' && d.deviceId && d.deviceId !== 'default');
+  sel.replaceChildren(new Option('Default', ''));
+  ins.forEach((d, i) => sel.add(new Option(d.label || `Input ${i + 1}`, d.deviceId)));
+  sel.value = [...sel.options].some((o) => o.value === keep) ? keep : '';
+}
+$('rec-play').addEventListener('click', () => {
+  if (!take) return;
+  ensureAudio();
+  const buf = new AudioBuffer({ length: take.chans[0].length, numberOfChannels: take.chans.length, sampleRate: take.sampleRate });
+  take.chans.forEach((c, i) => buf.copyToChannel(c, i));
+  const src = ctx.createBufferSource();
+  src.buffer = buf;
+  src.connect(synth.master);
+  src.start();
+});
+$('rec-to-break').addEventListener('click', async () => {
+  if (!take) return;
+  if (take.bars) { settings.breakBars = take.bars; $('break-bars').value = String(take.bars); }
+  await loadBreakFile(takeFile());
+  recStatus(`${take.name} is now the Breakbeat's break.`);
+});
+for (const v of KITS.user.voices) $('rec-row').add(new Option(v.label, v.id));
+$('rec-to-row').addEventListener('click', async () => {
+  if (!take) return;
+  if (settings.drumKit !== 'user') { switchKit('user'); $('drum-kit').value = 'user'; }
+  await addSampleFiles([takeFile()], $('rec-row').value);
+  recStatus(`${take.name} is on the ${$('rec-row').selectedOptions[0].textContent} row of Your samples.`);
+});
+$('rec-download').addEventListener('click', () => {
+  if (!take) return;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(takeFile());
+  a.download = take.name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+});
+$('rec-discard').addEventListener('click', () => { take = null; $('rec-take').hidden = true; recStatus(''); });
 
 let breakPeaks = { buffer: null, cols: 0, pk: null, max: 1 };
 function drawBreak() {
@@ -6223,7 +6419,7 @@ document.querySelectorAll('main > .panel').forEach((panel) => {
 const DOCK_NAMES = {
   Transport: 'Clock', Scenes: 'Scenes', Keyboard: 'Keys', Arpeggiator: 'Arp', Sequencer: 'Seq', 'Arp voice, oscillator 1': 'Osc 1',
   'Oscillator 2': 'Osc 2', 'Chord progression': 'Prog', 'Chord rhythm': 'Chords', 'Mono synth': 'Mono', 'Score player': 'Score',
-  Percussion: 'Drums', 'Breakbeat slicer': 'Break', Song: 'Song', Effects: 'FX', 'Sound and MIDI': 'MIDI',
+  Percussion: 'Drums', 'Breakbeat slicer': 'Break', Recorder: 'Rec', Song: 'Song', Effects: 'FX', 'Sound and MIDI': 'MIDI',
 };
 const DOCK_GROUP_STARTS = new Set(['Arpeggiator', 'Chord progression', 'Mono synth', 'Percussion', 'Effects']);
 const dockChips = new Map(); // panel label -> its jump-bar chip

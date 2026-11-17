@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=234" />
-  <link rel="stylesheet" href="mac.css?v=234" />
+  <link rel="stylesheet" href="styles.css?v=235" />
+  <link rel="stylesheet" href="mac.css?v=235" />
 </head>
 <body>
   <main class="device">
@@ -767,6 +767,41 @@
       </div>
     </div>
 
+    <section class="panel rec" id="rec-panel" aria-label="Recorder">
+      <h2>Recorder</h2>
+      <p class="hint">Record a sample from this app's own sound (resampling), a microphone or line input, or another tab or
+        the whole system (through the browser's screen sharing, which asks what to share). With a length in bars it starts
+        on the next bar line and stops exactly that many bars later, so a loop comes out ready to slice; Free records until
+        you press Stop. Then play it back, make it the Breakbeat's break, put it on a row of the Your samples drum kit, or
+        download it as a WAV file.</p>
+      <div class="row">
+        <button id="rec-go" class="rec-go" aria-pressed="false" title="Start (or stop) recording">● Record</button>
+        <label class="field">Source <select id="rec-source">
+          <option value="app">This app</option>
+          <option value="mic">Microphone / input</option>
+          <option value="tab">Another tab or the system</option>
+        </select></label>
+        <label class="field" id="rec-device-field" hidden>Input <select id="rec-device"><option value="">Default</option></select></label>
+        <label class="field" title="Free: until you press Stop. Bars: from the next bar line, exactly that long (playback starts if it's stopped)">Length <select id="rec-length">
+          <option value="0">Free</option><option value="1">1 bar</option><option value="2">2 bars</option><option value="4">4 bars</option><option value="8">8 bars</option>
+        </select></label>
+        <label class="check" title="Free recordings: take the silence off the start and end (keeping the attack)"><input id="rec-trim" type="checkbox" checked /> Trim silence</label>
+        <div class="rec-meter" aria-hidden="true"><div id="rec-meter-fill"></div></div>
+        <span id="rec-status" class="status" aria-live="polite"></span>
+      </div>
+      <div id="rec-take" class="rec-take" hidden>
+        <canvas id="rec-wave" class="break-trim-view rec-wave"></canvas>
+        <div class="row">
+          <button id="rec-play">▶ Play</button>
+          <button id="rec-to-break" title="Load it into the Breakbeat slicer (a bar-synced take sets Break is to its length)">Use as break</button>
+          <label class="field inline">Drum row <select id="rec-row"></select></label>
+          <button id="rec-to-row" title="Put it on that row of the Your samples kit (switching to that kit)">Put on row</button>
+          <button id="rec-download">Download WAV</button>
+          <button id="rec-discard">Discard</button>
+        </div>
+      </div>
+    </section>
+
     <section class="panel song" id="song-panel" aria-label="Song">
       <div class="seq-head">
         <h2>Song</h2>
@@ -930,6 +965,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=234"></script>
+  <script type="module" src="src/app.js?v=235"></script>
 </body>
 </html>
