@@ -18,7 +18,9 @@ export const MAX_ROLL = 16;
 export const MAX_TRANSIENT_SLICES = 32;
 
 // rollChance / fxChance: how likely the row's roll and its effect are to happen (100 = always).
-export const emptyRow = () => ({ slice: null, vol: 100, pitch: 0, chance: 100, roll: 0, rollType: 'R', fx: '', rollChance: 100, fxChance: 100 });
+// smp: a sample-track one-shot (1–8, 0 = none) fired on the step alongside the slice.
+export const TRACK_SAMPLES = 8;
+export const emptyRow = () => ({ slice: null, vol: 100, pitch: 0, chance: 100, roll: 0, rollType: 'R', fx: '', rollChance: 100, fxChance: 100, smp: 0 });
 
 /** A stored row made current: old Ratchet ×2/×3/×4 effects become R rolls. */
 export function migrateRow(row) {
@@ -30,6 +32,7 @@ export function migrateRow(row) {
   out.chance = Math.max(0, Math.min(100, Number(out.chance ?? 100)));
   out.rollChance = Math.max(0, Math.min(100, Number(out.rollChance ?? 100)));
   out.fxChance = Math.max(0, Math.min(100, Number(out.fxChance ?? 100)));
+  out.smp = Math.max(0, Math.min(TRACK_SAMPLES, Math.round(Number(out.smp) || 0)));
   out.roll = Math.max(0, Math.min(MAX_ROLL, Math.round(Number(out.roll) || 0)));
   return out;
 }
