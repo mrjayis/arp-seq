@@ -419,6 +419,12 @@ input[type="range"]::-moz-range-thumb {
 #prog-len-n { width: 4.2em; }
 .bach-subject { flex: 1 1 280px; min-width: 0; }
 .status.error { color: var(--brick); }
+/* ---------- recorder ---------- */
+.rec-go[aria-pressed="true"] { background: #d64533; border-color: #d64533; color: #fff; }
+.rec-meter { width: 120px; height: 8px; border: 1.5px solid var(--line); border-radius: 2px; overflow: hidden; }
+#rec-meter-fill { height: 100%; width: 0; background: linear-gradient(to right, #2fae5b 0 70%, #e0b030 70% 90%, #d64533 90%); background-size: 120px 100%; }
+.rec-take { margin-top: 8px; }
+.rec-wave { height: 56px !important; cursor: default; }
 .bach-subject input { width: 100%; box-sizing: border-box; font-family: ui-monospace, Menlo, monospace; }
 .prog-song { font-weight: 600; }
 /* iReal Pro import */

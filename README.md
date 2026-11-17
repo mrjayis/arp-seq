@@ -24,6 +24,12 @@ held notes ──► ARPEGGIATOR ──► note ──► SEQUENCER step n ─�
 - Not part of a scene: the look (theme), which windows are folded, MIDI ports and clock source, master volume, the built-in synth switch and the keyboard octave and chord root, since those belong to the device or the moment. Your drum samples and loaded break are stored once in the browser rather than in each scene, so a scene uses whichever ones are loaded.
 - Scenes live in this browser. **Export…** downloads them all as a file, as a backup or to move them to another device. **Import…** adds the scenes from such a file to the ones you have.
 
+### Recorder
+Record samples (the **Rec** chip in the top bar):
+- **Source:** **This app** (resampling: the app's own sound, after the mix, or every pair when Outputs are separate), **Microphone / input** (any input, chosen in **Input**; the browser's echo cancelling, noise suppression and automatic gain are switched off so it's recorded as it is; the browser asks for permission the first time), or **Another tab or the system** (through the browser's screen sharing, which asks what to share: tick its "Share audio" / "Share system audio"; Chrome on a Mac can share a tab's audio, Windows the whole system's; the video is dropped at once).
+- **Length:** **Free** records from the press to **Stop** (up to 2 minutes); with **Trim silence** the quiet before and after is taken off, keeping the attack. **1, 2, 4 or 8 bars** starts on the next bar line (starting playback if it's stopped) and stops exactly that long later, so a resampled loop is exactly its bars long, ready to slice. Takes from an input are shifted by its latency so they line up with the bars.
+- A meter shows the level while recording. Then the take is drawn, and you can **Play** it, **Use as break** (it becomes the Breakbeat's break, saved with it; a bar-synced take sets Break is to its length), **Put on row** of the **Your samples** drum kit (switching to that kit), **Download WAV** (16-bit, stereo), or **Discard** it.
+
 ### Clear all
 **Clear all** (top bar) puts everything back to how the app starts: every sound, sequence, pattern, progression, drum kit, effect, mixer setting and solo setting. It's kept: your scenes, loaded drum samples and breaks, the iReal Pro list, and what belongs to the device (theme, folded windows, MIDI, audio output, Volume). It asks "Sure?" first; while playing it comes in on the next bar, like a scene; and **Undo recall** in the Scenes window brings back everything as it was.
 
