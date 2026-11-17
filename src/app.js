@@ -8,31 +8,31 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=251';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=251';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=251';
-import { Midi } from './midi.js?v=251';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=251';
+} from './core.js?v=252';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=252';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=252';
+import { Midi } from './midi.js?v=252';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=252';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, presetConds, presetLens, TRIPLET_FEEL, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=251';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=251';
-import { AUDIO_ACCEPT, looksLikeAudio, decodeAudioFile } from './audiofile.js?v=251';
-import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=251';
-import { Invention, parseSubject } from './invention.js?v=251';
-import { ColtraneSolo } from './coltrane.js?v=251';
-import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=251';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=251';
-import { saveTrackSample, deleteTrackSample, loadTrackSamples, saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=251';
+} from './percussion.js?v=252';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=252';
+import { AUDIO_ACCEPT, looksLikeAudio, decodeAudioFile } from './audiofile.js?v=252';
+import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=252';
+import { Invention, parseSubject } from './invention.js?v=252';
+import { ColtraneSolo } from './coltrane.js?v=252';
+import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=252';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=252';
+import { saveTrackSample, deleteTrackSample, loadTrackSamples, saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=252';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers, rowThisTime,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, TRACK_SAMPLES, EXTRA_TRACKS, emptyCell, trackColumn, keepTracks, reverseBuffer, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=251';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=251';
+} from './breaks.js?v=252';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=252';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=251';
+} from './mono.js?v=252';
 
 const $ = (id) => document.getElementById(id);
 // Every audio file picker offers any kind of audio (and video, for its sound).
@@ -409,7 +409,7 @@ function ensureAudio() {
       throwIn[fx] = ctx.createGain();
       throwIn[fx].connect(input);
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=251', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=252', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -3068,6 +3068,7 @@ let breakSelected = 0; // tracker row that a click on the waveform writes into
 let breakNowStep = -1;
 let breakNowSlice = null;
 const breakRowEls = [];
+const trackSamples = {}; // the Breakbeat's sample slots (1–8) -> {name, data, source (the file), buffer (trimmed), reversed, points}
 let trackView = 1; // the tracker track on show: 1 (the break's slices) or 2–4 (samples)
 
 onRecall(repairBreak)();
@@ -3236,7 +3237,7 @@ function playExtraTracks(pattern, idx, step) {
         buffer: s.buffer,
         reversed: s.reversed,
         reverse: tr.reverse,
-        rate: Math.pow(2, tr.pitch / 12),
+        rate: sampleRate(tr.slice + 1) * Math.pow(2, tr.pitch / 12),
         gain: tr.gain * (trackLevel(tr.slice + 1) / 100),
         send: tr.send ? throwIn[tr.send] : null,
       });
@@ -3461,15 +3462,24 @@ function applyBreakTrim() {
 let trimTimer = null;
 let trimEdge = 'start'; // the edge the zoom shows (and the nudge buttons move)
 const TRIM_ZOOM = 0.2; // seconds either side of the edge in the close-up
+// What the trim edits: the break, or the sample slot chosen in Samples (a second break, say).
+let trimTarget = 'break';
+const trimSlot = () => Number($('track-slot').value) || 1;
+const trimSource = () => (trimTarget === 'break' ? breakSource : trackSamples[trimSlot()]?.source || null);
+const trimGet = () => (trimTarget === 'break' ? settings.breakTrim || { start: 0, end: 1 } : { start: 0, end: 1, ...(settings.trackSlicing[trimSlot()]?.trim || {}) });
+function trimSet(t) {
+  if (trimTarget === 'break') settings.breakTrim = t;
+  else settings.trackSlicing[trimSlot()] = { ...slicingOf(trimSlot()), trim: t };
+}
 /** Slider steps: one per millisecond of the file. */
-const trimSteps = () => Math.max(1000, Math.round((breakSource?.duration || 1) * 1000));
+const trimSteps = () => Math.max(1000, Math.round((trimSource()?.duration || 1) * 1000));
 function renderTrim() {
-  const t = settings.breakTrim || { start: 0, end: 1 };
+  const t = trimGet();
   const steps = trimSteps();
   for (const id of ['break-trim-start', 'break-trim-end']) $(id).max = String(steps);
   $('break-trim-start').value = String(Math.round(t.start * steps));
   $('break-trim-end').value = String(Math.round(t.end * steps));
-  const dur = breakSource ? breakSource.duration : 0;
+  const dur = trimSource() ? trimSource().duration : 0;
   $('break-trim-start-val').textContent = `${(t.start * dur).toFixed(3)} s`;
   $('break-trim-end-val').textContent = `${(t.end * dur).toFixed(3)} s`;
   $('break-trim-reset').disabled = t.start <= 0 && t.end >= 1;
@@ -3478,13 +3488,18 @@ function renderTrim() {
     b.setAttribute('aria-pressed', String(on));
     b.setAttribute('aria-checked', String(on));
   });
-  $('trim-zoom-at').textContent = breakSource ? `${trimEdge === 'start' ? 'Start' : 'End'} at ${(t[trimEdge] * dur).toFixed(3)} s` : '';
-  // Folded: the button says what the trim is.
+  $('trim-zoom-at').textContent = trimSource() ? `${trimEdge === 'start' ? 'Start' : 'End'} at ${(t[trimEdge] * dur).toFixed(3)} s` : '';
+  $('trim-target').querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.target === trimTarget)));
+  const sampleBtn = $('trim-target').querySelector('[data-target="sample"]');
+  sampleBtn.textContent = `Sample S${trimSlot()}`;
+  sampleBtn.disabled = !trackSamples[trimSlot()];
+    // Folded: the button says what the trim is.
   const open = settings.breakTrimOpen !== false;
   const btn = $('break-trim-toggle');
   btn.setAttribute('aria-expanded', String(open));
   const whole = t.start <= 0 && t.end >= 1;
-  btn.textContent = open ? 'Trim' : `Trim: ${whole ? 'whole file' : `${(t.start * dur).toFixed(3)} to ${(t.end * dur).toFixed(3)} s`}`;
+  const what = trimTarget === 'break' ? '' : ` S${trimSlot()}`;
+  btn.textContent = open ? `Trim${what}` : `Trim${what}: ${whole ? 'whole file' : `${(t.start * dur).toFixed(3)} to ${(t.end * dur).toFixed(3)} s`}`;
   $('break-trim-body').hidden = !open;
   if (!open) return; // nothing to draw
   drawTrimOverview();
@@ -3511,10 +3526,10 @@ function drawTrimZoom() {
   const mod = css.getPropertyValue('--mod').trim() || ink;
   g.fillStyle = css.getPropertyValue('--field').trim() || '#fff';
   g.fillRect(0, 0, w, h);
-  if (!breakSource) return;
-  const t = settings.breakTrim || { start: 0, end: 1 };
-  const data = breakSource.getChannelData(0);
-  const rate = breakSource.sampleRate;
+  if (!trimSource()) return;
+  const t = trimGet();
+  const data = trimSource().getChannelData(0);
+  const rate = trimSource().sampleRate;
   const centre = t[trimEdge] * data.length;
   const half = TRIM_ZOOM * rate;
   const from = centre - half;
@@ -3564,15 +3579,15 @@ function drawTrimOverview() {
   const mod = css.getPropertyValue('--mod').trim() || ink;
   g.fillStyle = css.getPropertyValue('--field').trim() || '#fff';
   g.fillRect(0, 0, w, h);
-  if (!breakSource) return;
+  if (!trimSource()) return;
   const cols = Math.floor(w);
-  if (trimPeaks.buffer !== breakSource || trimPeaks.cols !== cols) {
-    const pk = peaks(breakSource.getChannelData(0), cols);
+  if (trimPeaks.buffer !== trimSource() || trimPeaks.cols !== cols) {
+    const pk = peaks(trimSource().getChannelData(0), cols);
     let m = 0.001;
     for (const [lo, hi] of pk) m = Math.max(m, -lo, hi);
-    trimPeaks = { buffer: breakSource, cols, pk, max: m };
+    trimPeaks = { buffer: trimSource(), cols, pk, max: m };
   }
-  const t = settings.breakTrim || { start: 0, end: 1 };
+  const t = trimGet();
   const x0 = t.start * w;
   const x1 = t.end * w;
   const mid = h / 2;
@@ -3592,23 +3607,26 @@ function drawTrimOverview() {
 function setTrim(start, end) {
   const s = Math.min(Math.max(0, start), 1);
   const e = Math.min(Math.max(0, end), 1);
-  settings.breakTrim = s <= e ? { start: s, end: e } : { start: e, end: s };
-  if (settings.breakTrim.end - settings.breakTrim.start < 0.002) settings.breakTrim.end = Math.min(1, settings.breakTrim.start + 0.002);
+  const t = s <= e ? { start: s, end: e } : { start: e, end: s };
+  if (t.end - t.start < 0.002) t.end = Math.min(1, t.start + 0.002);
+  trimSet(t);
   renderTrim();
   clearTimeout(trimTimer);
-  trimTimer = setTimeout(() => { applyBreakTrim(); save(); }, 120);
+  const target = trimTarget;
+  const slot = trimSlot();
+  trimTimer = setTimeout(() => { if (target === 'break') applyBreakTrim(); else applySampleTrim(slot); save(); }, 120);
 }
 $('break-trim-start').addEventListener('input', () => {
   trimEdge = 'start';
-  setTrim(Number($('break-trim-start').value) / trimSteps(), settings.breakTrim.end);
+  setTrim(Number($('break-trim-start').value) / trimSteps(), trimGet().end);
 });
 $('break-trim-end').addEventListener('input', () => {
   trimEdge = 'end';
-  setTrim(settings.breakTrim.start, Number($('break-trim-end').value) / trimSteps());
+  setTrim(trimGet().start, Number($('break-trim-end').value) / trimSteps());
 });
 
 /** Move one edge to `pos` (a fraction of the file). */
-const moveEdge = (edge, pos) => setTrim(edge === 'start' ? pos : settings.breakTrim.start, edge === 'end' ? pos : settings.breakTrim.end);
+const moveEdge = (edge, pos) => setTrim(edge === 'start' ? pos : trimGet().start, edge === 'end' ? pos : trimGet().end);
 
 /**
  * Scrubbing: the edge follows the finger's movement, not its position, and the further the
@@ -3619,11 +3637,11 @@ const moveEdge = (edge, pos) => setTrim(edge === 'start' ? pos : settings.breakT
 function scrubber(view, { span, pickEdge }) {
   let drag = null;
   view.addEventListener('pointerdown', (e) => {
-    if (!breakSource) return;
+    if (!trimSource()) return;
     const r = view.getBoundingClientRect();
     const edge = pickEdge((e.clientX - r.left) / r.width);
     trimEdge = edge;
-    drag = { edge, x: e.clientX, pos: settings.breakTrim[edge] };
+    drag = { edge, x: e.clientX, pos: trimGet()[edge] };
     view.setPointerCapture(e.pointerId);
     renderTrim();
   });
@@ -3646,11 +3664,11 @@ function scrubber(view, { span, pickEdge }) {
 // The overview: the whole file; drags the nearer edge.
 scrubber($('break-trim-view'), {
   span: () => 1,
-  pickEdge: (x) => (Math.abs(x - settings.breakTrim.start) <= Math.abs(x - settings.breakTrim.end) ? 'start' : 'end'),
+  pickEdge: (x) => (Math.abs(x - trimGet().start) <= Math.abs(x - trimGet().end) ? 'start' : 'end'),
 });
 // The close-up: ±0.2 s across its width, so the same drag is far finer.
 scrubber($('break-trim-zoom'), {
-  span: () => (breakSource ? (2 * TRIM_ZOOM) / breakSource.duration : 0),
+  span: () => (trimSource() ? (2 * TRIM_ZOOM) / trimSource().duration : 0),
   pickEdge: () => trimEdge,
 });
 $('trim-zoom-edge').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => { trimEdge = b.dataset.edge; renderTrim(); }));
@@ -3660,9 +3678,9 @@ for (const [id, dir] of [['trim-nudge-back', -1], ['trim-nudge-fwd', 1]]) {
   let timer = null;
   let count = 0;
   const nudge = () => {
-    if (!breakSource) return;
+    if (!trimSource()) return;
     const ms = count++ > 15 ? 5 : 1;
-    moveEdge(trimEdge, Math.min(1, Math.max(0, settings.breakTrim[trimEdge] + (dir * ms) / 1000 / breakSource.duration)));
+    moveEdge(trimEdge, Math.min(1, Math.max(0, trimGet()[trimEdge] + (dir * ms) / 1000 / trimSource().duration)));
   };
   const stop = () => { clearInterval(timer); timer = null; };
   btn.addEventListener('pointerdown', (e) => { e.preventDefault(); count = 0; nudge(); stop(); timer = setInterval(nudge, 70); });
@@ -3670,6 +3688,10 @@ for (const [id, dir] of [['trim-nudge-back', -1], ['trim-nudge-fwd', 1]]) {
   btn.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); count = 0; nudge(); } });
 }
 $('break-trim-reset').addEventListener('click', () => setTrim(0, 1));
+$('trim-target').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
+  trimTarget = b.dataset.target === 'sample' && trackSamples[trimSlot()] ? 'sample' : 'break';
+  renderTrim();
+}));
 
 // The tracker's steps fold away (the pattern plays on; the waveform still shows the slice).
 function renderBreakStepsFold() {
@@ -4009,7 +4031,6 @@ $('rec-download').addEventListener('click', () => {
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 });
 // ---- The Breakbeat's sample track: one-shots S1–S8 the tracker's Smp column fires on a step.
-const trackSamples = {}; // slot (1–8) -> {name, data, buffer}
 const trackVoices = {}; // slot -> the source playing, so a new hit cuts it off (a choke, as on a drum machine)
 if (!settings.trackLevels || typeof settings.trackLevels !== 'object') settings.trackLevels = {};
 const trackLevel = (n) => settings.trackLevels[n] ?? 100;
@@ -4021,8 +4042,11 @@ async function decodeTrackSample(data) {
 async function setTrackSample(n, name, data) {
   let buffer;
   try { buffer = await decodeTrackSample(data); } catch { return false; }
-  trackSamples[n] = { name, data, buffer, reversed: reverseBuffer(buffer) };
-  sliceTrackSample(n);
+  trackSamples[n] = { name, data, source: buffer };
+  // A new sound starts untrimmed (its slicing and tempo settings stay).
+  settings.trackSlicing[n] = { ...slicingOf(n), trim: { start: 0, end: 1 } };
+  applySampleTrim(n);
+  save();
   try { await saveTrackSample(String(n), { name, data }); } catch { /* storage unavailable: kept for this visit */ }
   renderTrackSamples();
   buildBreakRows(); // the Smp menus show the names
@@ -4034,6 +4058,7 @@ function playTrackSample(n, time, gain = 1) {
   trackVoices[n]?.stop(time);
   const src = ctx.createBufferSource();
   src.buffer = s.buffer;
+  src.playbackRate.value = sampleRate(n);
   const g = ctx.createGain();
   g.gain.value = (trackLevel(n) / 100) * gain;
   src.connect(g).connect(buses.break);
@@ -4058,11 +4083,49 @@ function renderTrackSamples() {
   rt.value = keepRt;
   renderTrackSlicing();
 }
-$('track-slot').addEventListener('change', renderTrackSamples);
+$('track-slot').addEventListener('change', () => {
+  renderTrackSamples();
+  if (trimTarget === 'sample') {
+    if (!trackSamples[trimSlot()]) trimTarget = 'break';
+    renderTrim();
+  }
+});
 
 // ---- slicing the samples (as the break is sliced): a step can play one slice of one
 if (!settings.trackSlicing || typeof settings.trackSlicing !== 'object') settings.trackSlicing = {};
-const slicingOf = (n) => ({ mode: 'whole', slices: 16, sensitivity: 50, ...(settings.trackSlicing[n] || {}) });
+for (const b of BREAK_BARS) $('track-bars').add(new Option(`${b} bar${b > 1 ? 's' : ''}`, String(b)));
+// Per slot: slicing, trim, and fitting to the tempo (as the break: Fit, how many bars it is, Pitch).
+const slicingOf = (n) => ({ mode: 'whole', slices: 16, sensitivity: 50, trim: { start: 0, end: 1 }, fit: false, bars: 2, pitch: 0, ...(settings.trackSlicing[n] || {}) });
+/** How fast a slot plays: fitted to the tempo (if Fit is on) and pitched. */
+function sampleRate(n) {
+  const s = trackSamples[n];
+  if (!s?.buffer) return 1;
+  const c = slicingOf(n);
+  return fitRate(s.buffer.duration, c.bars, currentBpm(), c.pitch, c.fit);
+}
+/** Cut a slot's trimmed part out of its file (with tiny fades), then slice that. */
+function applySampleTrim(n, { quiet = false } = {}) {
+  const s = trackSamples[n];
+  if (!s?.source) return;
+  const t = slicingOf(n).trim;
+  if (t.start <= 0 && t.end >= 1) s.buffer = s.source;
+  else {
+    const src = s.source;
+    const [from, to] = trimSamples(src.length, src.sampleRate, t.start, t.end);
+    const out = new AudioBuffer({ length: to - from, numberOfChannels: src.numberOfChannels, sampleRate: src.sampleRate });
+    for (let c = 0; c < src.numberOfChannels; c++) {
+      const data = src.getChannelData(c).slice(from, to);
+      fadeEdges(data, Math.round(src.sampleRate * 0.003));
+      out.copyToChannel(data, c);
+    }
+    s.buffer = out;
+  }
+  s.reversed = reverseBuffer(s.buffer);
+  sliceTrackSample(n);
+  if (quiet) return;
+  if (Number($('track-slot').value) === n) renderTrackSlicing();
+  if (trackView > 1) buildBreakRows(); // the slices may have changed
+}
 /** The sample's slice points (seconds), or none when it's played whole. */
 function sliceTrackSample(n) {
   const s = trackSamples[n];
@@ -4083,7 +4146,16 @@ function renderTrackSlicing() {
   for (const id of ['track-slicing', 'track-slices', 'track-sens']) $(id).disabled = !s;
   $('track-slices').disabled = !s || c.mode !== 'equal';
   $('track-sens').disabled = !s || c.mode !== 'transient';
-  $('track-slice-info').textContent = !s ? '' : s.points ? `${s.points.length} slices · S${n}.1 to S${n}.${s.points.length} on Tracks 2–4` : `${s.buffer.duration.toFixed(2)} s`;
+  $('track-fit').checked = c.fit;
+  $('track-bars').value = String(c.bars);
+  $('track-pitch').value = String(c.pitch);
+  $('track-pitch-val').textContent = `${c.pitch > 0 ? '+' : ''}${Number(c.pitch).toFixed(1)} st`;
+  for (const id of ['track-fit', 'track-bars', 'track-pitch', 'track-trim']) $(id).disabled = !s;
+  $('track-bars').disabled = !s || !c.fit;
+  const t = c.trim;
+  const trimmed = s && (t.start > 0 || t.end < 1);
+  const tempo = s && c.fit ? ` · ${c.bars} bar${c.bars > 1 ? 's' : ''} ≈ ${Math.round((c.bars * 4 * 60) / s.buffer.duration)} BPM as recorded` : '';
+  $('track-slice-info').textContent = !s ? '' : `${s.buffer.duration.toFixed(2)} s${trimmed ? ' (trimmed)' : ''}${tempo}${s.points ? ` · ${s.points.length} slices: S${n}.1 to S${n}.${s.points.length} on Tracks 2–4` : ''}`;
   $('track-wave').closest('.track-wave-box').hidden = !s;
   drawTrackWave();
 }
@@ -4096,6 +4168,22 @@ function setTrackSlicing(patch) {
   save();
 }
 $('track-slicing').addEventListener('change', () => setTrackSlicing({ mode: $('track-slicing').value }));
+$('track-fit').addEventListener('change', () => setTrackSlicing({ fit: $('track-fit').checked }));
+$('track-bars').addEventListener('change', () => setTrackSlicing({ bars: Number($('track-bars').value) }));
+$('track-pitch').addEventListener('input', () => {
+  const n = Number($('track-slot').value);
+  settings.trackSlicing[n] = { ...slicingOf(n), pitch: Number($('track-pitch').value) };
+  renderTrackSlicing();
+  save();
+});
+// Trim a slot: the Breakbeat's trim controls, switched to this sample.
+$('track-trim').addEventListener('click', () => {
+  if (!trackSamples[Number($('track-slot').value)]) return;
+  trimTarget = 'sample';
+  settings.breakTrimOpen = true;
+  renderTrim();
+  $('break-trim-toggle').scrollIntoView({ block: 'center', behavior: 'smooth' });
+});
 $('track-slices').addEventListener('change', () => setTrackSlicing({ slices: Number($('track-slices').value) }));
 let trackSensTimer;
 $('track-sens').addEventListener('input', () => {
@@ -4149,8 +4237,8 @@ $('track-wave').addEventListener('pointerdown', (e) => {
   const voice = trackPlayers[0] || breakPlayer;
   if (s.points) {
     const k = sliceAt(at, s.points);
-    voice?.trigger(t, { buffer: s.buffer, offset: s.points[k], duration: (k + 1 < s.points.length ? s.points[k + 1] : s.buffer.duration) - s.points[k], gain: trackLevel(n) / 100 });
-  } else voice?.trigger(t, { buffer: s.buffer, offset: 0, gain: trackLevel(n) / 100 });
+    voice?.trigger(t, { buffer: s.buffer, offset: s.points[k], duration: (k + 1 < s.points.length ? s.points[k + 1] : s.buffer.duration) - s.points[k], rate: sampleRate(n), gain: trackLevel(n) / 100 });
+  } else voice?.trigger(t, { buffer: s.buffer, offset: 0, rate: sampleRate(n), gain: trackLevel(n) / 100 });
 });
 window.addEventListener('resize', drawTrackWave);
 $('track-level').addEventListener('input', () => {
@@ -4170,6 +4258,7 @@ $('track-file').addEventListener('change', async () => {
 $('track-clear').addEventListener('click', async () => {
   const n = Number($('track-slot').value);
   delete trackSamples[n];
+  if (trimTarget === 'sample' && trimSlot() === n) { trimTarget = 'break'; renderTrim(); }
   try { await deleteTrackSample(String(n)); } catch { /* nothing stored */ }
   renderTrackSamples();
   buildBreakRows();
@@ -4178,6 +4267,8 @@ $('rec-to-track').addEventListener('click', async () => {
   if (!take) return;
   const n = Number($('rec-track').value);
   const ok = await setTrackSample(n, take.name, await takeFile().arrayBuffer());
+  // A bar-synced take is exactly its bars long: fitted to the tempo from the start.
+  if (ok && take.bars && !takeTrimmed()) { settings.trackSlicing[n] = { ...slicingOf(n), fit: true, bars: take.bars }; save(); }
   $('track-slot').value = String(n);
   renderTrackSamples();
   recStatus(ok ? `${take.name} is sample S${n} in the Breakbeat: pick it on Tracks 2–4 of the tracker.` : 'Couldn\'t use that take.', !ok);
@@ -4187,8 +4278,8 @@ loadTrackSamples().then(async (stored) => {
   for (const [k, entry] of Object.entries(stored)) {
     try {
       const buffer = await decodeTrackSample(entry.data);
-      trackSamples[Number(k)] = { ...entry, buffer, reversed: reverseBuffer(buffer) };
-      sliceTrackSample(Number(k));
+      trackSamples[Number(k)] = { ...entry, source: buffer };
+      applySampleTrim(Number(k), { quiet: true });
     } catch { /* unreadable: skipped */ }
   }
   renderTrackSamples();

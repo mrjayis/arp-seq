@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=251" />
-  <link rel="stylesheet" href="mac.css?v=251" />
+  <link rel="stylesheet" href="styles.css?v=252" />
+  <link rel="stylesheet" href="mac.css?v=252" />
 </head>
 <body>
   <main class="device">
@@ -720,6 +720,9 @@
       <div class="break-trim">
         <button id="break-trim-toggle" class="fold-toggle" aria-expanded="true" aria-controls="break-trim-body" title="Show or hide the trim controls (the trim still applies)">Trim</button>
         <div id="break-trim-body" class="break-trim-body">
+        <div class="seg slots trim-target" id="trim-target" role="group" aria-label="What to trim">
+          <button data-target="break" title="Trim the break">Break</button><button data-target="sample" title="Trim the sample chosen in Samples (choose it there)">Sample</button>
+        </div>
         <canvas id="break-trim-view" class="break-trim-view" title="The whole file: drag to move the nearer edge. For finer moves, slide your finger up or down away from the strip while dragging (Shift on a computer). The faint parts are cut off."></canvas>
         <div class="trim-zoom-head">
           <span class="trim-zoom-label">Zoom</span>
@@ -747,12 +750,17 @@
         <button id="track-load" title="Load an audio file into this slot">Load…</button>
         <input id="track-file" type="file" accept="audio/*" hidden />
         <label class="field inline slider">Level <output id="track-level-val"></output><input id="track-level" type="range" min="0" max="150" /></label>
+        <button id="track-trim" title="Trim this sample: the Breakbeat's trim controls, switched to it">Trim…</button>
         <button id="track-clear" title="Empty this slot">Clear</button>
       </div>
       <div class="row track-slicing">
         <label class="field" title="Cut this sample into slices, so a step on Tracks 2–4 can play one of them (S1.3 is slice 3 of S1). Whole: the sample from its start.">Slicing <select id="track-slicing"><option value="whole">Whole</option><option value="equal">Equal</option><option value="transient">On the hits</option></select></label>
         <label class="field">Slices <select id="track-slices"><option>8</option><option>16</option><option>32</option></select></label>
         <label class="field slider" title="On the hits: how many hits count (low: only the big ones; high: ghost notes too)">Sensitivity <output id="track-sens-val"></output><input id="track-sens" type="range" min="0" max="100" /></label>
+        <label class="check" title="Speed it up or slow it down to the tempo (the pitch moves with it), as the break does: set how many bars it is">
+          <input id="track-fit" type="checkbox" /> Fit to tempo</label>
+        <label class="field" title="How many bars the (trimmed) sample is, so it's fitted to the tempo correctly">Loop is <select id="track-bars"></select></label>
+        <label class="field slider">Pitch <output id="track-pitch-val"></output><input id="track-pitch" type="range" min="-12" max="12" step="0.1" /></label>
         <span class="status" id="track-slice-info"></span>
       </div>
       <div class="track-wave-box"><canvas id="track-wave" class="track-wave" title="This sample and its slices: tap a slice to hear it"></canvas></div>
@@ -1004,6 +1012,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=251"></script>
+  <script type="module" src="src/app.js?v=252"></script>
 </body>
 </html>
