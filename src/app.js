@@ -8,30 +8,30 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=244';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=244';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=244';
-import { Midi } from './midi.js?v=244';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=244';
+} from './core.js?v=245';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=245';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=245';
+import { Midi } from './midi.js?v=245';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=245';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, presetConds, presetLens, TRIPLET_FEEL, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=244';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=244';
-import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=244';
-import { Invention, parseSubject } from './invention.js?v=244';
-import { ColtraneSolo } from './coltrane.js?v=244';
-import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=244';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=244';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=244';
+} from './percussion.js?v=245';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=245';
+import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=245';
+import { Invention, parseSubject } from './invention.js?v=245';
+import { ColtraneSolo } from './coltrane.js?v=245';
+import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=245';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=245';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=245';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers, rowThisTime,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=244';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=244';
+} from './breaks.js?v=245';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=245';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=244';
+} from './mono.js?v=245';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -399,7 +399,7 @@ function ensureAudio() {
         sends[fx][src] = { pre, post };
       }
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=244', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=245', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -430,7 +430,12 @@ function ensureAudio() {
 // ---- waking the sound after the phone sleeps
 // iOS stops the audio when the screen turns off (or a call comes in) and only lets it
 // resume from a touch. So: try when the page comes back, and again on the first touch.
-try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch { /* older Safari */ }
+/** Safari's audio session: 'playback' normally; 'play-and-record' while the microphone records
+ * (a playback session isn't allowed to record, so iOS would refuse the microphone). */
+function setAudioSession(type) {
+  try { if (navigator.audioSession) navigator.audioSession.type = type; } catch { /* older Safari */ }
+}
+setAudioSession('playback');
 function wakeAudio() {
   if (!ctx) return;
   if (ctx.state === 'closed') { // the page was frozen and the browser shut the audio down: start afresh
@@ -3646,6 +3651,40 @@ function recStatus(text, error = false) {
   $('rec-status').classList.toggle('error', error);
 }
 
+/** The microphone (or chosen input), as cleanly as the browser allows. */
+async function openMic(clean) {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    const e = new Error('This browser can\'t record from a microphone on this page.');
+    e.name = 'Unsupported';
+    throw e;
+  }
+  setAudioSession('play-and-record');
+  const id = $('rec-device').value;
+  try {
+    return await navigator.mediaDevices.getUserMedia({ audio: id ? { ...clean, deviceId: { exact: id } } : clean });
+  } catch (e) {
+    if (e.name === 'NotAllowedError' || e.name === 'SecurityError') throw e;
+    // Some browsers balk at the details (an exact input, stereo, processing off): the plainest request.
+    return navigator.mediaDevices.getUserMedia({ audio: true });
+  }
+}
+
+/** What went wrong opening the microphone, and what to do about it. */
+function micProblem(e) {
+  switch (e?.name) {
+    case 'NotAllowedError':
+    case 'SecurityError':
+      return 'The microphone isn\'t allowed for this page. On an iPhone: tap aA in the address bar, then Website Settings, '
+        + 'Microphone, Allow (or Settings, Apps, Safari, Microphone). On a computer: the camera/microphone icon in the address bar. Then try again.';
+    case 'NotFoundError': return 'No microphone was found.';
+    case 'NotReadableError':
+    case 'AbortError': return 'The microphone is busy: another app (or a call) may be using it. Close that and try again.';
+    case 'OverconstrainedError': return 'That input isn\'t available: choose Default in Input.';
+    case 'Unsupported': return e.message;
+    default: return `Couldn't open the microphone (${e?.name || 'error'}${e?.message ? `: ${e.message}` : ''}).`;
+  }
+}
+
 async function recSourceNode(kind) {
   if (kind === 'app') {
     // Everything the app plays: the mix (after its compressor), or every separate pair.
@@ -3657,8 +3696,7 @@ async function recSourceNode(kind) {
   const clean = { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 2 };
   let stream;
   if (kind === 'mic') {
-    const id = $('rec-device').value;
-    stream = await navigator.mediaDevices.getUserMedia({ audio: id ? { ...clean, deviceId: { exact: id } } : clean });
+    stream = await openMic(clean);
     listRecInputs(); // names show once allowed
   } else {
     // Screen sharing is the only way a page can hear another tab or the system; the video is dropped.
@@ -3678,12 +3716,15 @@ async function startRecording() {
   const bars = Number($('rec-length').value) || 0;
   let source;
   try {
-    await recWorkletReady;
+    // The microphone (or sharing) first, straight from the tap: browsers are stricter when it's asked later.
     source = await recSourceNode(kind);
+    await recWorkletReady;
   } catch (e) {
+    source?.stop();
+    if (kind === 'mic') setAudioSession('playback');
     recStatus(e.message === 'noaudio'
       ? 'Nothing to record: tick "Share audio" (or "Share system audio") in the browser\'s sharing window.'
-      : kind === 'mic' ? 'No microphone: the browser wasn\'t allowed to use it.' : 'Sharing was cancelled (or this browser can\'t share audio).', true);
+      : kind === 'mic' ? micProblem(e) : `Sharing was cancelled (or this browser can't share audio)${e?.name && e.name !== 'NotAllowedError' ? ` (${e.name})` : ''}.`, true);
     return;
   }
   const node = new AudioWorkletNode(ctx, 'take-recorder', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2], channelCount: 2, channelCountMode: 'explicit' });
@@ -3742,6 +3783,7 @@ function finishRecording(cancel = false) {
   rec = null;
   try { r.node.port.onmessage = null; r.node.disconnect(); r.mute.disconnect(); } catch { /* gone */ }
   r.source.stop();
+  if (r.kind === 'mic') setAudioSession('playback'); // back to a playback session (survives the screen locking)
   $('rec-go').setAttribute('aria-pressed', 'false');
   $('rec-go').textContent = '● Record';
   $('rec-meter-fill').style.width = '0';
