@@ -665,6 +665,10 @@ input[type="range"]::-moz-range-thumb {
 .song-bar .song-x { min-width: 22px; padding: 0 4px; font-weight: 400; border-color: transparent; background: transparent; }
 .song-bar.now { background: var(--mod); border-color: var(--mod); }
 .song-bar.now small { color: var(--mod-ink); }
+.song-block { gap: 4px; }
+.song-block .song-letter { min-width: 34px; }
+.song-len { font-size: 12px; min-width: 4.2em; text-align: center; font-variant-numeric: tabular-nums; }
+.song-bar.now .song-len { color: var(--mod-ink); }
 
 /* ---------- chord pad mode ---------- */
 .rhythm.pad .rhythm-only { opacity: 0.4; }
