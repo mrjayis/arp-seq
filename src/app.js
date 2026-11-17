@@ -8,29 +8,29 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=223';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=223';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=223';
-import { Midi } from './midi.js?v=223';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=223';
+} from './core.js?v=224';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=224';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=224';
+import { Midi } from './midi.js?v=224';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=224';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, presetConds, presetLens, TRIPLET_FEEL, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=223';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=223';
-import { Invention, parseSubject } from './invention.js?v=223';
-import { ColtraneSolo } from './coltrane.js?v=223';
-import { BASS_STYLES, styleForSong, bassLine } from './bass.js?v=223';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=223';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=223';
+} from './percussion.js?v=224';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=224';
+import { Invention, parseSubject } from './invention.js?v=224';
+import { ColtraneSolo } from './coltrane.js?v=224';
+import { BASS_STYLES, styleForSong, bassLine } from './bass.js?v=224';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=224';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=224';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=223';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=223';
+} from './breaks.js?v=224';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=224';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=223';
+} from './mono.js?v=224';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -247,6 +247,8 @@ const settings = {
 
 // What every setting starts as, for scenes saved before a setting existed.
 const DEFAULTS = structuredClone(settings);
+// Tables filled in as the windows are built: empty to begin with.
+Object.assign(DEFAULTS, { drumKitStore: {}, sampleLevels: {}, sampleTunes: {}, drumMix: {}, mixMute: {} });
 // Settings that belong to this device or this moment, not to a scene.
 const DEVICE_KEYS = [
   'theme', 'themeV2', 'collapsed', 'showHelp', 'midiIn', 'midiInCh', 'midiOut', 'midiOutCh', 'volume', 'synthOn',
@@ -386,7 +388,7 @@ function ensureAudio() {
         sends[fx][src] = { pre, post };
       }
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=223', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=224', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -2151,6 +2153,20 @@ function buildProgression() {
     settings.progLength = chords.length;
     settings.progSong = '';
     settings.progStyle = '';
+    renderProgression();
+    progEdited();
+  });
+
+  confirmClick($('prog-clear'), () => {
+    settings.progression = settings.progression.map(() => ({ root: 0, type: 'rest', beats: 4, inv: 0, oct: 0 }));
+    settings.progLength = 4;
+    settings.progSong = '';
+    settings.progStyle = '';
+    settings.progModEvery = 0;
+    $('prog-mod-every').value = '0';
+    renderModBy();
+    progIndex = -1;
+    resetProgression();
     renderProgression();
     progEdited();
   });
@@ -4065,7 +4081,10 @@ const MONO_DEFAULTS = {
   monoRelease: 80, monoVca: 'env', monoLfoRate: 5, monoVibrato: 0, monoLfoFilter: 0, monoPorta: 'auto',
   monoGlide: 70, monoLevel: 55,
 };
-for (const [k, v] of Object.entries(MONO_DEFAULTS)) if (settings[k] === undefined) settings[k] = v;
+for (const [k, v] of Object.entries(MONO_DEFAULTS)) {
+  DEFAULTS[k] ??= v; // (so Clear all and older scenes get them too)
+  if (settings[k] === undefined) settings[k] = v;
+}
 
 function monoParams() {
   const p = Object.fromEntries(MONO_PARAMS.map(([key, name, conv]) => [name, conv ? conv(settings[key]) : settings[key]]));
@@ -4448,6 +4467,7 @@ function renderMonoPanel() {
 }
 
 for (const [k, v] of Object.entries({ monoOn: false, monoArmed: false, monoLegato: false, monoSource: 'seq', monoRate: '1/16', monoGate: 70, monoTranspose: 0, monoKeys: false, monoMidiCh: -1 })) {
+  DEFAULTS[k] ??= v;
   if (settings[k] === undefined) settings[k] = v;
 }
 settings.monoArmed = false; // never start armed: keys would go to the sequence unexpectedly
@@ -5086,6 +5106,7 @@ if (settings.harmMode !== undefined) {
 }
 if (!['pitch', 'delay'].includes(settings.harmFunc)) settings.harmFunc = 'pitch';
 for (const [k, v] of Object.entries({ harmPitchMode: 0, harmDelayMode: 4, harmAlgorithm: 1, harmRepeat: false, harmMicro: 8, harmDelayLevel: 0 })) {
+  DEFAULTS[k] ??= v;
   if (settings[k] === undefined) settings[k] = v;
 }
 
@@ -5762,10 +5783,10 @@ function sceneStatus(text) {
 }
 
 /** Recall a snapshot: on the next bar while playing, otherwise straight away. */
-function applyScene(data, currentId = null, name = '') {
-  pendingScene = { data, currentId, name };
+function applyScene(data, currentId = null, name = '', messages = {}) {
+  pendingScene = { data, currentId, name, done: messages.done };
   if (playing) {
-    sceneStatus(name ? `"${name}" comes in on the next bar…` : 'Going back on the next bar…');
+    sceneStatus(messages.later || (name ? `"${name}" comes in on the next bar…` : 'Going back on the next bar…'));
     renderScenes();
   } else applyPendingScene();
 }
@@ -5773,7 +5794,7 @@ function applyScene(data, currentId = null, name = '') {
 /** Swap the settings for the pending scene and have every window re-read them. */
 function applyPendingScene() {
   if (!pendingScene) return;
-  const { data, currentId, name } = pendingScene;
+  const { data, currentId, name, done } = pendingScene;
   pendingScene = null;
   const undo = sceneSnapshot();
   const keep = {};
@@ -5792,7 +5813,7 @@ function applyPendingScene() {
   save(true);
   $('scene-undo').hidden = false;
   renderScenes();
-  sceneStatus(name ? `Recalled "${name}".` : 'Back to how it was before the recall.');
+  sceneStatus(done || (name ? `Recalled "${name}".` : 'Back to how it was before the recall.'));
 }
 
 const formatWhen = (iso) => {
@@ -5885,6 +5906,15 @@ $('scene-save').addEventListener('click', () => {
 $('scene-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('scene-save').click(); });
 
 $('scene-undo').hidden = !localStorage.getItem(UNDO_KEY);
+// Clear all: back to how the app starts, as a recall of the defaults (so it comes in on
+// the next bar while playing, and Undo recall brings everything back).
+confirmClick($('clear-all'), () => {
+  applyScene({}, null, '', {
+    later: 'Clearing everything on the next bar…',
+    done: 'Cleared everything back to the defaults. Undo recall brings it back.',
+  });
+}, { ask: 'Sure? Clear all' });
+
 $('scene-undo').addEventListener('click', () => {
   const before = readJson(UNDO_KEY, null);
   if (before) applyScene(before);
