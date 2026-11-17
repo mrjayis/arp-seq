@@ -8,30 +8,30 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=240';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=240';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=240';
-import { Midi } from './midi.js?v=240';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=240';
+} from './core.js?v=241';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=241';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=241';
+import { Midi } from './midi.js?v=241';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=241';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, presetConds, presetLens, TRIPLET_FEEL, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=240';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=240';
-import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=240';
-import { Invention, parseSubject } from './invention.js?v=240';
-import { ColtraneSolo } from './coltrane.js?v=240';
-import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=240';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=240';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=240';
+} from './percussion.js?v=241';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=241';
+import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=241';
+import { Invention, parseSubject } from './invention.js?v=241';
+import { ColtraneSolo } from './coltrane.js?v=241';
+import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=241';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=241';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=241';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers, rowThisTime,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=240';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=240';
+} from './breaks.js?v=241';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=241';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=240';
+} from './mono.js?v=241';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -393,7 +393,7 @@ function ensureAudio() {
         sends[fx][src] = { pre, post };
       }
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=240', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=241', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -6079,6 +6079,9 @@ const SECTION_KEYS = {
   prog: ['progression', 'progLength', 'progSong', 'progStyle'],
   chords: ['chordRate', 'chordSteps', 'chordHits', 'chordRotate', 'chordMode', 'chordSyncopate', 'chordTie'],
   mono: ['monoSeq'],
+  // The Arpeggiator: on/off, mode (a solo or invention too), rate, octaves, gate, swing, and the
+  // solo's and invention's settings.
+  arp: ['arpOn', 'mode', 'rate', 'octaves', 'gate', 'swing', 'soloSpace', 'soloBebop', 'soloBuild', 'bachSubject'],
   // The arp's two voices: their sounds (and oscillator 2's sequence mode and bass line).
   osc1: ['wave', 'cutoff', 'arpShape', 'arpTimbre', 'lpgMode', 'arpResonance', 'arpAttack', 'arpRelease', 'osc1Level'],
   osc2: [
@@ -6087,10 +6090,10 @@ const SECTION_KEYS = {
     'bassTone', 'bassDecay', 'osc2BassStyle', 'osc2BassRate',
   ],
 };
-const SECTION_HOME = { seq: 'length', prog: 'prog-length', chords: 'chord-on', mono: 'mono-on', osc1: 'wave', osc2: 'osc2-on' }; // where the buttons go
-const SECTION_NAMES = { seq: 'sequencer', prog: 'progression', chords: 'chord rhythm', mono: 'mono sequence', osc1: 'arp voice (oscillator 1)', osc2: 'oscillator 2', drum: 'percussion', break: 'breakbeat' };
+const SECTION_HOME = { arp: 'arp-on', seq: 'length', prog: 'prog-length', chords: 'chord-on', mono: 'mono-on', osc1: 'wave', osc2: 'osc2-on' }; // where the buttons go
+const SECTION_NAMES = { arp: 'arpeggiator', seq: 'sequencer', prog: 'progression', chords: 'chord rhythm', mono: 'mono sequence', osc1: 'arp voice (oscillator 1)', osc2: 'oscillator 2', drum: 'percussion', break: 'breakbeat' };
 const pendingSections = new Map(); // module -> section, waiting for the bar line
-const SECTION_ALL = ['seq', 'osc1', 'osc2', 'prog', 'chords', 'mono', 'drum', 'break']; // what Section (top bar) switches
+const SECTION_ALL = ['arp', 'seq', 'osc1', 'osc2', 'prog', 'chords', 'mono', 'drum', 'break']; // what Section (top bar) switches
 
 function sectionsOk() {
   if (!settings.sectionSlot || typeof settings.sectionSlot !== 'object') settings.sectionSlot = {};
