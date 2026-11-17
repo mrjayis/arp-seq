@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=248" />
-  <link rel="stylesheet" href="mac.css?v=248" />
+  <link rel="stylesheet" href="styles.css?v=249" />
+  <link rel="stylesheet" href="mac.css?v=249" />
 </head>
 <body>
   <main class="device">
@@ -652,7 +652,7 @@
       </div>
       <div class="row sample-tools" id="sample-tools" hidden>
         <button id="sample-load" title="Pick audio files: they're matched to rows by name (Kick, Snare, HHOPEN…)">Load samples…</button>
-        <input id="sample-file" type="file" multiple accept="audio/*,.wav,.aif,.aiff" hidden />
+        <input id="sample-file" type="file" multiple accept="audio/*" hidden />
         <button id="sample-clear">Clear samples</button>
         <span class="status" id="sample-status"></span>
         <details class="sample-map-wrap" open>
@@ -706,7 +706,7 @@
         Your own break stays in this browser.</p>
       <div class="row break-tools">
         <button id="break-load">Load break…</button>
-        <input id="break-file" type="file" accept="audio/*,.wav,.aif,.aiff" hidden />
+        <input id="break-file" type="file" accept="audio/*" hidden />
         <button id="break-demo" title="A synthesized two-bar break">Demo break</button>
         <button id="break-pads" title="MPC-style pads: play the slices live, and record them into the tracker">Pads</button>
         <span class="status" id="break-status"></span>
@@ -995,6 +995,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=248"></script>
+  <script type="module" src="src/app.js?v=249"></script>
 </body>
 </html>

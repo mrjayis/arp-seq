@@ -8,32 +8,35 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=248';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=248';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=248';
-import { Midi } from './midi.js?v=248';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=248';
+} from './core.js?v=249';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=249';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=249';
+import { Midi } from './midi.js?v=249';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=249';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, presetConds, presetLens, TRIPLET_FEEL, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=248';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=248';
-import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=248';
-import { Invention, parseSubject } from './invention.js?v=248';
-import { ColtraneSolo } from './coltrane.js?v=248';
-import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=248';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=248';
-import { saveTrackSample, deleteTrackSample, loadTrackSamples, saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=248';
+} from './percussion.js?v=249';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=249';
+import { AUDIO_ACCEPT, looksLikeAudio, decodeAudioFile } from './audiofile.js?v=249';
+import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=249';
+import { Invention, parseSubject } from './invention.js?v=249';
+import { ColtraneSolo } from './coltrane.js?v=249';
+import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=249';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=249';
+import { saveTrackSample, deleteTrackSample, loadTrackSamples, saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=249';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers, rowThisTime,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, TRACK_SAMPLES, EXTRA_TRACKS, emptyCell, trackColumn, keepTracks, reverseBuffer, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=248';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=248';
+} from './breaks.js?v=249';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=249';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=248';
+} from './mono.js?v=249';
 
 const $ = (id) => document.getElementById(id);
+// Every audio file picker offers any kind of audio (and video, for its sound).
+for (const id of ['sample-file', 'break-file', 'track-file']) document.getElementById(id).accept = AUDIO_ACCEPT;
 const STORAGE_KEY = 'arp-seq-settings-v1';
 
 // ---------------------------------------------------------------- state
@@ -404,7 +407,7 @@ function ensureAudio() {
       throwIn[fx] = ctx.createGain();
       throwIn[fx].connect(input);
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=248', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=249', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -2797,7 +2800,7 @@ $('drum-clear-conds').addEventListener('click', () => {
 const sampleStore = {}; // slot -> {name, data: ArrayBuffer}
 
 async function decodeInto(slot, data) {
-  const buffer = await ctx.decodeAudioData(data.slice(0)); // decoding detaches its input
+  const buffer = await decodeAudioFile(data, ctx);
   drums.setSample(slot, buffer);
 }
 
@@ -2812,7 +2815,7 @@ function updateSampleStatus(message = '') {
 
 async function addSampleFiles(fileList, targetSlot = null) {
   ensureAudio();
-  const files = [...fileList].filter((f) => f.type.startsWith('audio') || /\.(wav|aiff?|mp3|ogg|flac|m4a)$/i.test(f.name));
+  const files = [...fileList].filter(looksLikeAudio);
   if (!files.length) { updateSampleStatus('No audio files found in that drop.'); return; }
   const plan = targetSlot
     ? { assigned: [[targetSlot, files[0]]], leftover: files.slice(1) }
@@ -2832,7 +2835,7 @@ async function addSampleFiles(fileList, targetSlot = null) {
   renderDrumGrid();
   const done = plan.assigned.length - failed.length;
   const notes = [`Loaded ${done} sample${done === 1 ? '' : 's'}.`];
-  if (failed.length) notes.push(`Couldn't read ${failed.join(', ')} (try WAV).`);
+  if (failed.length) notes.push(`Couldn't read ${failed.join(', ')}: this browser can't decode that format.`);
   if (plan.leftover.length) notes.push(`No free row for ${plan.leftover.map((f) => f.name).join(', ')}.`);
   updateSampleStatus(notes.join(' '));
 }
@@ -3677,9 +3680,9 @@ async function loadBreakFile(file) {
   const data = await file.arrayBuffer();
   let buffer;
   try {
-    buffer = await ctx.decodeAudioData(data.slice(0));
+    buffer = await decodeAudioFile(data, ctx);
   } catch {
-    updateBreakStatus(`Couldn't read ${file.name} (try WAV).`);
+    updateBreakStatus(`Couldn't read ${file.name}: this browser can't decode that format (WAV, AIFF, MP3, M4A, FLAC and Ogg all work).`);
     return;
   }
   settings.breakPatternAuto = true; // a new break starts in order
@@ -3993,8 +3996,7 @@ const trackLevel = (n) => settings.trackLevels[n] ?? 100;
 
 /** Decode without needing the sound started (so the names and lengths are there at once). */
 async function decodeTrackSample(data) {
-  const off = new OfflineAudioContext(1, 1, 44100);
-  return off.decodeAudioData(data.slice(0));
+  return decodeAudioFile(data);
 }
 async function setTrackSample(n, name, data) {
   let buffer;
@@ -4047,7 +4049,7 @@ $('track-file').addEventListener('change', async () => {
   $('track-file').value = '';
   if (!f) return;
   const ok = await setTrackSample(Number($('track-slot').value), f.name, await f.arrayBuffer());
-  updateBreakStatus(ok ? '' : `Couldn't read ${f.name} (try WAV).`);
+  updateBreakStatus(ok ? '' : `Couldn't read ${f.name}: this browser can't decode that format (WAV, AIFF, MP3, M4A, FLAC and Ogg all work).`);
 });
 $('track-clear').addEventListener('click', async () => {
   const n = Number($('track-slot').value);
@@ -4582,7 +4584,7 @@ onRecall(() => {
 loadBreak().then(async (stored) => {
   if (stored?.data) {
     try {
-      const buffer = await new OfflineAudioContext(1, 1, 44100).decodeAudioData(stored.data.slice(0));
+      const buffer = await decodeAudioFile(stored.data);
       setBreak(buffer, stored.name, { keepTrim: true });
       return;
     } catch { /* fall back to the demo */ }
