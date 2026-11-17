@@ -582,6 +582,8 @@ input[type="range"]::-moz-range-thumb {
 .break-now { position: absolute; top: 1.5px; bottom: 1.5px; left: 0; width: 0; pointer-events: none;
   background: var(--mod); opacity: 0.28; }
 .break-now[hidden] { display: none; }
+.track-wave-box { margin: 0 0 8px; }
+.track-wave { display: block; width: 100%; min-width: 0; max-width: 100%; height: 56px; border: 1.5px solid var(--line); cursor: pointer; }
 .break-wave {
   display: block;
   width: 100%;
