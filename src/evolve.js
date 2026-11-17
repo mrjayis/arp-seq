@@ -56,8 +56,9 @@ export function evolveDrums(rows, amount, rng, conds = {}) {
  * slice, an added roll or reverse, or a slice dropped onto an empty row.
  */
 /**
- * `opts.rolls`: 'fast' (the default: 32nd-note rolls inside the step) or 'eighths' (a
- * stutter instead: the slice again every 8th note, 2–4 hits, set as `eighths`).
+ * `opts.rolls`: 'fast' (the default: 32nd-note rolls inside the step), 'eighths' (a
+ * stutter instead: the slice again every 8th note, 2–4 hits, set as `eighths`) or
+ * 'sixteenths' (the same every 16th note, set as `sixteenths`).
  * `opts.reverse`: false to never flip a step's direction.
  */
 export function evolveBreakRow(row, amount, rng, slices, opts = {}) {
@@ -84,6 +85,7 @@ export function evolveBreakRow(row, amount, rng, slices, opts = {}) {
   }
   if (r < amount * 0.35) {
     if (opts.rolls === 'eighths') return { ...row, roll: 0, eighths: 2 + Math.floor(rng() * 3) };
+    if (opts.rolls === 'sixteenths') return { ...row, roll: 0, sixteenths: 2 + Math.floor(rng() * 3) };
     return { ...row, roll: Math.max(row.roll || 0, 2 + Math.floor(rng() * 2)), rollType: 'R' };
   }
   if (r < amount * 0.4) return opts.reverse === false ? row : { ...row, fx: row.fx === 'rev' ? '' : 'rev' };
@@ -119,6 +121,7 @@ export function breakRowChange(base, played) {
   if (played.slice !== base.slice && played.slice !== null && played.slice !== undefined) parts.push(`→${played.slice + 1}`);
   if ((played.roll || 0) !== (base.roll || 0)) parts.push(`R${played.roll}`);
   if (played.eighths) parts.push(`8ths×${played.eighths}`);
+  if (played.sixteenths) parts.push(`16ths×${played.sixteenths}`);
   if (played.fx !== base.fx) parts.push(played.fx === 'rev' ? 'rev' : played.fx || 'fwd');
   return parts.join(' ');
 }
