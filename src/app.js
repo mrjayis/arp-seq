@@ -8,29 +8,29 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=225';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=225';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=225';
-import { Midi } from './midi.js?v=225';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=225';
+} from './core.js?v=227';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=227';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=227';
+import { Midi } from './midi.js?v=227';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=227';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, presetConds, presetLens, TRIPLET_FEEL, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=225';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=225';
-import { Invention, parseSubject } from './invention.js?v=225';
-import { ColtraneSolo } from './coltrane.js?v=225';
-import { BASS_STYLES, styleForSong, bassLine } from './bass.js?v=225';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=225';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=225';
+} from './percussion.js?v=227';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=227';
+import { Invention, parseSubject } from './invention.js?v=227';
+import { ColtraneSolo } from './coltrane.js?v=227';
+import { BASS_STYLES, styleForSong, bassLine } from './bass.js?v=227';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=227';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=227';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=225';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=225';
+} from './breaks.js?v=227';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=227';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=225';
+} from './mono.js?v=227';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -232,6 +232,7 @@ const settings = {
   songOn: false,
   songChain: ['A', 'A', 'B', 'A'], // one slot per bar
   breakEvolve: 0, // 0–100: per-bar variation of the break pattern
+  breakCustom: null, // slice points moved by hand: {key (what they were made for), points (fractions)}
   breakEvolveRolls: 'fast', // Evolve's rolls: 'fast' (32nds in the step) or 'eighths' (a stutter in 8th notes)
   breakEvolveReverse: true, // Evolve may reverse a step
   breakOn: false,
@@ -390,7 +391,7 @@ function ensureAudio() {
         sends[fx][src] = { pre, post };
       }
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=225', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=227', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -3021,6 +3022,12 @@ function computeBreakPoints() {
   breakPoints = settings.breakSliceMode === 'transient'
     ? detectTransients(breakBuffer.getChannelData(0), breakBuffer.sampleRate, { sensitivity: settings.breakSensitivity / 100 })
     : equalPoints(settings.breakSlices, breakBuffer.duration);
+  // Points moved by hand, if they were made for this break, trim and slicing.
+  const custom = settings.breakCustom;
+  if (custom && custom.key === slicingKey() && Array.isArray(custom.points) && custom.points.length === breakPoints.length) {
+    breakPoints = custom.points.map((f) => f * breakBuffer.duration);
+  } else if (custom && breakBuffer) settings.breakCustom = null; // made for something else: dropped
+  $('break-points-reset').hidden = !settings.breakCustom;
   // Switched-off slices are numbers: if the slicing changes how many there are, they no longer mean the same.
   if (!Array.isArray(settings.breakOff)) settings.breakOff = [];
   if (before && before !== breakPoints.length) settings.breakOff = [];
@@ -3030,6 +3037,13 @@ function computeBreakPoints() {
   $('break-sensitivity').disabled = settings.breakSliceMode !== 'transient';
   buildBreakRows();
   updateBreakStatus();
+}
+
+/** What the slice points depend on: moved points only apply while it's unchanged. */
+function slicingKey() {
+  const t = settings.breakTrim || { start: 0, end: 1 };
+  const how = settings.breakSliceMode === 'transient' ? `t${settings.breakSensitivity}` : `e${settings.breakSlices}`;
+  return `${breakName}|${t.start.toFixed(5)}|${t.end.toFixed(5)}|${how}`;
 }
 
 function orderedPattern() {
@@ -3634,6 +3648,15 @@ function drawBreak() {
     g.moveTo(x, 0);
     g.lineTo(x, h);
     g.stroke();
+    if (k > 0) {
+      // A handle at the foot of each line you can drag.
+      g.fillStyle = mod;
+      g.beginPath();
+      g.moveTo(x - 4, h);
+      g.lineTo(x + 4, h);
+      g.lineTo(x, h - 6);
+      g.fill();
+    }
     const [x0, x1] = span(k);
     if (x1 - x0 > 12) { g.fillStyle = mod; g.fillText(String(k + 1), x + 3, 11); }
   });  breakNowShown = ''; // the slices may have moved
@@ -3801,6 +3824,68 @@ function toggleSliceOff(slice) {
   save();
 }
 
+// Slice lines: within this many pixels of one, a press drags it.
+const LINE_GRAB = 9;
+/** The slice line (index into breakPoints, never the first) near the pointer, or -1. */
+function lineNear(e) {
+  const rect = $('break-wave').getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  let best = -1;
+  let bestD = LINE_GRAB + 1;
+  for (let k = 1; k < breakPoints.length; k++) {
+    const d = Math.abs((breakPoints[k] / breakBuffer.duration) * rect.width - x);
+    if (d < bestD) { best = k; bestD = d; }
+  }
+  return best;
+}
+let lineDrag = null; // {k, moved}
+$('break-wave').addEventListener('pointerdown', (e) => {
+  if (!breakBuffer || e.button > 0 || e.shiftKey) return;
+  const k = lineNear(e);
+  if (k < 0) return;
+  lineDrag = { k, x: e.clientX, moved: false };
+  $('break-wave').setPointerCapture(e.pointerId);
+});
+$('break-wave').addEventListener('pointermove', (e) => {
+  if (!breakBuffer) return;
+  if (!lineDrag) {
+    $('break-wave').style.cursor = !e.buttons && lineNear(e) > 0 ? 'ew-resize' : ''; // a line under the mouse
+    return;
+  }
+  if (!lineDrag.moved && Math.abs(e.clientX - lineDrag.x) < 3) return;
+  lineDrag.moved = true;
+  if (breakPress) { clearTimeout(breakPress.timer); breakPress = null; }
+  const rect = $('break-wave').getBoundingClientRect();
+  const t = ((e.clientX - rect.left) / rect.width) * breakBuffer.duration;
+  const { k } = lineDrag;
+  const gap = 0.01; // a slice stays at least 10 ms long
+  const lo = breakPoints[k - 1] + gap;
+  const hi = (k + 1 < breakPoints.length ? breakPoints[k + 1] : breakBuffer.duration) - gap;
+  breakPoints[k] = Math.min(hi, Math.max(lo, t));
+  drawBreak();
+});
+const endLineDrag = () => {
+  if (!lineDrag) return false;
+  const was = lineDrag;
+  lineDrag = null;
+  if (!was.moved) return false; // a tap on a line: plays, as anywhere else
+  // Keep them, for this break, trim and slicing.
+  settings.breakCustom = { key: slicingKey(), points: breakPoints.map((p) => p / breakBuffer.duration) };
+  $('break-points-reset').hidden = false;
+  if (settings.breakPatternAuto) { settings.breakPattern = orderedPattern(); buildBreakRows(); }
+  save();
+  return true;
+};
+$('break-wave').addEventListener('pointerup', () => { if (endLineDrag()) lineDragJustEnded = true; });
+$('break-wave').addEventListener('pointercancel', () => { endLineDrag(); });
+let lineDragJustEnded = false; // the click after a drag isn't a tap
+$('break-points-reset').addEventListener('click', () => {
+  settings.breakCustom = null;
+  computeBreakPoints();
+  drawBreak();
+  save();
+});
+
 // Long press (for touch screens, where there's no Shift): the same as Shift-click.
 let breakPress = null; // {timer, x, y, done}
 $('break-wave').addEventListener('pointerdown', (e) => {
@@ -3826,6 +3911,7 @@ $('break-wave').addEventListener('contextmenu', (e) => e.preventDefault());
 
 $('break-wave').addEventListener('click', (e) => {
   if (!breakBuffer) return;
+  if (lineDragJustEnded) { lineDragJustEnded = false; return; } // that was a line being moved
   if (breakPress?.done) { breakPress = null; return; } // that was a long press
   breakPress = null;
   const slice = sliceAtPointer(e);
@@ -3839,10 +3925,7 @@ $('break-wave').addEventListener('click', (e) => {
     duration: (slice + 1 < breakPoints.length ? breakPoints[slice + 1] : breakBuffer.duration) - breakPoints[slice],
     rate: fitRate(breakBuffer.duration, settings.breakBars, currentBpm(), settings.breakPitch, settings.breakFit),
   });
-  const row = breakSelected;
-  editBreakRow(row, { slice });
-  breakRowEls[row].querySelector('select').value = String(slice);
-  selectBreakRow((row + 1) % settings.breakSteps);
+  // Just heard: the tracker is left as it is (rows choose their slices in their own menus).
 });
 
 $('break-on').addEventListener('click', () => {
