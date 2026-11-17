@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=249" />
-  <link rel="stylesheet" href="mac.css?v=249" />
+  <link rel="stylesheet" href="styles.css?v=250" />
+  <link rel="stylesheet" href="mac.css?v=250" />
 </head>
 <body>
   <main class="device">
@@ -718,7 +718,8 @@
         </span>
       </div>
       <div class="break-trim">
-        <span class="row-label">Trim</span>
+        <button id="break-trim-toggle" class="fold-toggle" aria-expanded="true" aria-controls="break-trim-body" title="Show or hide the trim controls (the trim still applies)">Trim</button>
+        <div id="break-trim-body" class="break-trim-body">
         <canvas id="break-trim-view" class="break-trim-view" title="The whole file: drag to move the nearer edge. For finer moves, slide your finger up or down away from the strip while dragging (Shift on a computer). The faint parts are cut off."></canvas>
         <div class="trim-zoom-head">
           <span class="trim-zoom-label">Zoom</span>
@@ -737,6 +738,7 @@
           <input id="break-trim-end" type="range" min="0" max="1000" value="1000" step="1" />
         </label>
         <button id="break-trim-reset" title="Use the whole file again">Whole file</button>
+        </div>
       </div>
       <div class="row track-samples">
         <span class="row-label" title="Eight sample slots, S1–S8, that Tracks 2–4 of the tracker play">Samples</span>
@@ -995,6 +997,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=249"></script>
+  <script type="module" src="src/app.js?v=250"></script>
 </body>
 </html>

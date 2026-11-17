@@ -556,6 +556,9 @@ input[type="range"]::-moz-range-thumb {
 .brk.off .tracker, .brk.off .break-wave { opacity: 0.6; }
 .break-tools { margin-bottom: 8px; }
 .break-trim { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin-bottom: 8px; }
+/* The trim controls fold away; open, they sit in the row's own flex layout. */
+.break-trim-body:not([hidden]) { display: contents; }
+.break-trim .fold-toggle { margin-bottom: 0; }
 .trim-zoom-head { flex: 1 1 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .trim-zoom-label { font-size: 12px; color: var(--ink-3); }
 .trim-nudge { min-width: 34px; padding: 0 6px; font-size: 18px; line-height: 1; }
