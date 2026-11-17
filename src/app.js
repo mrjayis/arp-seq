@@ -8,30 +8,30 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=245';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=245';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=245';
-import { Midi } from './midi.js?v=245';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=245';
+} from './core.js?v=246';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=246';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=246';
+import { Midi } from './midi.js?v=246';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=246';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, presetConds, presetLens, TRIPLET_FEEL, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=245';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=245';
-import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=245';
-import { Invention, parseSubject } from './invention.js?v=245';
-import { ColtraneSolo } from './coltrane.js?v=245';
-import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=245';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=245';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=245';
+} from './percussion.js?v=246';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=246';
+import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=246';
+import { Invention, parseSubject } from './invention.js?v=246';
+import { ColtraneSolo } from './coltrane.js?v=246';
+import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=246';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=246';
+import { saveTrackSample, deleteTrackSample, loadTrackSamples, saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=246';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers, rowThisTime,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
-  trimSamples, fadeEdges, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=245';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=245';
+  trimSamples, fadeEdges, TRACK_SAMPLES, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
+} from './breaks.js?v=246';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=246';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=245';
+} from './mono.js?v=246';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -236,6 +236,7 @@ const settings = {
   songChain: ['A', 'A', 'B', 'A'], // one section (A–D) per bar; runs of the same make the song's blocks
   songAll: true, // the song moves every module through the sections (off: only drums and break)
   breakEvolve: 0, // 0–100: per-bar variation of the break pattern
+  trackLevels: {}, // the breakbeat sample track's levels, % per slot (1–8)
   breakSlotEvolve: {}, // the other break slots' Evolve settings: {A: {evolve, rolls, reverse}, …}
   breakCustom: null, // slice points moved by hand: {key (what they were made for), points (fractions)}
   breakEvolveRolls: 'fast', // Evolve's rolls: 'fast' (32nds in the step), 'sixteenths' or 'eighths' (a stutter in 16ths or 8ths)
@@ -399,7 +400,7 @@ function ensureAudio() {
         sends[fx][src] = { pre, post };
       }
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=245', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=246', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -3130,6 +3131,7 @@ function playBreakStep(step) {
   const row = rowThisTime(offed);
   let triggers;
   let rolling = false;
+  const skipSmp = padSkip.has(idx);
   if (padSkip.has(idx)) {
     // Just recorded from a pad that already sounded: don't play it twice.
     padSkip.delete(idx);
@@ -3164,6 +3166,11 @@ function playBreakStep(step) {
   } else {
     breakRoll = null;
     triggers = [];
+  }
+  // The sample track: the step's one-shot (S1–S8), with the row's own chance and volume.
+  const smpRow = pattern[idx];
+  if (smpRow?.smp > 0 && !skipSmp && Math.random() * 100 < (smpRow.chance ?? 100)) {
+    playTrackSample(smpRow.smp, step.time, (smpRow.vol ?? 100) / 100);
   }
   let shown = null;
   if (breakPlayer && breakBuffer) {
@@ -3797,10 +3804,11 @@ function finishRecording(cancel = false) {
   }
   if (!chans[0].length || peakOf(chans) < 1e-4) { recStatus('That take was silent.', true); return; }
   const stamp = new Date().toTimeString().slice(0, 8).replace(/:/g, '');
-  take = { chans, sampleRate: sr, bars: r.end ? r.bars : 0, name: `Recording ${stamp}${r.end ? ` (${r.bars} bar${r.bars > 1 ? 's' : ''})` : ''}.wav` };
+  take = { chans, sampleRate: sr, trim: { start: 0, end: 1 }, bars: r.end ? r.bars : 0, name: `Recording ${stamp}${r.end ? ` (${r.bars} bar${r.bars > 1 ? 's' : ''})` : ''}.wav` };
   $('rec-take').hidden = false;
   drawTake();
   recStatus(`${take.name}: ${(chans[0].length / sr).toFixed(2)} s.`);
+  renderTakeTrim();
 }
 
 function drawTake() {
@@ -3816,13 +3824,78 @@ function drawTake() {
   const css = getComputedStyle(canvas);
   g.fillStyle = css.getPropertyValue('--field').trim() || '#fff';
   g.fillRect(0, 0, w, h);
-  g.fillStyle = css.getPropertyValue('--ink').trim() || '#000';
+  const ink = css.getPropertyValue('--ink').trim() || '#000';
+  const mod = css.getPropertyValue('--mod').trim() || ink;
   const pk = peaks(take.chans[0], Math.floor(w));
   const max = Math.max(1e-3, ...pk.map(([lo, hi]) => Math.max(-lo, hi)));
-  pk.forEach(([lo, hi], x) => g.fillRect(x, h / 2 - (hi / max) * (h / 2 - 2), 1, Math.max(1, ((hi - lo) / max) * (h / 2 - 2))));
+  const x0 = take.trim.start * w;
+  const x1 = take.trim.end * w;
+  g.fillStyle = ink;
+  pk.forEach(([lo, hi], x) => {
+    g.globalAlpha = x >= x0 && x <= x1 ? 1 : 0.25; // the cut-off parts faint
+    g.fillRect(x, h / 2 - (hi / max) * (h / 2 - 2), 1, Math.max(1, ((hi - lo) / max) * (h / 2 - 2)));
+  });
+  g.globalAlpha = 1;
+  g.fillStyle = mod;
+  g.fillRect(Math.round(x0), 0, 2, h);
+  g.fillRect(Math.round(x1) - 2, 0, 2, h);
 }
 
-const takeFile = () => new File([encodeWav(take.chans, take.sampleRate)], take.name, { type: 'audio/wav' });
+/** The take as trimmed (with tiny fades at the cuts, so they don't click). */
+function trimmedTake() {
+  const len = take.chans[0].length;
+  const a = Math.floor(take.trim.start * len);
+  const z = Math.max(a + 1, Math.ceil(take.trim.end * len));
+  const whole = a === 0 && z >= len;
+  return take.chans.map((c) => {
+    const out = c.slice(a, z);
+    if (!whole) fadeEdges(out, Math.round(take.sampleRate * 0.003));
+    return out;
+  });
+}
+function renderTakeTrim() {
+  if (!take) return;
+  const dur = take.chans[0].length / take.sampleRate;
+  const { start, end } = take.trim;
+  $('rec-trim-at').textContent = `${(start * dur).toFixed(3)} s to ${(end * dur).toFixed(3)} s (${((end - start) * dur).toFixed(3)} s)`;
+  $('rec-trim-reset').disabled = start <= 0 && end >= 1;
+  drawTake();
+}
+// Drag near either edge of the take's waveform to trim it.
+{
+  const view = $('rec-wave');
+  let edge = null;
+  const at = (e) => { const r = view.getBoundingClientRect(); return Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)); };
+  view.addEventListener('pointerdown', (e) => {
+    if (!take) return;
+    const x = at(e);
+    edge = Math.abs(x - take.trim.start) <= Math.abs(x - take.trim.end) ? 'start' : 'end';
+    view.setPointerCapture(e.pointerId);
+  });
+  view.addEventListener('pointermove', (e) => {
+    if (!edge || !take) return;
+    const x = at(e);
+    const min = 0.005 / (take.chans[0].length / take.sampleRate); // at least 5 ms
+    if (edge === 'start') take.trim.start = Math.min(x, take.trim.end - min);
+    else take.trim.end = Math.max(x, take.trim.start + min);
+    renderTakeTrim();
+  });
+  const up = () => { edge = null; };
+  view.addEventListener('pointerup', up);
+  view.addEventListener('pointercancel', up);
+}
+$('rec-trim-sound').addEventListener('click', () => {
+  if (!take) return;
+  const len = take.chans[0].length;
+  const [a, z] = soundSpan(take.chans, take.sampleRate);
+  if (z > a) take.trim = { start: a / len, end: z / len };
+  else recStatus('No sound loud enough to trim to (it\'s all below -50 dB).', true);
+  renderTakeTrim();
+});
+$('rec-trim-reset').addEventListener('click', () => { if (take) { take.trim = { start: 0, end: 1 }; renderTakeTrim(); } });
+
+const takeTrimmed = () => take && (take.trim.start > 0 || take.trim.end < 1);
+const takeFile = () => new File([encodeWav(trimmedTake(), take.sampleRate)], take.name, { type: 'audio/wav' });
 
 $('rec-go').addEventListener('click', () => { if (rec) finishRecording(); else startRecording(); });
 $('rec-source').addEventListener('change', () => { $('rec-device-field').hidden = $('rec-source').value !== 'mic'; if ($('rec-source').value === 'mic') listRecInputs(); });
@@ -3838,8 +3911,9 @@ async function listRecInputs() {
 $('rec-play').addEventListener('click', () => {
   if (!take) return;
   ensureAudio();
-  const buf = new AudioBuffer({ length: take.chans[0].length, numberOfChannels: take.chans.length, sampleRate: take.sampleRate });
-  take.chans.forEach((c, i) => buf.copyToChannel(c, i));
+  const chans = trimmedTake();
+  const buf = new AudioBuffer({ length: chans[0].length, numberOfChannels: chans.length, sampleRate: take.sampleRate });
+  chans.forEach((c, i) => buf.copyToChannel(c, i));
   const src = ctx.createBufferSource();
   src.buffer = buf;
   src.connect(synth.master);
@@ -3847,7 +3921,8 @@ $('rec-play').addEventListener('click', () => {
 });
 $('rec-to-break').addEventListener('click', async () => {
   if (!take) return;
-  if (take.bars) { settings.breakBars = take.bars; $('break-bars').value = String(take.bars); }
+  // A bar-synced take is exactly its bars long, unless it's been trimmed since.
+  if (take.bars && !takeTrimmed()) { settings.breakBars = take.bars; $('break-bars').value = String(take.bars); }
   await loadBreakFile(takeFile());
   recStatus(`${take.name} is now the Breakbeat's break.`);
 });
@@ -3866,6 +3941,94 @@ $('rec-download').addEventListener('click', () => {
   a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 });
+// ---- The Breakbeat's sample track: one-shots S1–S8 the tracker's Smp column fires on a step.
+const trackSamples = {}; // slot (1–8) -> {name, data, buffer}
+const trackVoices = {}; // slot -> the source playing, so a new hit cuts it off (a choke, as on a drum machine)
+if (!settings.trackLevels || typeof settings.trackLevels !== 'object') settings.trackLevels = {};
+const trackLevel = (n) => settings.trackLevels[n] ?? 100;
+
+/** Decode without needing the sound started (so the names and lengths are there at once). */
+async function decodeTrackSample(data) {
+  const off = new OfflineAudioContext(1, 1, 44100);
+  return off.decodeAudioData(data.slice(0));
+}
+async function setTrackSample(n, name, data) {
+  let buffer;
+  try { buffer = await decodeTrackSample(data); } catch { return false; }
+  trackSamples[n] = { name, data, buffer };
+  try { await saveTrackSample(String(n), { name, data }); } catch { /* storage unavailable: kept for this visit */ }
+  renderTrackSamples();
+  buildBreakRows(); // the Smp menus show the names
+  return true;
+}
+function playTrackSample(n, time, gain = 1) {
+  const s = trackSamples[n];
+  if (!s?.buffer || !ctx || !buses.break) return;
+  trackVoices[n]?.stop(time);
+  const src = ctx.createBufferSource();
+  src.buffer = s.buffer;
+  const g = ctx.createGain();
+  g.gain.value = (trackLevel(n) / 100) * gain;
+  src.connect(g).connect(buses.break);
+  src.start(Math.max(time, ctx.currentTime));
+  trackVoices[n] = src;
+}
+function renderTrackSamples() {
+  const sel = $('track-slot');
+  const keep = sel.value || '1';
+  sel.replaceChildren();
+  for (let n = 1; n <= TRACK_SAMPLES; n++) sel.add(new Option(`S${n}: ${trackSamples[n]?.name.replace(/\.[a-z0-9]+$/i, '') || 'empty'}`, String(n)));
+  sel.value = keep;
+  const n = Number(sel.value);
+  $('track-level').value = String(trackLevel(n));
+  $('track-level-val').textContent = `${trackLevel(n)}%`;
+  $('track-play').disabled = !trackSamples[n];
+  $('track-clear').disabled = !trackSamples[n];
+  const rt = $('rec-track');
+  const keepRt = rt.value || '1';
+  rt.replaceChildren();
+  for (let k = 1; k <= TRACK_SAMPLES; k++) rt.add(new Option(`S${k}${trackSamples[k] ? ` (${trackSamples[k].name.replace(/\.[a-z0-9]+$/i, '').slice(0, 14)})` : ''}`, String(k)));
+  rt.value = keepRt;
+}
+$('track-slot').addEventListener('change', renderTrackSamples);
+$('track-level').addEventListener('input', () => {
+  settings.trackLevels[Number($('track-slot').value)] = Number($('track-level').value);
+  $('track-level-val').textContent = `${$('track-level').value}%`;
+  save();
+});
+$('track-play').addEventListener('click', () => { ensureAudio(); playTrackSample(Number($('track-slot').value), ctx.currentTime + 0.01); });
+$('track-load').addEventListener('click', () => $('track-file').click());
+$('track-file').addEventListener('change', async () => {
+  const f = $('track-file').files[0];
+  $('track-file').value = '';
+  if (!f) return;
+  const ok = await setTrackSample(Number($('track-slot').value), f.name, await f.arrayBuffer());
+  updateBreakStatus(ok ? '' : `Couldn't read ${f.name} (try WAV).`);
+});
+$('track-clear').addEventListener('click', async () => {
+  const n = Number($('track-slot').value);
+  delete trackSamples[n];
+  try { await deleteTrackSample(String(n)); } catch { /* nothing stored */ }
+  renderTrackSamples();
+  buildBreakRows();
+});
+$('rec-to-track').addEventListener('click', async () => {
+  if (!take) return;
+  const n = Number($('rec-track').value);
+  const ok = await setTrackSample(n, take.name, await takeFile().arrayBuffer());
+  $('track-slot').value = String(n);
+  renderTrackSamples();
+  recStatus(ok ? `${take.name} is S${n} on the Breakbeat's sample track: pick it in the tracker's Smp column.` : 'Couldn\'t use that take.', !ok);
+});
+renderTrackSamples();
+loadTrackSamples().then(async (stored) => {
+  for (const [k, entry] of Object.entries(stored)) {
+    try { trackSamples[Number(k)] = { ...entry, buffer: await decodeTrackSample(entry.data) }; } catch { /* unreadable: skipped */ }
+  }
+  renderTrackSamples();
+  buildBreakRows();
+});
+
 $('rec-discard').addEventListener('click', () => { take = null; $('rec-take').hidden = true; recStatus(''); });
 
 let breakPeaks = { buffer: null, cols: 0, pk: null, max: 1 };
@@ -3988,7 +4151,8 @@ function buildBreakRows() {
     + '<span title="Chance: 0–100% that the step plays">C %</span>'
     + '<span title="Roll: retriggers per 16th step. 1 = 16ths, 2 = 32nds, 4 = 64ths (0 = off). With Roll until next it carries on through the empty rows.">R</span>'
     + '<span title="Roll chance: 0–100% that the roll happens (otherwise a single hit)">R %</span><span>Roll type</span><span>FX</span>'
-    + '<span title="FX chance: 0–100% that the effect happens (otherwise the step plays as normal)">FX %</span>';
+    + '<span title="FX chance: 0–100% that the effect happens (otherwise the step plays as normal)">FX %</span>'
+    + '<span title="Sample track: a one-shot (S1–S8, loaded in Sample track above or from the Recorder) fired on this step, alongside the slice">Smp</span>';
   wrap.append(head);
   const count = sliceCount();
   const number = (value, min, max, step, label, onChange) => {
@@ -4038,8 +4202,18 @@ function buildBreakRows() {
     }
     fx.value = row.fx;
     fx.addEventListener('change', () => editBreakRow(i, { fx: fx.value }));
-    for (const c of [slice, vol, pitch, chance, roll, rollChance, rollType, fx, fxChance]) c.addEventListener('focus', () => selectBreakRow(i));
-    el.append(num, slice, vol, pitch, chance, roll, rollChance, rollType, fx, fxChance);
+    const smp = document.createElement('select');
+    smp.setAttribute('aria-label', `Step ${i + 1} sample`);
+    smp.add(new Option('—', '0'));
+    for (let n = 1; n <= TRACK_SAMPLES; n++) {
+      const o = new Option(`S${n}`, String(n));
+      o.title = trackSamples[n]?.name || 'empty';
+      smp.add(o);
+    }
+    smp.value = String(row.smp || 0);
+    smp.addEventListener('change', () => editBreakRow(i, { smp: Number(smp.value) }));
+    for (const c of [slice, vol, pitch, chance, roll, rollChance, rollType, fx, fxChance, smp]) c.addEventListener('focus', () => selectBreakRow(i));
+    el.append(num, slice, vol, pitch, chance, roll, rollChance, rollType, fx, fxChance, smp);
     wrap.append(el);
     breakRowEls.push(el);
   });
@@ -4061,7 +4235,7 @@ function editBreakRow(i, patch) {
   settings.breakPatternAuto = false; // your edits stay put when the slicing changes
   const r = settings.breakPattern[i];
   const el = breakRowEls[i];
-  el.classList.toggle('filled', r.slice !== null || r.fx === 'cut');
+  el.classList.toggle('filled', r.slice !== null || r.fx === 'cut' || r.smp > 0);
   el.classList.toggle('slice-off', r.slice !== null && (settings.breakOff || []).includes(r.slice));
   el.classList.toggle('maybe', r.chance < 100);
   el.classList.toggle('rolled', r.roll > 1);
@@ -4075,7 +4249,7 @@ function selectBreakRow(i) {
   breakRowEls[i]?.classList.add('selected');
   breakRowEls.forEach((el, k) => {
     const r = settings.breakPattern[k];
-    el.classList.toggle('filled', r.slice !== null || r.fx === 'cut');
+    el.classList.toggle('filled', r.slice !== null || r.fx === 'cut' || r.smp > 0);
     el.classList.toggle('maybe', r.chance < 100);
     el.classList.toggle('rolled', r.roll > 1);
   });

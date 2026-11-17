@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=245" />
-  <link rel="stylesheet" href="mac.css?v=245" />
+  <link rel="stylesheet" href="styles.css?v=246" />
+  <link rel="stylesheet" href="mac.css?v=246" />
 </head>
 <body>
   <main class="device">
@@ -738,12 +738,21 @@
         </label>
         <button id="break-trim-reset" title="Use the whole file again">Whole file</button>
       </div>
+      <div class="row track-samples">
+        <span class="row-label" title="One-shot samples the tracker's Smp column fires on a step, alongside the break's slices">Sample track</span>
+        <select id="track-slot" aria-label="Sample track slot"></select>
+        <button id="track-play" title="Hear it">▶</button>
+        <button id="track-load" title="Load an audio file into this slot">Load…</button>
+        <input id="track-file" type="file" accept="audio/*" hidden />
+        <label class="field inline slider">Level <output id="track-level-val"></output><input id="track-level" type="range" min="0" max="150" /></label>
+        <button id="track-clear" title="Empty this slot">Clear</button>
+      </div>
       <div class="break-wave-box">
         <canvas id="break-wave" class="break-wave" title="Tap a slice to hear it · drag a slice line to move it · Shift-click or long-press to switch a slice off or on · drop a break here to load it"></canvas>
         <div id="break-now" class="break-now" hidden></div>
       </div>
       <button id="break-steps-toggle" class="fold-toggle" aria-expanded="true" aria-controls="break-rows" title="Show or hide the tracker steps (the pattern keeps playing)">Steps</button>
-      <div id="break-rows" class="tracker"></div>
+      <div class="tracker-box"><div id="break-rows" class="tracker"></div></div>
     </section>
 
     <div id="mixer" class="mixer-overlay" hidden role="dialog" aria-label="Mixer">
@@ -791,12 +800,20 @@
         <span id="rec-status" class="status" aria-live="polite"></span>
       </div>
       <div id="rec-take" class="rec-take" hidden>
-        <canvas id="rec-wave" class="break-trim-view rec-wave"></canvas>
+        <canvas id="rec-wave" class="break-trim-view rec-wave" title="Drag near either edge to trim the take: the faint parts are cut off"></canvas>
+        <div class="row">
+          <span class="row-label">Trim</span>
+          <span class="status" id="rec-trim-at"></span>
+          <button id="rec-trim-sound" title="Trim to where the sound is (the quiet before and after taken off)">Trim to sound</button>
+          <button id="rec-trim-reset" title="Use the whole take">Whole take</button>
+        </div>
         <div class="row">
           <button id="rec-play">▶ Play</button>
           <button id="rec-to-break" title="Load it into the Breakbeat slicer (a bar-synced take sets Break is to its length)">Use as break</button>
           <label class="field inline">Drum row <select id="rec-row"></select></label>
           <button id="rec-to-row" title="Put it on that row of the Your samples kit (switching to that kit)">Put on row</button>
+          <label class="field inline">Break track <select id="rec-track"></select></label>
+          <button id="rec-to-track" title="Put it in that slot of the Breakbeat's sample track (choose it in the tracker's Smp column)">Put on track</button>
           <button id="rec-download">Download WAV</button>
           <button id="rec-discard">Discard</button>
         </div>
@@ -972,6 +989,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=245"></script>
+  <script type="module" src="src/app.js?v=246"></script>
 </body>
 </html>

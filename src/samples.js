@@ -37,9 +37,9 @@ export function clearSamples() {
 }
 
 /** All stored samples as {slot: {name, data}}; empty if storage is unavailable. */
-export async function loadSamples() {
+export async function loadSamples(dbName = DB_NAME) {
   try {
-    const db = await openDb();
+    const db = await openDb(dbName);
     return await new Promise((resolve, reject) => {
       const out = {};
       const tx = db.transaction(STORE, 'readonly');
@@ -114,3 +114,9 @@ export async function loadScores() {
     return {};
   }
 }
+
+// ---- The breakbeat tracker's sample track: one-shots S1–S8 ({name, data}), in their own database.
+const TRACK_DB = 'arp-seq-track-samples';
+export const saveTrackSample = (slot, sample) => run('readwrite', (store) => store.put(sample, slot), TRACK_DB);
+export const deleteTrackSample = (slot) => run('readwrite', (store) => store.delete(slot), TRACK_DB);
+export const loadTrackSamples = () => loadSamples(TRACK_DB);
