@@ -8,30 +8,30 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=247';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=247';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=247';
-import { Midi } from './midi.js?v=247';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=247';
+} from './core.js?v=248';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=248';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=248';
+import { Midi } from './midi.js?v=248';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=248';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, presetConds, presetLens, TRIPLET_FEEL, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=247';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=247';
-import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=247';
-import { Invention, parseSubject } from './invention.js?v=247';
-import { ColtraneSolo } from './coltrane.js?v=247';
-import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=247';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=247';
-import { saveTrackSample, deleteTrackSample, loadTrackSamples, saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=247';
+} from './percussion.js?v=248';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=248';
+import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=248';
+import { Invention, parseSubject } from './invention.js?v=248';
+import { ColtraneSolo } from './coltrane.js?v=248';
+import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=248';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=248';
+import { saveTrackSample, deleteTrackSample, loadTrackSamples, saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=248';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers, rowThisTime,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, TRACK_SAMPLES, EXTRA_TRACKS, emptyCell, trackColumn, keepTracks, reverseBuffer, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=247';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=247';
+} from './breaks.js?v=248';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=248';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=247';
+} from './mono.js?v=248';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -404,7 +404,7 @@ function ensureAudio() {
       throwIn[fx] = ctx.createGain();
       throwIn[fx].connect(input);
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=247', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=248', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -3075,6 +3075,10 @@ function repairBreak() {
   settings.breakPattern = Array.isArray(settings.breakPattern) && settings.breakPattern.length
     ? resizePattern(settings.breakPattern, settings.breakSteps)
     : inOrder(settings.breakSteps, equalPoints(settings.breakSlices, 1), 1, settings.breakBars * 16);
+  // The other pattern slots made current too (R as hits per 8th note, Tracks 2–4).
+  for (const [slot, rows] of Object.entries(settings.breakSlots || {})) {
+    if (Array.isArray(rows) && rows.length) settings.breakSlots[slot] = resizePattern(rows, rows.length);
+  }
 }
 
 const sliceCount = () => breakPoints.length;
@@ -4195,7 +4199,7 @@ function buildBreakRows() {
   wrap.classList.toggle('sample-track', sampleTrack);
   head.innerHTML = `<span>Step</span><span${sampleTrack ? ' title="The sample (S1–S8, loaded in Samples above or from the Recorder)"' : ''}>${sampleTrack ? 'Sample' : 'Slice'}</span><span>Vol</span><span>Pitch</span>`
     + '<span title="Chance: 0–100% that the step plays">C %</span>'
-    + '<span title="Roll: retriggers per 16th step. 1 = 16ths, 2 = 32nds, 4 = 64ths (0 = off). With Roll until next it carries on through the empty rows.">R</span>'
+    + '<span title="Roll: hits per 8th note. 1 = 8ths, 2 = 16ths, 3 = 16th triplets, 4 = 32nds, 8 = 64ths (0 = off). With Roll until next it carries on through the empty rows (8ths and 16ths need that: on their own they fit one hit in the step).">R</span>'
     + '<span title="Roll chance: 0–100% that the roll happens (otherwise a single hit)">R %</span><span>Roll type</span>'
     + '<span title="FX: Dly / Rvb / Hrm throw the step into the Delay, Reverb or Harmonizer (at full send, on top of the section\'s own send); Rev plays it backwards; Cut stops the sound">FX</span>'
     + '<span title="FX chance: 0–100% that the effect happens (otherwise the step plays as normal)">FX %</span>';
@@ -4301,7 +4305,7 @@ function markRow(k) {
   if (!r || !el) return;
   el.classList.toggle('filled', isFilled(r));
   el.classList.toggle('maybe', r.chance < 100);
-  el.classList.toggle('rolled', r.roll > 1);
+  el.classList.toggle('rolled', r.roll > 0);
 }
 
 /** Dim tracker rows whose slice is switched off. */
