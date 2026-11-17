@@ -101,3 +101,15 @@ test('break Evolve options: 8th-note rolls instead of fast ones; no reverse', ()
   // and it shows in the tracker as what Evolve did
   assert.equal(breakRowChange(row, { ...row, eighths: 3 }), '8ths×3');
 });
+
+test('break Evolve: 16th-note rolls', () => {
+  const row = { slice: 3, vol: 100, pitch: 0, chance: 100, roll: 0, rollType: 'R', fx: '' };
+  let n = 0;
+  for (let seed = 1; seed < 2000; seed++) {
+    const e = evolveBreakRow(row, 1, prng(seed), 16, { rolls: 'sixteenths' });
+    assert.ok(!(e.roll > 0) && !e.eighths);
+    if (e.sixteenths) { n++; assert.ok(e.sixteenths >= 2 && e.sixteenths <= 4); }
+  }
+  assert.ok(n > 100);
+  assert.equal(breakRowChange(row, { ...row, sixteenths: 2 }), '16ths×2');
+});
