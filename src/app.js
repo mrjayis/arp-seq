@@ -8,30 +8,30 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=241';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=241';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=241';
-import { Midi } from './midi.js?v=241';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=241';
+} from './core.js?v=242';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=242';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=242';
+import { Midi } from './midi.js?v=242';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=242';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, presetConds, presetLens, TRIPLET_FEEL, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=241';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=241';
-import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=241';
-import { Invention, parseSubject } from './invention.js?v=241';
-import { ColtraneSolo } from './coltrane.js?v=241';
-import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=241';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=241';
-import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=241';
+} from './percussion.js?v=242';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=242';
+import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=242';
+import { Invention, parseSubject } from './invention.js?v=242';
+import { ColtraneSolo } from './coltrane.js?v=242';
+import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=242';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=242';
+import { saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=242';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers, rowThisTime,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=241';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=241';
+} from './breaks.js?v=242';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=242';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=241';
+} from './mono.js?v=242';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -232,7 +232,8 @@ const settings = {
   breakSlot: 'A',
   breakSlots: {},
   songOn: false,
-  songChain: ['A', 'A', 'B', 'A'], // one slot per bar
+  songChain: ['A', 'A', 'B', 'A'], // one section (A–D) per bar; runs of the same make the song's blocks
+  songAll: true, // the song moves every module through the sections (off: only drums and break)
   breakEvolve: 0, // 0–100: per-bar variation of the break pattern
   breakCustom: null, // slice points moved by hand: {key (what they were made for), points (fractions)}
   breakEvolveRolls: 'fast', // Evolve's rolls: 'fast' (32nds in the step), 'sixteenths' or 'eighths' (a stutter in 16ths or 8ths)
@@ -393,7 +394,7 @@ function ensureAudio() {
         sends[fx][src] = { pre, post };
       }
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=241', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=242', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -1104,6 +1105,7 @@ function onPulse(time, pulse, pulseDuration) {
   // A recalled scene takes over on a bar's downbeat, before anything on it is scheduled.
   if (pendingScene && pulse % (PPQN * 4) === 0) applyPendingScene();
   if (pendingSections.size && pulse % (PPQN * 4) === 0) applyPendingSections();
+  if (settings.songOn && settings.songAll && pulse % (PPQN * 4) === 0) songSections(pulse);
   arrPulse(pulse, time);
   if (settings.clockOut && settings.sync === 'internal') midi.clock(toPerfMs(time));
   stepProgression(time, pulse);
@@ -1136,7 +1138,7 @@ function onPulse(time, pulse, pulseDuration) {
     const mstep = pulseToStep(pulse, time, pulseDuration, RATES[settings.monoRate] || RATES['1/16'], swing);
     if (mstep) playMonoStep(human(mstep), pulse);
   }
-  if (settings.songOn && !settings.drumOn && settings.breakOn && pulse % (RATES['1/16'] * DRUM_STEPS) === 0) {
+  if (settings.songOn && pulse % (RATES['1/16'] * DRUM_STEPS) === 0) {
     uiEvents.push({ kind: 'song', time, bar: Math.floor(pulse / (RATES['1/16'] * DRUM_STEPS)) });
   }
   // Pad: keep the held chord in step with the notes, every 16th (and a held mono note in tune).
@@ -4296,48 +4298,73 @@ function renderSlotButtons() {
   }
 }
 
+/** The song as blocks: runs of bars on the same section, [{slot, start, bars}]. */
+function songBlocks() {
+  const out = [];
+  settings.songChain.forEach((s, i) => {
+    const last = out[out.length - 1];
+    if (last && last.slot === s) last.bars++;
+    else out.push({ slot: s, start: i, bars: 1 });
+  });
+  return out;
+}
+
 function renderSong() {
   $('song-on').setAttribute('aria-pressed', String(settings.songOn));
   $('song-on').textContent = settings.songOn ? 'On' : 'Off';
   $('song-panel').classList.toggle('off', !settings.songOn);
+  $('song-all').checked = settings.songAll !== false;
   const wrap = $('song-chain');
   wrap.replaceChildren();
-  settings.songChain.forEach((slot, i) => {
+  const chain = settings.songChain;
+  const edit = (fn) => { fn(); renderSong(); save(); };
+  songBlocks().forEach((blk, k) => {
     const chip = document.createElement('span');
-    chip.className = 'song-bar';
-    const b = document.createElement('button');
-    b.textContent = slot;
-    b.title = `Bar ${i + 1}: click to change the slot`;
-    b.addEventListener('click', () => {
-      settings.songChain[i] = SLOTS[(SLOTS.indexOf(slot) + 1) % SLOTS.length];
-      renderSong();
-      save();
-    });
+    chip.className = 'song-bar song-block';
+    chip.dataset.start = String(blk.start);
+    chip.dataset.bars = String(blk.bars);
+    const n = document.createElement('small');
+    n.textContent = String(k + 1);
+    const letter = document.createElement('button');
+    letter.className = 'song-letter';
+    letter.textContent = blk.slot;
+    letter.title = `Block ${k + 1}: section ${blk.slot} (tap to change)`;
+    letter.addEventListener('click', () => edit(() => {
+      const next = SLOTS[(SLOTS.indexOf(blk.slot) + 1) % SLOTS.length];
+      for (let i = blk.start; i < blk.start + blk.bars; i++) chain[i] = next;
+    }));
+    const less = document.createElement('button');
+    less.textContent = '−';
+    less.title = 'One bar shorter';
+    less.addEventListener('click', () => edit(() => chain.splice(blk.start + blk.bars - 1, 1)));
+    const len = document.createElement('span');
+    len.className = 'song-len';
+    len.textContent = `${blk.bars} bar${blk.bars === 1 ? '' : 's'}`;
+    const more = document.createElement('button');
+    more.textContent = '+';
+    more.title = 'One bar longer';
+    more.addEventListener('click', () => edit(() => chain.splice(blk.start + blk.bars, 0, blk.slot)));
     const x = document.createElement('button');
     x.className = 'song-x';
     x.textContent = '×';
-    x.title = `Remove bar ${i + 1}`;
-    x.addEventListener('click', () => {
-      settings.songChain.splice(i, 1);
-      renderSong();
-      save();
-    });
-    const n = document.createElement('small');
-    n.textContent = String(i + 1);
-    chip.append(n, b, x);
+    x.title = `Remove block ${k + 1}`;
+    x.addEventListener('click', () => edit(() => chain.splice(blk.start, blk.bars)));
+    chip.append(n, letter, less, len, more, x);
     wrap.append(chip);
   });
-  if (!settings.songChain.length) wrap.textContent = 'Empty: add bars below.';
+  if (!chain.length) wrap.textContent = 'Empty: add a block below.';
   showSongBar(songNowBar);
 }
 
 function showSongBar(bar) {
   songNowBar = bar;
   const len = settings.songChain.length;
-  $('song-chain').querySelectorAll('.song-bar').forEach((el, i) => {
-    el.classList.toggle('now', bar >= 0 && len > 0 && i === bar % len);
+  const at = bar >= 0 && len ? bar % len : -1;
+  $('song-chain').querySelectorAll('.song-block').forEach((el) => {
+    const s = Number(el.dataset.start);
+    el.classList.toggle('now', at >= s && at < s + Number(el.dataset.bars));
   });
-  $('song-pos').textContent = bar >= 0 && len ? `bar ${(bar % len) + 1} of ${len}` : '';
+  $('song-pos').textContent = at >= 0 ? `bar ${at + 1} of ${len}` : '';
   renderSlotButtons();
 }
 
@@ -4365,12 +4392,14 @@ for (const kind of ['drum', 'break']) {
 }
 $('song-on').addEventListener('click', () => {
   settings.songOn = !settings.songOn;
-  if (settings.songOn && !playing && settings.sync === 'internal' && (settings.drumOn || settings.breakOn)) setPlaying(true);
+  if (settings.songOn && !playing && settings.sync === 'internal') setPlaying(true);
   renderSong();
   save();
 });
+$('song-all').addEventListener('change', () => { settings.songAll = $('song-all').checked; save(); });
 document.querySelectorAll('[data-add-bar]').forEach((b) => b.addEventListener('click', () => {
-  settings.songChain.push(b.dataset.addBar);
+  const n = Number($('song-add-bars').value) || 4;
+  for (let i = 0; i < n; i++) settings.songChain.push(b.dataset.addBar);
   renderSong();
   save();
 }));
@@ -6139,6 +6168,19 @@ function requestSections(mods, slot) {
     else pendingSections.set(m, slot);
   }
   renderSections();
+}
+
+/** Song (Whole sections): on each bar line, every module to the section of the song's bar. */
+function songSections(pulse) {
+  const chain = settings.songChain;
+  if (!chain.length) return;
+  const want = chain[Math.floor(pulse / (PPQN * 4)) % chain.length];
+  const move = SECTION_ALL.filter((m) => sectionOf(m) !== want);
+  if (!move.length) return;
+  for (const m of move) switchSection(m, want);
+  pendingSections.clear();
+  uiEvents.length = 0;
+  afterSections();
 }
 
 function applyPendingSections() {

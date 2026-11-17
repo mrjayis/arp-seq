@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=241" />
-  <link rel="stylesheet" href="mac.css?v=241" />
+  <link rel="stylesheet" href="styles.css?v=242" />
+  <link rel="stylesheet" href="mac.css?v=242" />
 </head>
 <body>
   <main class="device">
@@ -806,17 +806,20 @@
     <section class="panel song" id="song-panel" aria-label="Song">
       <div class="seq-head">
         <h2>Song</h2>
-        <button id="song-on" aria-pressed="false" title="Play the chain: each bar plays its pattern slot in the Percussion and Breakbeat">Off</button>
+        <button id="song-on" aria-pressed="false" title="Play the song: each block switches to its section on its first bar">Off</button>
+        <label class="check" title="On: every module moves to the block's section (Arpeggiator, Sequencer, both voices, Progression, Chord rhythm, Mono, Percussion, Breakbeat). Off: only the Percussion and Breakbeat follow the song.">
+          <input id="song-all" type="checkbox" checked /> Whole sections</label>
         <span class="status" id="song-pos"></span>
       </div>
-      <p class="hint">Chain pattern slots A–D, one per bar, so the drums and break move through sections instead of
-        looping one bar. Click a bar to change its slot; × removes it. Edit each slot with the A–D buttons in the
-        Percussion and Breakbeat windows.</p>
+      <p class="hint">String sections together into a song: each block plays a section (A–D) for a number of bars, then the
+        next, looping round. Tap a block's letter to change its section, − and + to change its length, × to remove it. Set up
+        each section with the A–D buttons in the windows (or Section in the top bar).</p>
       <div id="song-chain" class="song-chain"></div>
       <div class="row">
-        <span class="field inline">Add bar</span>
+        <span class="field inline">Add</span>
         <button data-add-bar="A">+A</button><button data-add-bar="B">+B</button>
         <button data-add-bar="C">+C</button><button data-add-bar="D">+D</button>
+        <label class="field inline">for <select id="song-add-bars"><option value="1">1 bar</option><option value="2">2 bars</option><option value="4" selected>4 bars</option><option value="8">8 bars</option><option value="16">16 bars</option></select></label>
         <button id="song-clear">Clear</button>
       </div>
     </section>
@@ -966,6 +969,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=241"></script>
+  <script type="module" src="src/app.js?v=242"></script>
 </body>
 </html>
