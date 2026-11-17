@@ -2,7 +2,7 @@
 // a walking line in quarter notes, a two-feel, a bossa pattern, or just roots. Each
 // chord's line is planned when it starts, knowing the chord that comes next.
 
-import { CHORDS } from './core.js?v=246';
+import { CHORDS } from './core.js?v=247';
 
 export const BASS_STYLES = {
   auto: 'Auto (from the song)', walk: 'Walking', two: 'Two-feel', bossa: 'Bossa', roots: 'Roots',

@@ -88,7 +88,8 @@ export function evolveBreakRow(row, amount, rng, slices, opts = {}) {
     if (opts.rolls === 'sixteenths') return { ...row, roll: 0, sixteenths: 2 + Math.floor(rng() * 3) };
     return { ...row, roll: Math.max(row.roll || 0, 2 + Math.floor(rng() * 2)), rollType: 'R' };
   }
-  if (r < amount * 0.4) return opts.reverse === false ? row : { ...row, fx: row.fx === 'rev' ? '' : 'rev' };
+  // (a step thrown into an effect keeps its throw)
+  if (r < amount * 0.4) return opts.reverse === false || ['dly', 'rvb', 'hrm'].includes(row.fx) ? row : { ...row, fx: row.fx === 'rev' ? '' : 'rev' };
   return row;
 }
 

@@ -8,30 +8,30 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=246';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=246';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=246';
-import { Midi } from './midi.js?v=246';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=246';
+} from './core.js?v=247';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=247';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=247';
+import { Midi } from './midi.js?v=247';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=247';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, presetConds, presetLens, TRIPLET_FEEL, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=246';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=246';
-import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=246';
-import { Invention, parseSubject } from './invention.js?v=246';
-import { ColtraneSolo } from './coltrane.js?v=246';
-import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=246';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=246';
-import { saveTrackSample, deleteTrackSample, loadTrackSamples, saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=246';
+} from './percussion.js?v=247';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=247';
+import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=247';
+import { Invention, parseSubject } from './invention.js?v=247';
+import { ColtraneSolo } from './coltrane.js?v=247';
+import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=247';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=247';
+import { saveTrackSample, deleteTrackSample, loadTrackSamples, saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=247';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers, rowThisTime,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
-  trimSamples, fadeEdges, TRACK_SAMPLES, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=246';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=246';
+  trimSamples, fadeEdges, TRACK_SAMPLES, EXTRA_TRACKS, emptyCell, trackColumn, keepTracks, reverseBuffer, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
+} from './breaks.js?v=247';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=247';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=246';
+} from './mono.js?v=247';
 
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'arp-seq-settings-v1';
@@ -345,6 +345,8 @@ const buses = {};
 const sends = { delay: {}, reverb: {}, harm: {} }; // each send: {pre, post} gains (one is used)
 const faders = {}; // each section's Level, after its solo gate
 let harmIn = null; // sends mix here, into the Harmonizer worklet once it has loaded
+const throwIn = {}; // the tracker's FX throws, per effect: gated with the breakbeat (mute, solo, Arr)
+const trackPlayers = []; // Tracks 2–4 of the breakbeat tracker: one channel each
 let harmOut = null;
 let harmNode = null;
 let delayFx = null;
@@ -399,8 +401,10 @@ function ensureAudio() {
         taps.post[src].connect(post).connect(input);
         sends[fx][src] = { pre, post };
       }
+      throwIn[fx] = ctx.createGain();
+      throwIn[fx].connect(input);
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=246', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=247', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -412,6 +416,7 @@ function ensureAudio() {
     applyMono();
     breakPlayer = new BreakPlayer(ctx, buses.break);
     breakPlayer.setLevel(1); // its Level is the break fader
+    for (let k = 0; k < EXTRA_TRACKS; k++) trackPlayers[k] = new BreakPlayer(ctx, buses.break);
     if (breakBuffer) breakPlayer.setBuffer(breakBuffer);
     decodeAllSamples();
     chorus = new Chorus(ctx, buses.chords);
@@ -3058,6 +3063,7 @@ let breakSelected = 0; // tracker row that a click on the waveform writes into
 let breakNowStep = -1;
 let breakNowSlice = null;
 const breakRowEls = [];
+let trackView = 1; // the tracker track on show: 1 (the break's slices) or 2–4 (samples)
 
 onRecall(repairBreak)();
 function repairBreak() {
@@ -3105,7 +3111,7 @@ function slicingKey() {
 }
 
 function orderedPattern() {
-  return inOrder(settings.breakSteps, breakPoints, breakBuffer ? breakBuffer.duration : 1, settings.breakBars * 16);
+  return keepTracks(inOrder(settings.breakSteps, breakPoints, breakBuffer ? breakBuffer.duration : 1, settings.breakBars * 16), settings.breakPattern);
 }
 
 let breakRoll = null; // a roll carrying on through empty rows: {row, span, part}
@@ -3131,7 +3137,6 @@ function playBreakStep(step) {
   const row = rowThisTime(offed);
   let triggers;
   let rolling = false;
-  const skipSmp = padSkip.has(idx);
   if (padSkip.has(idx)) {
     // Just recorded from a pad that already sounded: don't play it twice.
     padSkip.delete(idx);
@@ -3167,11 +3172,7 @@ function playBreakStep(step) {
     breakRoll = null;
     triggers = [];
   }
-  // The sample track: the step's one-shot (S1–S8), with the row's own chance and volume.
-  const smpRow = pattern[idx];
-  if (smpRow?.smp > 0 && !skipSmp && Math.random() * 100 < (smpRow.chance ?? 100)) {
-    playTrackSample(smpRow.smp, step.time, (smpRow.vol ?? 100) / 100);
-  }
+  playExtraTracks(pattern, idx, step);
   let shown = null;
   if (breakPlayer && breakBuffer) {
     const rate = fitRate(breakBuffer.duration, settings.breakBars, currentBpm(), settings.breakPitch, settings.breakFit);
@@ -3184,10 +3185,49 @@ function playBreakStep(step) {
         reverse: tr.reverse,
         rate: rate * Math.pow(2, tr.pitch / 12),
         gain: tr.gain,
+        send: tr.send ? throwIn[tr.send] : null,
       });
     }
   }
   uiEvents.push({ kind: 'break', time: step.time, step: idx, slice: shown, change: rolling ? 'roll…' : breakRowChange(pattern[idx], row) });
+}
+
+// Tracks 2–4: samples (S1–S8) on a step, each track one channel (a new hit cuts its last),
+// with the same chance, rolls (held until the next filled row with Roll until next), and FX.
+const trackRolls = []; // per track: a roll carrying on, as breakRoll
+function playExtraTracks(pattern, idx, step) {
+  for (let k = 0; k < EXTRA_TRACKS; k++) {
+    const column = trackColumn(pattern, k + 2);
+    const row = rowThisTime(column[idx]);
+    let triggers;
+    if (isFilled(row)) {
+      const span = settings.breakRollHold && row.roll > 0 && row.fx !== 'cut' ? rollSpan(column, idx) : 1;
+      triggers = rowTriggers(row, step.duration, Math.random, { span, part: 0 });
+      trackRolls[k] = span > 1 && triggers.length ? { row, span, part: 0 } : null;
+    } else if (trackRolls[k] && trackRolls[k].part + 1 < trackRolls[k].span) {
+      const r = trackRolls[k];
+      r.part += 1;
+      triggers = rowTriggers(r.row, step.duration, Math.random, { span: r.span, part: r.part });
+    } else {
+      trackRolls[k] = null;
+      triggers = [];
+    }
+    const player = trackPlayers[k];
+    if (!player) continue;
+    for (const tr of triggers) {
+      if (tr.cut) { player.stop(step.time); continue; }
+      const s = trackSamples[tr.slice + 1];
+      if (!s?.buffer) continue;
+      player.trigger(step.time + tr.at, {
+        buffer: s.buffer,
+        reversed: s.reversed,
+        reverse: tr.reverse,
+        rate: Math.pow(2, tr.pitch / 12),
+        gain: tr.gain * (trackLevel(tr.slice + 1) / 100),
+        send: tr.send ? throwIn[tr.send] : null,
+      });
+    }
+  }
 }
 
 // ---- MPC-style pads: play slices live, and record them into the tracker.
@@ -3242,7 +3282,7 @@ function eraseRow(idx) {
 /** Change a tracker row and show it (the pads write here). */
 function writeBreakRow(idx, patch) {
   editBreakRow(idx, patch);
-  const el = breakRowEls[idx];
+  const el = trackView === 1 ? breakRowEls[idx] : null; // another track on show: just the data
   if (el) {
     const r = settings.breakPattern[idx];
     const sel = el.querySelector('select');
@@ -3955,7 +3995,7 @@ async function decodeTrackSample(data) {
 async function setTrackSample(n, name, data) {
   let buffer;
   try { buffer = await decodeTrackSample(data); } catch { return false; }
-  trackSamples[n] = { name, data, buffer };
+  trackSamples[n] = { name, data, buffer, reversed: reverseBuffer(buffer) };
   try { await saveTrackSample(String(n), { name, data }); } catch { /* storage unavailable: kept for this visit */ }
   renderTrackSamples();
   buildBreakRows(); // the Smp menus show the names
@@ -4018,12 +4058,15 @@ $('rec-to-track').addEventListener('click', async () => {
   const ok = await setTrackSample(n, take.name, await takeFile().arrayBuffer());
   $('track-slot').value = String(n);
   renderTrackSamples();
-  recStatus(ok ? `${take.name} is S${n} on the Breakbeat's sample track: pick it in the tracker's Smp column.` : 'Couldn\'t use that take.', !ok);
+  recStatus(ok ? `${take.name} is sample S${n} in the Breakbeat: pick it on Tracks 2–4 of the tracker.` : 'Couldn\'t use that take.', !ok);
 });
 renderTrackSamples();
 loadTrackSamples().then(async (stored) => {
   for (const [k, entry] of Object.entries(stored)) {
-    try { trackSamples[Number(k)] = { ...entry, buffer: await decodeTrackSample(entry.data) }; } catch { /* unreadable: skipped */ }
+    try {
+      const buffer = await decodeTrackSample(entry.data);
+      trackSamples[Number(k)] = { ...entry, buffer, reversed: reverseBuffer(buffer) };
+    } catch { /* unreadable: skipped */ }
   }
   renderTrackSamples();
   buildBreakRows();
@@ -4147,12 +4190,15 @@ function buildBreakRows() {
   wrap.style.setProperty('--trows', String(half + 1));
   const head = document.createElement('div');
   head.className = 'trow thead';
-  head.innerHTML = '<span>Step</span><span>Slice</span><span>Vol</span><span>Pitch</span>'
+  const sampleTrack = trackView > 1;
+  const rows = trackColumn(settings.breakPattern, trackView);
+  wrap.classList.toggle('sample-track', sampleTrack);
+  head.innerHTML = `<span>Step</span><span${sampleTrack ? ' title="The sample (S1–S8, loaded in Samples above or from the Recorder)"' : ''}>${sampleTrack ? 'Sample' : 'Slice'}</span><span>Vol</span><span>Pitch</span>`
     + '<span title="Chance: 0–100% that the step plays">C %</span>'
     + '<span title="Roll: retriggers per 16th step. 1 = 16ths, 2 = 32nds, 4 = 64ths (0 = off). With Roll until next it carries on through the empty rows.">R</span>'
-    + '<span title="Roll chance: 0–100% that the roll happens (otherwise a single hit)">R %</span><span>Roll type</span><span>FX</span>'
-    + '<span title="FX chance: 0–100% that the effect happens (otherwise the step plays as normal)">FX %</span>'
-    + '<span title="Sample track: a one-shot (S1–S8, loaded in Sample track above or from the Recorder) fired on this step, alongside the slice">Smp</span>';
+    + '<span title="Roll chance: 0–100% that the roll happens (otherwise a single hit)">R %</span><span>Roll type</span>'
+    + '<span title="FX: Dly / Rvb / Hrm throw the step into the Delay, Reverb or Harmonizer (at full send, on top of the section\'s own send); Rev plays it backwards; Cut stops the sound">FX</span>'
+    + '<span title="FX chance: 0–100% that the effect happens (otherwise the step plays as normal)">FX %</span>';
   wrap.append(head);
   const count = sliceCount();
   const number = (value, min, max, step, label, onChange) => {
@@ -4163,27 +4209,38 @@ function buildBreakRows() {
     el.addEventListener('change', () => onChange(Math.max(min, Math.min(max, Number(el.value) || 0))));
     return el;
   };
-  settings.breakPattern.forEach((row, i) => {
+  // Edits go to the track on show.
+  const edit = (i, patch) => (sampleTrack ? editTrackCell(i, trackView, patch) : editBreakRow(i, patch));
+  rows.forEach((row, i) => {
     if (settings.breakSteps > 16 && i === half) wrap.append(head.cloneNode(true)); // the second column's header
     const el = document.createElement('div');
     el.className = `trow${i % 4 === 0 ? ' beat' : ''}`;
     const num = document.createElement('button');
     num.className = 'tstep';
     num.textContent = String(i + 1).padStart(2, '0');
-    num.title = 'Select this row: then click a slice in the waveform to put it here';
+    num.title = sampleTrack ? 'Select this row' : 'Select this row: then click a slice in the waveform to put it here';
     num.addEventListener('click', () => selectBreakRow(i));
     const slice = document.createElement('select');
-    slice.setAttribute('aria-label', `Step ${i + 1} slice`);
+    slice.setAttribute('aria-label', `Step ${i + 1} ${sampleTrack ? 'sample' : 'slice'}`);
     slice.add(new Option('—', ''));
-    for (let s = 0; s < count; s++) slice.add(new Option(String(s + 1), String(s)));
-    slice.value = row.slice === null ? '' : String(Math.min(row.slice, count - 1));
-    slice.addEventListener('change', () => editBreakRow(i, { slice: slice.value === '' ? null : Number(slice.value) }));
-    const vol = number(row.vol, 0, 100, 5, `Step ${i + 1} volume`, (v) => editBreakRow(i, { vol: v }));
-    const pitch = number(row.pitch, -12, 12, 1, `Step ${i + 1} pitch`, (v) => editBreakRow(i, { pitch: v }));
-    const chance = number(row.chance, 0, 100, 5, `Step ${i + 1} chance`, (v) => editBreakRow(i, { chance: v }));
-    const roll = number(row.roll, 0, MAX_ROLL, 1, `Step ${i + 1} roll`, (v) => editBreakRow(i, { roll: v }));
-    const rollChance = number(row.rollChance ?? 100, 0, 100, 5, `Step ${i + 1} roll chance`, (v) => editBreakRow(i, { rollChance: v }));
-    const fxChance = number(row.fxChance ?? 100, 0, 100, 5, `Step ${i + 1} effect chance`, (v) => editBreakRow(i, { fxChance: v }));
+    if (sampleTrack) {
+      for (let s = 0; s < TRACK_SAMPLES; s++) {
+        const o = new Option(`S${s + 1}`, String(s));
+        o.title = trackSamples[s + 1]?.name || 'empty';
+        slice.add(o);
+      }
+      slice.value = row.slice === null ? '' : String(row.slice);
+    } else {
+      for (let s = 0; s < count; s++) slice.add(new Option(String(s + 1), String(s)));
+      slice.value = row.slice === null ? '' : String(Math.min(row.slice, count - 1));
+    }
+    slice.addEventListener('change', () => edit(i, { slice: slice.value === '' ? null : Number(slice.value) }));
+    const vol = number(row.vol, 0, 100, 5, `Step ${i + 1} volume`, (v) => edit(i, { vol: v }));
+    const pitch = number(row.pitch, -12, 12, 1, `Step ${i + 1} pitch`, (v) => edit(i, { pitch: v }));
+    const chance = number(row.chance, 0, 100, 5, `Step ${i + 1} chance`, (v) => edit(i, { chance: v }));
+    const roll = number(row.roll, 0, MAX_ROLL, 1, `Step ${i + 1} roll`, (v) => edit(i, { roll: v }));
+    const rollChance = number(row.rollChance ?? 100, 0, 100, 5, `Step ${i + 1} roll chance`, (v) => edit(i, { rollChance: v }));
+    const fxChance = number(row.fxChance ?? 100, 0, 100, 5, `Step ${i + 1} effect chance`, (v) => edit(i, { fxChance: v }));
     const rollType = document.createElement('select');
     rollType.setAttribute('aria-label', `Step ${i + 1} roll type`);
     for (const [k, label] of Object.entries(ROLL_TYPES)) {
@@ -4192,38 +4249,64 @@ function buildBreakRows() {
       rollType.add(o);
     }
     rollType.value = row.rollType;
-    rollType.addEventListener('change', () => editBreakRow(i, { rollType: rollType.value }));
+    rollType.addEventListener('change', () => edit(i, { rollType: rollType.value }));
     const fx = document.createElement('select');
     fx.setAttribute('aria-label', `Step ${i + 1} effect`);
     for (const [k, label] of Object.entries(BREAK_FX)) {
-      const o = new Option({ rev: 'Rev', cut: 'Cut' }[k] || label, k); // short, to fit the column
+      const o = new Option({ dly: 'Dly', rvb: 'Rvb', hrm: 'Hrm', rev: 'Rev', cut: 'Cut' }[k] || label, k); // short, to fit the column
       o.title = label;
       fx.add(o);
     }
     fx.value = row.fx;
-    fx.addEventListener('change', () => editBreakRow(i, { fx: fx.value }));
-    const smp = document.createElement('select');
-    smp.setAttribute('aria-label', `Step ${i + 1} sample`);
-    smp.add(new Option('—', '0'));
-    for (let n = 1; n <= TRACK_SAMPLES; n++) {
-      const o = new Option(`S${n}`, String(n));
-      o.title = trackSamples[n]?.name || 'empty';
-      smp.add(o);
-    }
-    smp.value = String(row.smp || 0);
-    smp.addEventListener('change', () => editBreakRow(i, { smp: Number(smp.value) }));
-    for (const c of [slice, vol, pitch, chance, roll, rollChance, rollType, fx, fxChance, smp]) c.addEventListener('focus', () => selectBreakRow(i));
-    el.append(num, slice, vol, pitch, chance, roll, rollChance, rollType, fx, fxChance, smp);
+    fx.addEventListener('change', () => edit(i, { fx: fx.value }));
+    for (const c of [slice, vol, pitch, chance, roll, rollChance, rollType, fx, fxChance]) c.addEventListener('focus', () => selectBreakRow(i));
+    el.append(num, slice, vol, pitch, chance, roll, rollChance, rollType, fx, fxChance);
     wrap.append(el);
     breakRowEls.push(el);
   });
   selectBreakRow(Math.min(breakSelected, settings.breakSteps - 1));
   markOffRows();
+  renderTrackTabs();
+}
+
+// ---- which tracker track is on show: 1 (the break's slices) or 2–4 (samples)
+function renderTrackTabs() {
+  document.querySelectorAll('#break-track-tabs [data-track]').forEach((b) => {
+    const k = Number(b.dataset.track);
+    b.setAttribute('aria-pressed', String(k === trackView));
+    // A dot on tracks with something on them.
+    const used = k === 1 ? settings.breakPattern.some(isFilled) : trackColumn(settings.breakPattern, k).some(isFilled);
+    b.classList.toggle('used', used);
+  });
+}
+document.querySelectorAll('#break-track-tabs [data-track]').forEach((b) => b.addEventListener('click', () => {
+  trackView = Number(b.dataset.track);
+  buildBreakRows();
+}));
+/** The cell on show at step k (Track 1's row, or a Tracks 2–4 cell). */
+const viewRow = (k) => (trackView === 1 ? settings.breakPattern[k] : settings.breakPattern[k]?.tracks?.[trackView - 2]);
+
+/** Change a Tracks 2–4 cell. */
+function editTrackCell(i, track, patch) {
+  const row = settings.breakPattern[i];
+  row.tracks = row.tracks.map((c, k) => (k === track - 2 ? { ...c, ...patch } : c));
+  markRow(i);
+  renderTrackTabs();
+  save();
+}
+/** A tracker row's look: filled, maybe, rolled (for the track on show). */
+function markRow(k) {
+  const r = viewRow(k);
+  const el = breakRowEls[k];
+  if (!r || !el) return;
+  el.classList.toggle('filled', isFilled(r));
+  el.classList.toggle('maybe', r.chance < 100);
+  el.classList.toggle('rolled', r.roll > 1);
 }
 
 /** Dim tracker rows whose slice is switched off. */
 function markOffRows() {
-  const off = settings.breakOff || [];
+  const off = trackView === 1 ? settings.breakOff || [] : [];
   breakRowEls.forEach((el, i) => {
     const s = settings.breakPattern[i]?.slice;
     el.classList.toggle('slice-off', s !== null && s !== undefined && off.includes(s));
@@ -4234,11 +4317,11 @@ function editBreakRow(i, patch) {
   settings.breakPattern[i] = { ...settings.breakPattern[i], ...patch };
   settings.breakPatternAuto = false; // your edits stay put when the slicing changes
   const r = settings.breakPattern[i];
-  const el = breakRowEls[i];
-  el.classList.toggle('filled', r.slice !== null || r.fx === 'cut' || r.smp > 0);
-  el.classList.toggle('slice-off', r.slice !== null && (settings.breakOff || []).includes(r.slice));
-  el.classList.toggle('maybe', r.chance < 100);
-  el.classList.toggle('rolled', r.roll > 1);
+  if (trackView === 1) {
+    markRow(i);
+    breakRowEls[i]?.classList.toggle('slice-off', r.slice !== null && (settings.breakOff || []).includes(r.slice));
+  }
+  renderTrackTabs();
   drawBreak();
   save();
 }
@@ -4247,12 +4330,7 @@ function selectBreakRow(i) {
   breakRowEls[breakSelected]?.classList.remove('selected');
   breakSelected = i;
   breakRowEls[i]?.classList.add('selected');
-  breakRowEls.forEach((el, k) => {
-    const r = settings.breakPattern[k];
-    el.classList.toggle('filled', r.slice !== null || r.fx === 'cut' || r.smp > 0);
-    el.classList.toggle('maybe', r.chance < 100);
-    el.classList.toggle('rolled', r.roll > 1);
-  });
+  breakRowEls.forEach((el, k) => markRow(k));
   drawBreak();
 }
 
@@ -4456,10 +4534,14 @@ document.querySelectorAll('[data-gen]').forEach((b) => b.addEventListener('click
   settings.breakPattern = {
     order: () => orderedPattern(),
     chop: () => chop(orderedPattern()),
-    random: () => randomize(steps, (settings.breakOff || []).length ? usableSlices(sliceCount(), settings.breakOff) : sliceCount()),
-    clear: () => resizePattern([], steps),
+    random: () => keepTracks(randomize(steps, (settings.breakOff || []).length ? usableSlices(sliceCount(), settings.breakOff) : sliceCount()), settings.breakPattern),
+    // Clear empties the track on show (Track 1: the slices; the others: their samples).
+    clear: () => (trackView === 1
+      ? keepTracks(resizePattern([], steps), settings.breakPattern)
+      : settings.breakPattern.map((r) => ({ ...r, tracks: r.tracks.map((c, k) => (k === trackView - 2 ? emptyCell() : c)) }))),
   }[b.dataset.gen]();
-  settings.breakPatternAuto = b.dataset.gen === 'order';
+  if (b.dataset.gen !== 'clear' || trackView === 1) settings.breakPatternAuto = b.dataset.gen === 'order';
+  if (b.dataset.gen !== 'clear') trackView = 1; // they make Track 1: show it
   buildBreakRows();
   save();
 }));
@@ -5849,6 +5931,49 @@ for (const fx of ['delay', 'reverb']) {
   }
 }
 
+// Each section's own sends, in its window: the same sends as in the Effects window (moving
+// either moves both).
+{
+  const SEND_PANELS = { arp: '.panel.arp', chords: '#chord-panel', bass: '#mono-panel', drums: '#drum-panel', break: '#break-panel' };
+  const FX_LABELS = { delay: 'Delay', reverb: 'Reverb', harm: 'Harmonizer' };
+  for (const [src, selector] of Object.entries(SEND_PANELS)) {
+    const panel = document.querySelector(selector);
+    if (!panel) continue;
+    const row = document.createElement('div');
+    row.className = 'row sends-row';
+    const head = document.createElement('span');
+    head.className = 'row-label';
+    head.textContent = 'Sends';
+    head.title = 'This section\'s sends into the Effects: the same sends as in the Effects window';
+    row.append(head);
+    for (const [fx, name] of Object.entries(FX_LABELS)) {
+      const twin = $(`${fx}-send-${src}`);
+      const key = `${fx}Send${SEND_SOURCES[src]}`;
+      const label = document.createElement('label');
+      label.className = 'field slider';
+      const out = document.createElement('output');
+      const input = document.createElement('input');
+      input.type = 'range';
+      input.min = '0';
+      input.max = '100';
+      input.id = `${src}-${fx}-send`;
+      label.append(`${name} `, out, input);
+      const show = () => { input.value = String(settings[key] ?? 0); out.textContent = `${settings[key] ?? 0}%`; };
+      input.addEventListener('input', () => {
+        twin.value = input.value;
+        twin.dispatchEvent(new Event('input')); // the Effects window's slider does the rest
+        show();
+      });
+      twin.addEventListener('input', show);
+      onRecall(show);
+      show();
+      row.append(label);
+    }
+    const before = src === 'break' ? panel.querySelector('.track-samples') : null;
+    if (before) before.before(row); else panel.append(row);
+  }
+}
+
 // ---------------------------------------------------------------- UI: oscillator 2
 function renderOsc2() {
   $('osc2-on').setAttribute('aria-pressed', String(settings.osc2On));
@@ -6799,6 +6924,13 @@ function applySolo(instant = false, at = null) {
     const v = (soloed.size === 0 || soloed.has(key)) && !arrMuted.has(key) && !settings.mixMute?.[key] ? 1 : 0;
     if (instant) bus.gain.value = v;
     else bus.gain.setTargetAtTime(v, t, 0.008);
+    // The tracker's effect throws go with the breakbeat.
+    if (key === 'break') {
+      for (const g of Object.values(throwIn)) {
+        if (instant) g.gain.value = v;
+        else g.gain.setTargetAtTime(v, t, 0.008);
+      }
+    }
   }
 }
 

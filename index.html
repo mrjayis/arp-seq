@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=246" />
-  <link rel="stylesheet" href="mac.css?v=246" />
+  <link rel="stylesheet" href="styles.css?v=247" />
+  <link rel="stylesheet" href="mac.css?v=247" />
 </head>
 <body>
   <main class="device">
@@ -739,8 +739,8 @@
         <button id="break-trim-reset" title="Use the whole file again">Whole file</button>
       </div>
       <div class="row track-samples">
-        <span class="row-label" title="One-shot samples the tracker's Smp column fires on a step, alongside the break's slices">Sample track</span>
-        <select id="track-slot" aria-label="Sample track slot"></select>
+        <span class="row-label" title="Eight sample slots, S1–S8, that Tracks 2–4 of the tracker play">Samples</span>
+        <select id="track-slot" aria-label="Sample slot"></select>
         <button id="track-play" title="Hear it">▶</button>
         <button id="track-load" title="Load an audio file into this slot">Load…</button>
         <input id="track-file" type="file" accept="audio/*" hidden />
@@ -751,7 +751,13 @@
         <canvas id="break-wave" class="break-wave" title="Tap a slice to hear it · drag a slice line to move it · Shift-click or long-press to switch a slice off or on · drop a break here to load it"></canvas>
         <div id="break-now" class="break-now" hidden></div>
       </div>
-      <button id="break-steps-toggle" class="fold-toggle" aria-expanded="true" aria-controls="break-rows" title="Show or hide the tracker steps (the pattern keeps playing)">Steps</button>
+      <div class="tracker-head">
+        <button id="break-steps-toggle" class="fold-toggle" aria-expanded="true" aria-controls="break-rows" title="Show or hide the tracker steps (the pattern keeps playing)">Steps</button>
+        <div class="field inline" title="Which track the tracker shows. Track 1 plays the break's slices; Tracks 2, 3 and 4 each play samples (S1–S8 in Samples above), all at once, with the same chance, roll and FX columns. Underlined: has something on it.">Track
+          <div class="seg slots" id="break-track-tabs" role="group" aria-label="Tracker track">
+            <button data-track="1" title="Track 1: the break's slices">1</button><button data-track="2" title="Track 2: samples">2</button><button data-track="3" title="Track 3: samples">3</button><button data-track="4" title="Track 4: samples">4</button>
+          </div></div>
+      </div>
       <div class="tracker-box"><div id="break-rows" class="tracker"></div></div>
     </section>
 
@@ -989,6 +995,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=246"></script>
+  <script type="module" src="src/app.js?v=247"></script>
 </body>
 </html>
