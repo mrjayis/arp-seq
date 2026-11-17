@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   fitRate, equalPoints, sliceOffset, sliceAt, detectTransients, rowTriggers, migrateRow,
   inOrder, chop, randomize, resizePattern, peaks, emptyRow,
+  keepTracks, trackColumn, EXTRA_TRACKS, TRACK_SAMPLES,
 } from '../src/breaks.js';
 
 const near = (a, b, eps = 1e-9) => Math.abs(a - b) < eps;
@@ -231,4 +232,35 @@ test('rolls and effects have their own chance', () => {
   // a Cut that doesn't happen leaves the row as if empty
   const cut = { slice: null, fx: 'cut', fxChance: 0 };
   assert.equal(rowThisTime(cut, Math.random).fx, '');
+});
+
+test('rows carry Tracks 2–4 cells; the old Smp column moves to Track 2', () => {
+  const r = migrateRow({ slice: 3, vol: 80, smp: 2 });
+  assert.equal(r.tracks.length, EXTRA_TRACKS);
+  assert.equal(r.tracks[0].slice, 1); // S2
+  assert.equal(r.tracks[0].vol, 80);
+  assert.equal(r.smp, undefined);
+  assert.equal(r.tracks[1].slice, null);
+  assert.equal(r.tracks[0].tracks, undefined);
+  // a sample number out of range is held to S1–S8
+  assert.equal(migrateRow({ tracks: [{ slice: 40 }] }).tracks[0].slice, TRACK_SAMPLES - 1);
+});
+
+test('the FX column throws into an effect, with its chance', () => {
+  const [hit] = rowTriggers({ slice: 0, fx: 'dly' }, 0.1);
+  assert.equal(hit.send, 'delay');
+  assert.equal(hit.reverse, false);
+  assert.equal(rowTriggers({ slice: 0, fx: 'rev' }, 0.1)[0].send, null);
+  assert.equal(rowTriggers({ slice: 0, fx: 'hrm', roll: 3 }, 0.3).every((t) => t.send === 'harm'), true);
+  assert.equal(rowThisTime({ slice: 0, fx: 'rvb', fxChance: 0 }).fx, '');
+  assert.equal(migrateRow({ fx: 'rvb' }).fx, 'rvb');
+});
+
+test('generators keep the other tracks; a track column reads them', () => {
+  const old = resizePattern([{ slice: 1, tracks: [{ slice: 4 }] }], 4);
+  const fresh = keepTracks(resizePattern([], 4), old);
+  assert.equal(fresh[0].slice, null);
+  assert.equal(trackColumn(fresh, 2)[0].slice, 4);
+  assert.equal(trackColumn(fresh, 1), fresh);
+  assert.equal(rollSpan(trackColumn(fresh, 2), 0), 4);
 });

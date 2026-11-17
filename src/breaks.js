@@ -5,7 +5,10 @@
 export const SLICE_COUNTS = [8, 16, 32];
 export const BREAK_STEPS = [16, 32, 48, 64, 96, 128]; // 16ths: up to 8 bars of pattern
 export const BREAK_BARS = Array.from({ length: 16 }, (_, i) => i + 1); // how long the loaded break is
-export const BREAK_FX = { '': '—', rev: 'Reverse', cut: 'Cut' };
+// The FX column: a throw into one of the Effects (the step's hits go to it at full send,
+// on top of the section's own send), or Reverse / Cut.
+export const BREAK_FX = { '': '—', dly: 'Delay send', rvb: 'Reverb send', hrm: 'Harmonizer send', rev: 'Reverse', cut: 'Cut' };
+export const FX_SENDS = { dly: 'delay', rvb: 'reverb', hrm: 'harm' };
 export const ROLL_TYPES = {
   R: 'R · regular',
   Rv: 'Rv · volume down',
@@ -18,13 +21,16 @@ export const MAX_ROLL = 16;
 export const MAX_TRANSIENT_SLICES = 32;
 
 // rollChance / fxChance: how likely the row's roll and its effect are to happen (100 = always).
-// smp: a sample-track one-shot (1–8, 0 = none) fired on the step alongside the slice.
+// tracks: the same step on Tracks 2–4, each a cell like the row itself whose "slice" is a
+// sample (0–7: S1–S8 of the sample slots).
 export const TRACK_SAMPLES = 8;
-export const emptyRow = () => ({ slice: null, vol: 100, pitch: 0, chance: 100, roll: 0, rollType: 'R', fx: '', rollChance: 100, fxChance: 100, smp: 0 });
+export const EXTRA_TRACKS = 3;
+export const emptyCell = () => ({ slice: null, vol: 100, pitch: 0, chance: 100, roll: 0, rollType: 'R', fx: '', rollChance: 100, fxChance: 100 });
+export const emptyRow = () => ({ ...emptyCell(), tracks: Array.from({ length: EXTRA_TRACKS }, emptyCell) });
 
-/** A stored row made current: old Ratchet ×2/×3/×4 effects become R rolls. */
-export function migrateRow(row) {
-  const out = { ...emptyRow(), ...row };
+/** One cell's fields made current: old Ratchet ×2/×3/×4 effects become R rolls. */
+function migrateCell(row) {
+  const out = { ...emptyCell(), ...row };
   const ratchet = { r2: 2, r3: 3, r4: 4 }[out.fx];
   if (ratchet) { out.roll = ratchet; out.rollType = 'R'; out.fx = ''; }
   if (!BREAK_FX[out.fx]) out.fx = '';
@@ -32,9 +38,42 @@ export function migrateRow(row) {
   out.chance = Math.max(0, Math.min(100, Number(out.chance ?? 100)));
   out.rollChance = Math.max(0, Math.min(100, Number(out.rollChance ?? 100)));
   out.fxChance = Math.max(0, Math.min(100, Number(out.fxChance ?? 100)));
-  out.smp = Math.max(0, Math.min(TRACK_SAMPLES, Math.round(Number(out.smp) || 0)));
   out.roll = Math.max(0, Math.min(MAX_ROLL, Math.round(Number(out.roll) || 0)));
   return out;
+}
+
+/** A stored row made current, with its Tracks 2–4 cells. */
+export function migrateRow(row) {
+  const out = migrateCell(row);
+  const tracks = Array.isArray(row?.tracks) ? row.tracks : [];
+  out.tracks = Array.from({ length: EXTRA_TRACKS }, (_, k) => {
+    const c = migrateCell(tracks[k]);
+    delete c.tracks;
+    if (c.slice !== null) c.slice = Math.max(0, Math.min(TRACK_SAMPLES - 1, Math.round(Number(c.slice) || 0)));
+    return c;
+  });
+  // The old Smp column (a one-shot beside the slice) moves to Track 2.
+  const smp = Math.round(Number(out.smp) || 0);
+  if (smp > 0 && out.tracks[0].slice === null) out.tracks[0] = { ...out.tracks[0], slice: Math.min(TRACK_SAMPLES, smp) - 1, vol: out.vol, chance: out.chance };
+  delete out.smp;
+  return out;
+}
+
+/** One track of a pattern as rows: track 1 is the rows themselves, 2–4 their cells. */
+export function trackColumn(pattern, track) {
+  return track <= 1 ? pattern : pattern.map((r) => r?.tracks?.[track - 2] || emptyCell());
+}
+
+/** Rows from a generator, keeping the Tracks 2–4 cells of `from` (step by step). */
+export function keepTracks(rows, from) {
+  return rows.map((r, i) => ({ ...r, tracks: structuredClone(from?.[i]?.tracks || emptyRow().tracks) }));
+}
+
+/** A buffer played backwards (for Reverse). */
+export function reverseBuffer(buffer) {
+  const rev = new AudioBuffer({ length: buffer.length, numberOfChannels: buffer.numberOfChannels, sampleRate: buffer.sampleRate });
+  for (let c = 0; c < buffer.numberOfChannels; c++) rev.copyToChannel(buffer.getChannelData(c).slice().reverse(), c);
+  return rev;
 }
 
 /** Playback rate that stretches a `bars`-long break to the tempo, times a pitch offset. */
@@ -175,7 +214,7 @@ export function rowTriggers(row, stepDur, rng = Math.random, { span = 1, part = 
       if (r.rollType === 'RR' && i > 0) pitch += Math.round(rng() * 24) - 12;
     }
     pitch = Math.max(-24, Math.min(24, pitch));
-    return { at: (j * stepDur) / n, slice: r.slice, reverse: r.fx === 'rev', pitch, gain: g };
+    return { at: (j * stepDur) / n, slice: r.slice, reverse: r.fx === 'rev', send: FX_SENDS[r.fx] || null, pitch, gain: g };
   });
 }
 
@@ -323,12 +362,17 @@ export class BreakPlayer {
     this.voice = null;
   }
 
-  /** Start the break at `offset` seconds into it (into the reversed copy if `reverse`). */
-  trigger(time, { offset = 0, reverse = false, rate = 1, gain = 1, duration = null }) {
-    if (!this.buffer) return;
+  /**
+   * Start the break at `offset` seconds into it (into the reversed copy if `reverse`).
+   * `buffer` / `reversed` play another sound on this channel instead (a sample track);
+   * `send` also feeds the hit to that node (an effect throw).
+   */
+  trigger(time, { offset = 0, reverse = false, rate = 1, gain = 1, duration = null, buffer = null, reversed = null, send = null }) {
+    const fwd = buffer || this.buffer;
+    if (!fwd) return;
     const t = Math.max(time, this.ctx.currentTime);
     this.stop(t);
-    const buf = reverse ? this.reversed : this.buffer;
+    const buf = reverse ? (buffer ? reversed : this.reversed) || fwd : fwd;
     const src = this.ctx.createBufferSource();
     src.buffer = buf;
     src.playbackRate.value = rate;
@@ -337,6 +381,7 @@ export class BreakPlayer {
     g.gain.setValueAtTime(0, t);
     g.gain.linearRampToValueAtTime(gain, t + 0.002);
     src.connect(g).connect(this.out);
+    if (send) g.connect(send);
     src.start(t, Math.max(0, Math.min(buf.duration - 0.001, offset)));
     this.voice = { src, gain: g, level: gain, start: t };
     if (duration !== null) {

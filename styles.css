@@ -593,14 +593,14 @@ input[type="range"]::-moz-range-thumb {
 .tracker.two-col { grid-template-columns: 1fr 1fr; grid-template-rows: repeat(var(--trows, 17), auto); grid-auto-flow: column; }
 /* The tracker never pushes the page wider: it scrolls in its own box if it must. */
 .tracker { overflow-x: auto; }
-/* Two columns of eleven fields need a wide panel: narrower, one column (the second header half-way down). */
+/* Two columns of ten fields need a wide panel: narrower, one column (the second header half-way down). */
 .tracker-box { container-type: inline-size; }
-@container (max-width: 1090px) {
+@container (max-width: 960px) {
   .tracker.two-col { grid-template-columns: 1fr; grid-template-rows: none; grid-auto-flow: row; }
 }
 .trow {
   display: grid;
-  grid-template-columns: 32px 52px 42px 40px 42px 36px 42px 52px minmax(52px, 1fr) 42px 50px;
+  grid-template-columns: 32px 52px 42px 40px 42px 36px 42px 52px minmax(52px, 1fr) 42px;
   gap: 4px;
   align-items: center;
   font-variant-numeric: tabular-nums;
@@ -852,6 +852,8 @@ h2.collapsible { cursor: pointer; user-select: none; }
 .panel.collapsed .collapse-btn::before { transform: translate(-30%, -50%) rotate(-90deg); }
 .panel.collapsed { padding-bottom: 10px; }
 /* A fold inside a window (the Breakbeat's tracker steps): a triangle and a label. */
+.tracker-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; margin-bottom: 6px; }
+.tracker-head .fold-toggle { margin-bottom: 0; }
 .fold-toggle {
   display: inline-flex; align-items: center; gap: 8px; min-height: 28px; padding: 2px 10px 2px 8px; margin-bottom: 6px;
 }
@@ -928,7 +930,7 @@ h2.collapsible { cursor: pointer; user-select: none; }
   .tracker.two-col { grid-template-columns: 1fr; grid-template-rows: none; grid-auto-flow: row; }
   /* Ten columns don't fit a phone: the tracker scrolls sideways in its own box. */
   .tracker { overflow-x: auto; -webkit-overflow-scrolling: touch; padding-bottom: 4px; }
-  .trow { grid-template-columns: 28px 40px 36px 34px 36px 30px 36px 40px minmax(50px, 1fr) 36px 46px; gap: 2px; min-width: 460px; }
+  .trow { grid-template-columns: 28px 40px 36px 34px 36px 30px 36px 40px minmax(50px, 1fr) 36px; gap: 2px; min-width: 410px; }
   .trow select, .trow input { font-size: 12px; padding: 1px 2px; }
   .break-gen { margin-left: 0; }
   .slot:nth-child(4n + 1) { border-left: 0; }
