@@ -5,8 +5,8 @@
 export const SLICE_COUNTS = [8, 16, 32];
 export const BREAK_STEPS = [16, 32, 48, 64, 96, 128]; // 16ths: up to 8 bars of pattern
 export const BREAK_BARS = Array.from({ length: 16 }, (_, i) => i + 1); // how long the loaded break is
-// The FX column: a throw into one of the Effects (the step's hits go to it at full send,
-// on top of the section's own send), or Reverse / Cut.
+// The FX column: a throw into one of the Effects (the step's hits go to it at the row's FX %,
+// on top of the section's own send), or Reverse / Cut (whose FX % is their chance).
 export const BREAK_FX = { '': '—', dly: 'Delay send', rvb: 'Reverb send', hrm: 'Harmonizer send', rev: 'Reverse', cut: 'Cut' };
 export const FX_SENDS = { dly: 'delay', rvb: 'reverb', hrm: 'harm' };
 export const ROLL_TYPES = {
@@ -184,7 +184,8 @@ export function rowThisTime(row, rng = Math.random) {
   const r = migrateRow(row);
   let out = row;
   if (r.roll > 0 && r.rollChance < 100 && rng() * 100 >= r.rollChance) out = { ...out, roll: 0 };
-  if (r.fx && r.fxChance < 100 && rng() * 100 >= r.fxChance) out = { ...out, fx: '' };
+  // FX %: for Reverse and Cut, the chance they happen (for a send it's the amount sent: see rowTriggers).
+  if ((r.fx === 'rev' || r.fx === 'cut') && r.fxChance < 100 && rng() * 100 >= r.fxChance) out = { ...out, fx: '' };
   return out;
 }
 
@@ -225,7 +226,9 @@ export function rowTriggers(row, stepDur, rng = Math.random, { span = 1, part = 
       if (r.rollType === 'RR' && i > 0) pitch += Math.round(rng() * 24) - 12;
     }
     pitch = Math.max(-24, Math.min(24, pitch));
-    return { at, slice: r.slice, reverse: r.fx === 'rev', send: FX_SENDS[r.fx] || null, pitch, gain: g };
+    // A send's FX % is how much of the hit goes to the effect.
+    const send = FX_SENDS[r.fx] && r.fxChance > 0 ? FX_SENDS[r.fx] : null;
+    return { at, slice: r.slice, reverse: r.fx === 'rev', send, sendLevel: send ? r.fxChance / 100 : 0, pitch, gain: g };
   });
 }
 
@@ -379,7 +382,7 @@ export class BreakPlayer {
    * `buffer` / `reversed` play another sound on this channel instead (a sample track);
    * `send` also feeds the hit to that node (an effect throw).
    */
-  trigger(time, { offset = 0, reverse = false, rate = 1, gain = 1, duration = null, buffer = null, reversed = null, send = null }) {
+  trigger(time, { offset = 0, reverse = false, rate = 1, gain = 1, duration = null, buffer = null, reversed = null, send = null, sendLevel = 1 }) {
     const fwd = buffer || this.buffer;
     if (!fwd) return;
     const t = Math.max(time, this.ctx.currentTime);
@@ -395,7 +398,7 @@ export class BreakPlayer {
     src.connect(g).connect(this.out);
     if (send) {
       const sg = this.ctx.createGain();
-      sg.gain.value = this.level ?? 1;
+      sg.gain.value = (this.level ?? 1) * sendLevel;
       g.connect(sg).connect(send);
     }
     src.start(t, Math.max(0, Math.min(buf.duration - 0.001, offset)));
