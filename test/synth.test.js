@@ -104,3 +104,16 @@ test('pulse width maps to a comparator threshold and PWM stays within 5–95%', 
   const c = pulseCurve(101);
   assert.ok(c[0] < -0.99 && c[100] > 0.99 && Math.abs(c[50]) < 1e-9);
 });
+
+import { softClipCurve } from '../src/synth.js';
+
+test('the soft clipper: straight below its knee, never past its ceiling', () => {
+  const n = 4097;
+  const c = softClipCurve(n, { range: 4, knee: 0.92, ceiling: 0.99 });
+  const at = (x) => c[Math.round(((x / 4 + 1) / 2) * (n - 1))];
+  assert.ok(Math.abs(at(0.5) - 0.5) < 0.002);
+  assert.ok(Math.abs(at(-0.9) + 0.9) < 0.002);
+  assert.ok(at(1.2) > 0.95 && at(1.2) < 0.99);
+  assert.ok(Math.max(...c.map(Math.abs)) <= 0.99 + 1e-6); // (float32)
+  for (let i = 1; i < n; i++) assert.ok(c[i] >= c[i - 1]); // never folds back
+});

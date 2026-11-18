@@ -8,31 +8,31 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=254';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=254';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=254';
-import { Midi } from './midi.js?v=254';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=254';
+} from './core.js?v=256';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=256';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=256';
+import { Midi } from './midi.js?v=256';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=256';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, presetConds, presetLens, TRIPLET_FEEL, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=254';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=254';
-import { AUDIO_ACCEPT, looksLikeAudio, decodeAudioFile } from './audiofile.js?v=254';
-import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=254';
-import { Invention, parseSubject } from './invention.js?v=254';
-import { ColtraneSolo } from './coltrane.js?v=254';
-import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=254';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=254';
-import { saveTrackSample, deleteTrackSample, loadTrackSamples, saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=254';
+} from './percussion.js?v=256';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=256';
+import { AUDIO_ACCEPT, looksLikeAudio, decodeAudioFile } from './audiofile.js?v=256';
+import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=256';
+import { Invention, parseSubject } from './invention.js?v=256';
+import { ColtraneSolo } from './coltrane.js?v=256';
+import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=256';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=256';
+import { saveTrackSample, deleteTrackSample, loadTrackSamples, saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=256';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers, rowThisTime,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, migrateRow, TRACK_SAMPLES, EXTRA_TRACKS, emptyCell, trackColumn, keepTracks, reverseBuffer, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=254';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=254';
+} from './breaks.js?v=256';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=256';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=254';
+} from './mono.js?v=256';
 
 const $ = (id) => document.getElementById(id);
 // Every audio file picker offers any kind of audio (and video, for its sound).
@@ -253,6 +253,7 @@ const settings = {
   breakFit: true, // stretch the break to the tempo
   breakPitch: 0,
   breakLevel: 80,
+  breakTrack1Level: 100, // Track 1 (the break's slices) on its own, % (the Level is the whole Breakbeat)
   breakPattern: null, // tracker rows: {slice, vol, pitch, chance, roll, rollType, fx}
   breakSliceMode: 'equal', // 'equal' | 'transient' (slices start on detected hits)
   breakSensitivity: 50,
@@ -415,7 +416,7 @@ function ensureAudio() {
       throwIn[fx] = ctx.createGain();
       throwIn[fx].connect(input);
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=254', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=256', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -426,7 +427,7 @@ function ensureAudio() {
     monoSynth = new MonoSynth(ctx, buses.bass);
     applyMono();
     breakPlayer = new BreakPlayer(ctx, buses.break);
-    breakPlayer.setLevel(1); // its Level is the break fader
+    breakPlayer.setLevel(settings.breakTrack1Level / 100); // Track 1's own volume (the break fader is the Level)
     for (let k = 0; k < EXTRA_TRACKS; k++) trackPlayers[k] = new BreakPlayer(ctx, buses.break);
     if (breakBuffer) breakPlayer.setBuffer(breakBuffer);
     decodeAllSamples();
@@ -3795,9 +3796,9 @@ async function recSourceNode(kind) {
   if (kind === 'app') {
     // Everything the app plays: the mix (after its compressor), or every separate pair.
     const tap = ctx.createGain();
-    synth.out.connect(tap);
+    synth.final.connect(tap);
     if (outRouter) for (const g of outRouter.gains.values()) g.connect(tap);
-    return { node: tap, stop: () => { try { synth.out.disconnect(tap); } catch { /* gone */ } if (outRouter) for (const g of outRouter.gains.values()) { try { g.disconnect(tap); } catch { /* gone */ } } } };
+    return { node: tap, stop: () => { try { synth.final.disconnect(tap); } catch { /* gone */ } if (outRouter) for (const g of outRouter.gains.values()) { try { g.disconnect(tap); } catch { /* gone */ } } } };
   }
   const clean = { echoCancellation: false, noiseSuppression: false, autoGainControl: false, channelCount: 2 };
   let stream;
@@ -4762,6 +4763,7 @@ $('break-roll-hold').addEventListener('change', () => { settings.breakRollHold =
 onRecall(() => { $('break-roll-hold').checked = settings.breakRollHold; });
 bindRange('break-pitch', 'breakPitch', (v) => `${v > 0 ? '+' : ''}${v.toFixed(1)} st`);
 bindRange('break-level', 'breakLevel', (v) => `${v}%`, applyFaders);
+bindRange('break-track1-level', 'breakTrack1Level', (v) => `${v}%`, (v) => breakPlayer?.setLevel(v / 100));
 bindRange('break-evolve', 'breakEvolve', (v) => (v ? `${v}%` : 'off'));
 bindSelect('break-evolve-rolls', 'breakEvolveRolls', [['fast', '32nds'], ['sixteenths', '16ths'], ['eighths', '8ths']], () => { breakStutter = null; });
 $('break-evolve-reverse').checked = settings.breakEvolveReverse !== false;

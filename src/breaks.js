@@ -347,6 +347,7 @@ export class BreakPlayer {
   }
 
   setLevel(v) {
+    this.level = v; // effect throws follow it too
     this.out.gain.setTargetAtTime(v, this.ctx.currentTime, 0.02);
   }
 
@@ -392,7 +393,11 @@ export class BreakPlayer {
     g.gain.setValueAtTime(0, t);
     g.gain.linearRampToValueAtTime(gain, t + 0.002);
     src.connect(g).connect(this.out);
-    if (send) g.connect(send);
+    if (send) {
+      const sg = this.ctx.createGain();
+      sg.gain.value = this.level ?? 1;
+      g.connect(sg).connect(send);
+    }
     src.start(t, Math.max(0, Math.min(buf.duration - 0.001, offset)));
     this.voice = { src, gain: g, level: gain, start: t };
     if (duration !== null) {
