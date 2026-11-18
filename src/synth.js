@@ -102,6 +102,23 @@ export function amGains(depth) {
   return { base: 1 - d / 2, swing: d / 2 };
 }
 
+/**
+ * The last stage's transfer curve: straight up to `knee`, then bending smoothly towards
+ * `ceiling` (never past it). The curve spans inputs of ±`range` (the WaveShaper maps
+ * −1..1 to the curve, so the signal is scaled down by `range` before it).
+ */
+export function softClipCurve(n = 4096, { range = 4, knee = 0.92, ceiling = 0.99 } = {}) {
+  const curve = new Float32Array(n);
+  const room = ceiling - knee;
+  for (let i = 0; i < n; i++) {
+    const x = ((i / (n - 1)) * 2 - 1) * range; // the real signal level
+    const a = Math.abs(x);
+    const y = a <= knee ? a : knee + room * Math.tanh((a - knee) / room);
+    curve[i] = Math.sign(x) * y;
+  }
+  return curve;
+}
+
 export class Synth {
   constructor(ctx) {
     this.ctx = ctx;
@@ -113,8 +130,24 @@ export class Synth {
     this.master.gain.value = 0.5;
     const comp = ctx.createDynamicsCompressor();
     comp.threshold.value = -12;
-    this.master.connect(comp).connect(ctx.destination);
+    // The limiter: a fast, hard compressor holding peaks just under full scale (Volume 100
+    // with everything playing would otherwise clip), then a soft clipper that catches
+    // whatever gets past it, so the output never goes over.
+    const limiter = ctx.createDynamicsCompressor();
+    limiter.threshold.value = -3;
+    limiter.knee.value = 0;
+    limiter.ratio.value = 20;
+    limiter.attack.value = 0.001;
+    limiter.release.value = 0.12;
+    const scale = ctx.createGain();
+    scale.gain.value = 1 / 4; // the clip curve covers ±4
+    const clip = ctx.createWaveShaper();
+    clip.curve = softClipCurve(4096, { range: 4 });
+    clip.oversample = '4x';
+    this.master.connect(comp).connect(limiter).connect(scale).connect(clip).connect(ctx.destination);
     this.out = comp; // shared bus for other sound sources (percussion)
+    this.limiter = limiter;
+    this.final = clip; // what reaches the speakers (the Recorder takes it from here)
     this.voices = new Set();
     this.monoLines = new Map(); // mono line name -> its most recent voice
   }
