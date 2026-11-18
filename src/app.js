@@ -8,31 +8,31 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=253';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=253';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=253';
-import { Midi } from './midi.js?v=253';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=253';
+} from './core.js?v=254';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=254';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=254';
+import { Midi } from './midi.js?v=254';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=254';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, presetConds, presetLens, TRIPLET_FEEL, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=253';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=253';
-import { AUDIO_ACCEPT, looksLikeAudio, decodeAudioFile } from './audiofile.js?v=253';
-import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=253';
-import { Invention, parseSubject } from './invention.js?v=253';
-import { ColtraneSolo } from './coltrane.js?v=253';
-import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=253';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=253';
-import { saveTrackSample, deleteTrackSample, loadTrackSamples, saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=253';
+} from './percussion.js?v=254';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=254';
+import { AUDIO_ACCEPT, looksLikeAudio, decodeAudioFile } from './audiofile.js?v=254';
+import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=254';
+import { Invention, parseSubject } from './invention.js?v=254';
+import { ColtraneSolo } from './coltrane.js?v=254';
+import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=254';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=254';
+import { saveTrackSample, deleteTrackSample, loadTrackSamples, saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=254';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers, rowThisTime,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, migrateRow, TRACK_SAMPLES, EXTRA_TRACKS, emptyCell, trackColumn, keepTracks, reverseBuffer, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=253';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=253';
+} from './breaks.js?v=254';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=254';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=253';
+} from './mono.js?v=254';
 
 const $ = (id) => document.getElementById(id);
 // Every audio file picker offers any kind of audio (and video, for its sound).
@@ -349,6 +349,7 @@ let chorus = null; // chord layer effect
 const buses = {};
 const sends = { delay: {}, reverb: {}, harm: {} }; // each send: {pre, post} gains (one is used)
 const faders = {}; // each section's Level, after its solo gate
+let drumsVolume = null; // the Volume for the percussion and breakbeat (they skip the synth's master gain)
 let harmIn = null; // sends mix here, into the Harmonizer worklet once it has loaded
 const throwIn = {}; // the tracker's FX throws, per effect: gated with the breakbeat (mute, solo, Arr)
 const trackPlayers = []; // Tracks 2–4 of the breakbeat tracker: one channel each
@@ -383,7 +384,12 @@ function ensureAudio() {
     buses.bass.connect(faders.bass).connect(synth.master);
     buses.perc.connect(faders.perc).connect(buses.drums);
     buses.break.connect(faders.break).connect(buses.drums);
-    buses.drums.connect(synth.out);
+    // The Volume for the drums: they join after the synth's master gain (so the compressor
+    // sees them at their own level), so the Volume needs its own stage here. At the default
+    // Volume (50%) it's unity, so the balance with the synths is as it was.
+    drumsVolume = ctx.createGain();
+    drumsVolume.gain.value = settings.volume / 50;
+    buses.drums.connect(drumsVolume).connect(synth.out);
     const taps = {
       // ("drums" is the percussion; the breakbeat has sends of its own)
       post: { arp: faders.arp, chords: faders.chords, bass: faders.bass, drums: faders.perc, break: faders.break },
@@ -409,7 +415,7 @@ function ensureAudio() {
       throwIn[fx] = ctx.createGain();
       throwIn[fx].connect(input);
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=253', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=254', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -1855,7 +1861,11 @@ bindLog('arp-attack', 'arpAttack', 2, 2000, arMs);
 bindLog('arp-release', 'arpRelease', 10, 4000, arMs);
 bindLog('osc2-attack', 'osc2Attack', 2, 2000, arMs);
 bindLog('osc2-release', 'osc2Release', 10, 4000, arMs);
-bindRange('volume', 'volume', (v) => `${v}%`, (v) => { synth?.setVolume(v / 100); outVolume(v / 100); });
+bindRange('volume', 'volume', (v) => `${v}%`, (v) => {
+  synth?.setVolume(v / 100);
+  if (drumsVolume) drumsVolume.gain.setTargetAtTime(v / 50, ctx.currentTime, 0.02);
+  outVolume(v / 100);
+});
 
 for (let c = 1; c <= 16; c++) {
   $('midi-in-ch').add(new Option(String(c), String(c - 1)));
