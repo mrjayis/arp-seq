@@ -8,31 +8,31 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=256';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=256';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=256';
-import { Midi } from './midi.js?v=256';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=256';
+} from './core.js?v=257';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=257';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=257';
+import { Midi } from './midi.js?v=257';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=257';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, presetConds, presetLens, TRIPLET_FEEL, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=256';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=256';
-import { AUDIO_ACCEPT, looksLikeAudio, decodeAudioFile } from './audiofile.js?v=256';
-import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=256';
-import { Invention, parseSubject } from './invention.js?v=256';
-import { ColtraneSolo } from './coltrane.js?v=256';
-import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=256';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=256';
-import { saveTrackSample, deleteTrackSample, loadTrackSamples, saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=256';
+} from './percussion.js?v=257';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=257';
+import { AUDIO_ACCEPT, looksLikeAudio, decodeAudioFile } from './audiofile.js?v=257';
+import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=257';
+import { Invention, parseSubject } from './invention.js?v=257';
+import { ColtraneSolo } from './coltrane.js?v=257';
+import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=257';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=257';
+import { saveTrackSample, deleteTrackSample, loadTrackSamples, saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=257';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers, rowThisTime,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, migrateRow, TRACK_SAMPLES, EXTRA_TRACKS, emptyCell, trackColumn, keepTracks, reverseBuffer, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=256';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=256';
+} from './breaks.js?v=257';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=257';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=256';
+} from './mono.js?v=257';
 
 const $ = (id) => document.getElementById(id);
 // Every audio file picker offers any kind of audio (and video, for its sound).
@@ -242,7 +242,7 @@ const settings = {
   songAll: true, // the song moves every module through the sections (off: only drums and break)
   breakEvolve: 0, // 0–100: per-bar variation of the break pattern
   trackLevels: {}, // the breakbeat sample track's levels, % per slot (1–8)
-  breakSlotEvolve: {}, // the other break slots' Evolve settings: {A: {evolve, rolls, reverse}, …}
+  breakSlotEvolve: {}, // the other break slots' Evolve and volume settings: {A: {evolve, rolls, reverse, level, track1}, …}
   breakCustom: null, // slice points moved by hand: {key (what they were made for), points (fractions)}
   breakEvolveRolls: 'fast', // Evolve's rolls: 'fast' (32nds in the step), 'sixteenths' or 'eighths' (a stutter in 16ths or 8ths)
   breakEvolveReverse: true, // Evolve may reverse a step
@@ -350,6 +350,7 @@ let chorus = null; // chord layer effect
 const buses = {};
 const sends = { delay: {}, reverb: {}, harm: {} }; // each send: {pre, post} gains (one is used)
 const faders = {}; // each section's Level, after its solo gate
+let breakVolumesNow = null; // the break volumes last scheduled (see breakVolumesAt)
 let drumsVolume = null; // the Volume for the percussion and breakbeat (they skip the synth's master gain)
 let harmIn = null; // sends mix here, into the Harmonizer worklet once it has loaded
 const throwIn = {}; // the tracker's FX throws, per effect: gated with the breakbeat (mute, solo, Arr)
@@ -416,7 +417,7 @@ function ensureAudio() {
       throwIn[fx] = ctx.createGain();
       throwIn[fx].connect(input);
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=256', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=257', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -3135,6 +3136,18 @@ function orderedPattern() {
   return keepTracks(inOrder(settings.breakSteps, breakPoints, breakBuffer ? breakBuffer.duration : 1, settings.breakBars * 16), settings.breakPattern);
 }
 
+/** The playing slot's volumes, from its step on (a song chain plays slots without switching to them). */
+function breakVolumesAt(v, time) {
+  if (!ctx || !faders.break) return;
+  const level = Number.isFinite(v.level) ? v.level : settings.breakLevel;
+  const track1 = Number.isFinite(v.track1) ? v.track1 : settings.breakTrack1Level;
+  if (breakVolumesNow && breakVolumesNow.level === level && breakVolumesNow.track1 === track1) return;
+  breakVolumesNow = { level, track1 };
+  faders.break.gain.setTargetAtTime(level / 100, time, 0.01);
+  breakPlayer?.out.gain.setTargetAtTime(track1 / 100, time, 0.01);
+  if (breakPlayer) breakPlayer.level = track1 / 100;
+}
+
 let breakRoll = null; // a roll carrying on through empty rows: {row, span, part}
 let breakStutter = null; // Evolve's 8th- or 16th-note roll: {row, every (steps), left (hits still to come), k (steps since it began)}
 
@@ -3148,6 +3161,7 @@ function playBreakStep(step) {
   const pattern = breakPatternFor(songSlot(step.stepNumber) || settings.breakSlot);
   const off = settings.breakOff || [];
   const variation = breakSlotVariation(songSlot(step.stepNumber) || settings.breakSlot);
+  breakVolumesAt(variation, step.time);
   const evolved = evolveBreakRow(pattern[idx], variation.evolve / 100,
     barRng(runSeed, Math.floor(step.stepNumber / settings.breakSteps), idx + 101),
     off.length ? usableSlices(sliceCount(), off) : sliceCount(),
@@ -4762,8 +4776,8 @@ $('break-roll-hold').checked = settings.breakRollHold;
 $('break-roll-hold').addEventListener('change', () => { settings.breakRollHold = $('break-roll-hold').checked; save(); });
 onRecall(() => { $('break-roll-hold').checked = settings.breakRollHold; });
 bindRange('break-pitch', 'breakPitch', (v) => `${v > 0 ? '+' : ''}${v.toFixed(1)} st`);
-bindRange('break-level', 'breakLevel', (v) => `${v}%`, applyFaders);
-bindRange('break-track1-level', 'breakTrack1Level', (v) => `${v}%`, (v) => breakPlayer?.setLevel(v / 100));
+bindRange('break-level', 'breakLevel', (v) => `${v}%`, () => { applyFaders(); breakVolumesNow = null; });
+bindRange('break-track1-level', 'breakTrack1Level', (v) => `${v}%`, (v) => { breakPlayer?.setLevel(v / 100); breakVolumesNow = null; });
 bindRange('break-evolve', 'breakEvolve', (v) => (v ? `${v}%` : 'off'));
 bindSelect('break-evolve-rolls', 'breakEvolveRolls', [['fast', '32nds'], ['sixteenths', '16ths'], ['eighths', '8ths']], () => { breakStutter = null; });
 $('break-evolve-reverse').checked = settings.breakEvolveReverse !== false;
@@ -4872,11 +4886,15 @@ function breakPatternFor(slot) {
 }
 
 // A break slot's Evolve settings (the edited slot's are the live ones).
-const breakVariationNow = () => ({ evolve: settings.breakEvolve, rolls: settings.breakEvolveRolls, reverse: settings.breakEvolveReverse });
+const breakVariationNow = () => ({ evolve: settings.breakEvolve, rolls: settings.breakEvolveRolls, reverse: settings.breakEvolveReverse, level: settings.breakLevel, track1: settings.breakTrack1Level });
 function breakSlotVariation(slot) {
   return (slot && slot !== settings.breakSlot && settings.breakSlotEvolve?.[slot]) || breakVariationNow();
 }
 function renderBreakEvolve() {
+  for (const [id, key] of [['break-level', 'breakLevel'], ['break-track1-level', 'breakTrack1Level']]) {
+    $(id).value = String(settings[key]);
+    $(`${id}-val`).textContent = `${settings[key]}%`;
+  }
   $('break-evolve').value = String(settings.breakEvolve);
   $('break-evolve-val').textContent = settings.breakEvolve ? `${settings.breakEvolve}%` : 'off';
   $('break-evolve-rolls').value = settings.breakEvolveRolls;
@@ -4889,8 +4907,15 @@ function selectBreakSlot(slot) {
   settings.breakSlotEvolve[settings.breakSlot] = breakVariationNow();
   const v = settings.breakSlotEvolve[slot]; // (a new slot keeps the current ones: a copy)
   delete settings.breakSlotEvolve[slot];
-  if (v) Object.assign(settings, { breakEvolve: v.evolve, breakEvolveRolls: v.rolls, breakEvolveReverse: v.reverse });
+  if (v) {
+    Object.assign(settings, { breakEvolve: v.evolve, breakEvolveRolls: v.rolls, breakEvolveReverse: v.reverse });
+    // Its volumes too (slots saved before they had them keep the current ones).
+    if (Number.isFinite(v.level)) settings.breakLevel = v.level;
+    if (Number.isFinite(v.track1)) settings.breakTrack1Level = v.track1;
+  }
   renderBreakEvolve();
+  applyFaders();
+  breakPlayer?.setLevel(settings.breakTrack1Level / 100);
   breakStutter = null;
   settings.breakSlots[settings.breakSlot] = structuredClone(settings.breakPattern);
   const next = settings.breakSlots[slot] ? structuredClone(settings.breakSlots[slot]) : structuredClone(settings.breakPattern);
@@ -5943,6 +5968,7 @@ const FADER_LEVELS = { arp: 'arpLevel', chords: 'chordLevel', bass: 'monoLevel',
 /** Each section's Level is its fader. */
 function applyFaders() {
   if (!ctx || !faders.arp) return;
+  breakVolumesNow = null; // set afresh: the break's next step schedules its slot's again
   for (const [k, key] of Object.entries(FADER_LEVELS)) faders[k].gain.setTargetAtTime(settings[key] / 100, ctx.currentTime, 0.015);
 }
 /** One send's level, from before or after the fader as its effect is set (Pre-fader). */
