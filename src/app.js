@@ -8,31 +8,31 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=252';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=252';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=252';
-import { Midi } from './midi.js?v=252';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=252';
+} from './core.js?v=253';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=253';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=253';
+import { Midi } from './midi.js?v=253';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=253';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, presetConds, presetLens, TRIPLET_FEEL, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=252';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=252';
-import { AUDIO_ACCEPT, looksLikeAudio, decodeAudioFile } from './audiofile.js?v=252';
-import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=252';
-import { Invention, parseSubject } from './invention.js?v=252';
-import { ColtraneSolo } from './coltrane.js?v=252';
-import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=252';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=252';
-import { saveTrackSample, deleteTrackSample, loadTrackSamples, saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=252';
+} from './percussion.js?v=253';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=253';
+import { AUDIO_ACCEPT, looksLikeAudio, decodeAudioFile } from './audiofile.js?v=253';
+import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=253';
+import { Invention, parseSubject } from './invention.js?v=253';
+import { ColtraneSolo } from './coltrane.js?v=253';
+import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=253';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=253';
+import { saveTrackSample, deleteTrackSample, loadTrackSamples, saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=253';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers, rowThisTime,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
-  trimSamples, fadeEdges, TRACK_SAMPLES, EXTRA_TRACKS, emptyCell, trackColumn, keepTracks, reverseBuffer, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=252';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=252';
+  trimSamples, fadeEdges, migrateRow, TRACK_SAMPLES, EXTRA_TRACKS, emptyCell, trackColumn, keepTracks, reverseBuffer, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
+} from './breaks.js?v=253';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=253';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=252';
+} from './mono.js?v=253';
 
 const $ = (id) => document.getElementById(id);
 // Every audio file picker offers any kind of audio (and video, for its sound).
@@ -409,7 +409,7 @@ function ensureAudio() {
       throwIn[fx] = ctx.createGain();
       throwIn[fx].connect(input);
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=252', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=253', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -4757,8 +4757,41 @@ bindSelect('break-evolve-rolls', 'breakEvolveRolls', [['fast', '32nds'], ['sixte
 $('break-evolve-reverse').checked = settings.breakEvolveReverse !== false;
 $('break-evolve-reverse').addEventListener('change', () => { settings.breakEvolveReverse = $('break-evolve-reverse').checked; save(); });
 onRecall(() => { $('break-evolve-reverse').checked = settings.breakEvolveReverse !== false; });
+/**
+ * In order / Chop / Randomize for Tracks 2–4: the track filled from the sample chosen in
+ * Samples, using its slices (or the whole sample, if it isn't sliced). In order places each
+ * slice on the 16th nearest where it falls in the sample, as long as the sample lasts at the
+ * tempo (its Loop is bars when fitted, else its own length), repeating.
+ */
+function sampleTrackPattern(gen, n) {
+  const s = trackSamples[n];
+  const steps = settings.breakSteps;
+  const points = s.points || [0];
+  const c = slicingOf(n);
+  const stepSec = 60 / currentBpm() / 4;
+  const loopSteps = c.fit ? c.bars * 16 : Math.max(1, Math.round(s.buffer.duration / sampleRate(n) / stepSec));
+  const ordered = () => inOrder(steps, points, s.buffer.duration, loopSteps);
+  const rows = gen === 'order' ? ordered() : gen === 'chop' ? chop(ordered()) : randomize(steps, points.length);
+  // Each generated row (slice k) becomes a cell playing sample n, slice k.
+  return rows.map((r) => {
+    const { tracks, ...fields } = migrateRow(r);
+    return r.slice === null || r.slice === undefined ? { ...emptyCell(), ...fields, slice: null, part: null }
+      : { ...emptyCell(), ...fields, slice: n - 1, part: s.points ? r.slice : null };
+  });
+}
+
 document.querySelectorAll('[data-gen]').forEach((b) => b.addEventListener('click', () => {
   const steps = settings.breakSteps;
+  if (trackView > 1 && b.dataset.gen !== 'clear') {
+    const n = Number($('track-slot').value);
+    if (!trackSamples[n]?.buffer) { updateBreakStatus(`Track ${trackView}: load a sample into S${n} (Samples) first.`); return; }
+    const cells = sampleTrackPattern(b.dataset.gen, n);
+    settings.breakPattern = settings.breakPattern.map((r, i) => ({ ...r, tracks: r.tracks.map((c, k) => (k === trackView - 2 ? cells[i] : c)) }));
+    updateBreakStatus(`Track ${trackView}: ${b.textContent.trim()} from S${n}${trackSamples[n].points ? ` (${trackSamples[n].points.length} slices)` : ' (unsliced: the whole sample)'}.`);
+    buildBreakRows();
+    save();
+    return;
+  }
   settings.breakPattern = {
     order: () => orderedPattern(),
     chop: () => chop(orderedPattern()),
@@ -4769,7 +4802,6 @@ document.querySelectorAll('[data-gen]').forEach((b) => b.addEventListener('click
       : settings.breakPattern.map((r) => ({ ...r, tracks: r.tracks.map((c, k) => (k === trackView - 2 ? emptyCell() : c)) }))),
   }[b.dataset.gen]();
   if (b.dataset.gen !== 'clear' || trackView === 1) settings.breakPatternAuto = b.dataset.gen === 'order';
-  if (b.dataset.gen !== 'clear') trackView = 1; // they make Track 1: show it
   buildBreakRows();
   save();
 }));
