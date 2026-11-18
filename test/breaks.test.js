@@ -246,13 +246,24 @@ test('rows carry Tracks 2–4 cells; the old Smp column moves to Track 2', () =>
   assert.equal(migrateRow({ tracks: [{ slice: 40 }] }).tracks[0].slice, TRACK_SAMPLES - 1);
 });
 
-test('the FX column throws into an effect, with its chance', () => {
+test('the FX column sends into an effect: FX % is the amount sent', () => {
   const [hit] = rowTriggers({ slice: 0, fx: 'dly' }, 0.1);
   assert.equal(hit.send, 'delay');
+  assert.equal(hit.sendLevel, 1);
   assert.equal(hit.reverse, false);
   assert.equal(rowTriggers({ slice: 0, fx: 'rev' }, 0.1)[0].send, null);
   assert.equal(rowTriggers({ slice: 0, fx: 'hrm', roll: 3 }, 0.3).every((t) => t.send === 'harm'), true);
-  assert.equal(rowThisTime({ slice: 0, fx: 'rvb', fxChance: 0 }).fx, '');
+  // 30%: every time, at 30% (not 30% of the time)
+  for (let i = 0; i < 50; i++) {
+    const row = rowThisTime({ slice: 0, fx: 'rvb', fxChance: 30 });
+    assert.equal(row.fx, 'rvb');
+    const [h] = rowTriggers(row, 0.1);
+    assert.equal(h.send, 'reverb');
+    assert.ok(Math.abs(h.sendLevel - 0.3) < 1e-9);
+  }
+  assert.equal(rowTriggers({ slice: 0, fx: 'rvb', fxChance: 0 }, 0.1)[0].send, null); // 0%: nothing sent
+  // Reverse and Cut: FX % is still their chance.
+  assert.equal(rowThisTime({ slice: 0, fx: 'rev', fxChance: 0 }).fx, '');
   assert.equal(migrateRow({ fx: 'rvb' }).fx, 'rvb');
 });
 

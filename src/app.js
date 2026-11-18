@@ -8,31 +8,31 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=257';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=257';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=257';
-import { Midi } from './midi.js?v=257';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=257';
+} from './core.js?v=258';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=258';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=258';
+import { Midi } from './midi.js?v=258';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=258';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, presetConds, presetLens, TRIPLET_FEEL, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=257';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=257';
-import { AUDIO_ACCEPT, looksLikeAudio, decodeAudioFile } from './audiofile.js?v=257';
-import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=257';
-import { Invention, parseSubject } from './invention.js?v=257';
-import { ColtraneSolo } from './coltrane.js?v=257';
-import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=257';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=257';
-import { saveTrackSample, deleteTrackSample, loadTrackSamples, saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=257';
+} from './percussion.js?v=258';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=258';
+import { AUDIO_ACCEPT, looksLikeAudio, decodeAudioFile } from './audiofile.js?v=258';
+import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=258';
+import { Invention, parseSubject } from './invention.js?v=258';
+import { ColtraneSolo } from './coltrane.js?v=258';
+import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=258';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=258';
+import { saveTrackSample, deleteTrackSample, loadTrackSamples, saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=258';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers, rowThisTime,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, migrateRow, TRACK_SAMPLES, EXTRA_TRACKS, emptyCell, trackColumn, keepTracks, reverseBuffer, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=257';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=257';
+} from './breaks.js?v=258';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=258';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=257';
+} from './mono.js?v=258';
 
 const $ = (id) => document.getElementById(id);
 // Every audio file picker offers any kind of audio (and video, for its sound).
@@ -417,7 +417,7 @@ function ensureAudio() {
       throwIn[fx] = ctx.createGain();
       throwIn[fx].connect(input);
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=257', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=258', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -3221,6 +3221,7 @@ function playBreakStep(step) {
         rate: rate * Math.pow(2, tr.pitch / 12),
         gain: tr.gain,
         send: tr.send ? throwIn[tr.send] : null,
+        sendLevel: tr.sendLevel,
       });
     }
   }
@@ -3265,6 +3266,7 @@ function playExtraTracks(pattern, idx, step) {
         rate: sampleRate(tr.slice + 1) * Math.pow(2, tr.pitch / 12),
         gain: tr.gain * (trackLevel(tr.slice + 1) / 100),
         send: tr.send ? throwIn[tr.send] : null,
+        sendLevel: tr.sendLevel,
       });
     }
   }
@@ -4436,8 +4438,8 @@ function buildBreakRows() {
     + '<span title="Chance: 0–100% that the step plays">C %</span>'
     + '<span title="Roll: hits per 8th note. 1 = 8ths, 2 = 16ths, 3 = 16th triplets, 4 = 32nds, 8 = 64ths (0 = off). With Roll until next it carries on through the empty rows (8ths and 16ths need that: on their own they fit one hit in the step).">R</span>'
     + '<span title="Roll chance: 0–100% that the roll happens (otherwise a single hit)">R %</span><span>Roll type</span>'
-    + '<span title="FX: Dly / Rvb / Hrm throw the step into the Delay, Reverb or Harmonizer (at full send, on top of the section\'s own send); Rev plays it backwards; Cut stops the sound">FX</span>'
-    + '<span title="FX chance: 0–100% that the effect happens (otherwise the step plays as normal)">FX %</span>';
+    + '<span title="FX: Dly / Rvb / Hrm send the step into the Delay, Reverb or Harmonizer (at FX %, on top of the section\'s own send); Rev plays it backwards; Cut stops the sound">FX</span>'
+    + '<span title="FX %: for Dly / Rvb / Hrm, how much of the step is sent to the effect (0–100%). For Rev and Cut, the chance they happen.">FX %</span>';
   wrap.append(head);
   const count = sliceCount();
   const number = (value, min, max, step, label, onChange) => {
@@ -4493,7 +4495,7 @@ function buildBreakRows() {
     const chance = number(row.chance, 0, 100, 5, `Step ${i + 1} chance`, (v) => edit(i, { chance: v }));
     const roll = number(row.roll, 0, MAX_ROLL, 1, `Step ${i + 1} roll`, (v) => edit(i, { roll: v }));
     const rollChance = number(row.rollChance ?? 100, 0, 100, 5, `Step ${i + 1} roll chance`, (v) => edit(i, { rollChance: v }));
-    const fxChance = number(row.fxChance ?? 100, 0, 100, 5, `Step ${i + 1} effect chance`, (v) => edit(i, { fxChance: v }));
+    const fxChance = number(row.fxChance ?? 100, 0, 100, 5, `Step ${i + 1} effect amount`, (v) => edit(i, { fxChance: v }));
     const rollType = document.createElement('select');
     rollType.setAttribute('aria-label', `Step ${i + 1} roll type`);
     for (const [k, label] of Object.entries(ROLL_TYPES)) {

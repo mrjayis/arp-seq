@@ -21,8 +21,8 @@
 //    dense, higher and more chromatic, with brief side-slips a half step "outside" that
 //    resolve straight back in.
 
-import { chordScale } from './bass.js?v=257';
-import { CHORDS } from './core.js?v=257';
+import { chordScale } from './bass.js?v=258';
+import { CHORDS } from './core.js?v=258';
 
 const PENT = [0, 2, 4, 7, 9]; // major pentatonic: 1 2 3 5 6
 
