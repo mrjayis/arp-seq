@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=258" />
-  <link rel="stylesheet" href="mac.css?v=258" />
+  <link rel="stylesheet" href="styles.css?v=261" />
+  <link rel="stylesheet" href="mac.css?v=261" />
 </head>
 <body>
   <main class="device">
@@ -710,6 +710,15 @@
       <div class="row break-tools">
         <button id="break-load">Load break…</button>
         <input id="break-file" type="file" accept="audio/*" hidden />
+        <button id="break-folder" title="Choose the folder your breaks are in: they're listed here to pick from (in Chrome or Edge on a computer, the folder is remembered)">Folder…</button>
+        <input id="break-folder-input" type="file" webkitdirectory multiple hidden />
+        <input id="break-files-input" type="file" multiple hidden />
+        <span id="break-lib-box" class="break-lib" hidden>
+          <button id="break-lib-prev" title="The break before" aria-label="Previous break">‹</button>
+          <select id="break-lib" aria-label="Breaks in your folder"></select>
+          <button id="break-lib-next" title="The next break" aria-label="Next break">›</button>
+          <button id="break-lib-to-sample" title="Put this break in the sample slot chosen in Samples (a second break for Tracks 2–4)">To S1</button>
+        </span>
         <button id="break-demo" title="A synthesized two-bar break">Demo break</button>
         <button id="break-pads" title="MPC-style pads: play the slices live, and record them into the tracker">Pads</button>
         <span class="status" id="break-status"></span>
@@ -1015,6 +1024,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=258"></script>
+  <script type="module" src="src/app.js?v=261"></script>
 </body>
 </html>

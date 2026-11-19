@@ -120,3 +120,21 @@ const TRACK_DB = 'arp-seq-track-samples';
 export const saveTrackSample = (slot, sample) => run('readwrite', (store) => store.put(sample, slot), TRACK_DB);
 export const deleteTrackSample = (slot) => run('readwrite', (store) => store.delete(slot), TRACK_DB);
 export const loadTrackSamples = () => loadSamples(TRACK_DB);
+
+// ---- The folder your breaks are in (Chrome / Edge: a folder handle, kept so the list comes back).
+const FOLDER_DB = 'arp-seq-break-folder';
+export const saveBreakFolder = (handle) => run('readwrite', (store) => store.put(handle, 'dir'), FOLDER_DB);
+export const clearBreakFolder = () => run('readwrite', (store) => store.delete('dir'), FOLDER_DB);
+export async function loadBreakFolder() {
+  try {
+    const db = await openDb(FOLDER_DB);
+    return await new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, 'readonly');
+      const req = tx.objectStore(STORE).get('dir');
+      tx.oncomplete = () => { db.close(); resolve(req.result || null); };
+      tx.onerror = () => { db.close(); reject(tx.error); };
+    });
+  } catch {
+    return null;
+  }
+}

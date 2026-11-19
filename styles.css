@@ -555,6 +555,9 @@ input[type="range"]::-moz-range-thumb {
 /* ---------- breakbeat slicer ---------- */
 .brk.off .tracker, .brk.off .break-wave { opacity: 0.6; }
 .break-tools { margin-bottom: 8px; }
+.break-lib { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; }
+.break-lib select { min-width: 0; max-width: min(320px, 60vw); }
+.break-lib button { min-width: 30px; }
 .break-trim { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; margin-bottom: 8px; }
 /* The trim controls fold away; open, they sit in the row's own flex layout. */
 .break-trim-body:not([hidden]) { display: contents; }

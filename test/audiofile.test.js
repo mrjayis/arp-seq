@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { parseWav, parseAiff, parseCaf, looksLikeAudio } from '../src/audiofile.js';
+import { parseWav, parseAiff, parseCaf, looksLikeAudio, hasAudioExtension } from '../src/audiofile.js';
 
 // Each fixture is the same 50 ms, 441 Hz sine (ffmpeg's, at 1/8 of full scale), 22.05 kHz,
 // written in a different format.
@@ -65,4 +65,11 @@ test('which files count as sound', () => {
   assert.ok(looksLikeAudio({ type: 'video/quicktime', name: 'clip.mov' }));
   assert.ok(looksLikeAudio({ type: 'audio/x-caf', name: 'x' }));
   assert.ok(!looksLikeAudio({ type: 'application/pdf', name: 'a.pdf' }));
+});
+
+test('a folder listing goes by extension', () => {
+  assert.ok(hasAudioExtension('Funky Drummer.FLAC'));
+  assert.ok(hasAudioExtension('Soul/Cold Sweat.aif'));
+  assert.ok(!hasAudioExtension('readme.txt'));
+  assert.ok(!hasAudioExtension('wav'));
 });
