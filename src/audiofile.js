@@ -11,6 +11,9 @@ export const AUDIO_ACCEPT = [
   '.aac', '.adts', '.alac', '.flac', '.ogg', '.oga', '.opus', '.webm', '.weba', '.mka', '.3gp', '.amr', '.wma', '.au', '.snd',
 ].join(',');
 
+/** Does a file name end in an audio (or video) extension? */
+export const hasAudioExtension = (name) => /\.(wav|wave|bwf|aif|aiff|aifc|caf|mp3|mp2|m4a|m4b|mp4|m4v|mov|aac|adts|alac|flac|ogg|oga|opus|webm|weba|mka|3gp|amr|wma|au|snd)$/i.test(name);
+
 /** Does a file look like sound (by type or name)? Files with no type get the benefit of the doubt. */
 export const looksLikeAudio = (file) => !file.type || /^(audio|video)\//.test(file.type)
   || /\.(wav|wave|bwf|aif|aiff|aifc|caf|mp3|mp2|m4a|m4b|mp4|m4v|mov|aac|adts|alac|flac|ogg|oga|opus|webm|weba|mka|3gp|amr|wma|au|snd)$/i.test(file.name);

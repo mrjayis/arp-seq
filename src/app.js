@@ -8,35 +8,35 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=258';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=258';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=258';
-import { Midi } from './midi.js?v=258';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=258';
+} from './core.js?v=261';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=261';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=261';
+import { Midi } from './midi.js?v=261';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=261';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, presetConds, presetLens, TRIPLET_FEEL, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=258';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=258';
-import { AUDIO_ACCEPT, looksLikeAudio, decodeAudioFile } from './audiofile.js?v=258';
-import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=258';
-import { Invention, parseSubject } from './invention.js?v=258';
-import { ColtraneSolo } from './coltrane.js?v=258';
-import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=258';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=258';
-import { saveTrackSample, deleteTrackSample, loadTrackSamples, saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=258';
+} from './percussion.js?v=261';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=261';
+import { AUDIO_ACCEPT, looksLikeAudio, hasAudioExtension, decodeAudioFile } from './audiofile.js?v=261';
+import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=261';
+import { Invention, parseSubject } from './invention.js?v=261';
+import { ColtraneSolo } from './coltrane.js?v=261';
+import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=261';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=261';
+import { saveBreakFolder, loadBreakFolder, saveTrackSample, deleteTrackSample, loadTrackSamples, saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=261';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers, rowThisTime,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, migrateRow, TRACK_SAMPLES, EXTRA_TRACKS, emptyCell, trackColumn, keepTracks, reverseBuffer, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=258';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=258';
+} from './breaks.js?v=261';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=261';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=258';
+} from './mono.js?v=261';
 
 const $ = (id) => document.getElementById(id);
 // Every audio file picker offers any kind of audio (and video, for its sound).
-for (const id of ['sample-file', 'break-file', 'track-file']) document.getElementById(id).accept = AUDIO_ACCEPT;
+for (const id of ['sample-file', 'break-file', 'track-file', 'break-files-input']) document.getElementById(id).accept = AUDIO_ACCEPT;
 const STORAGE_KEY = 'arp-seq-settings-v1';
 
 // ---------------------------------------------------------------- state
@@ -129,6 +129,8 @@ const settings = {
   outputMode: 'mix', // 'mix': one stereo pair; 'split': each module on its own pair of a multichannel output
   breakStepsOpen: true, // the Breakbeat tracker's steps shown (a view choice, not part of scenes)
   breakTrimOpen: true, // the Breakbeat's trim controls shown (likewise)
+  breakLibLast: '', // the break playing, if it's from your folder (its path in it)
+  breakLibSettings: {}, // each folder break's own settings, by path: {break: {trim, bars…}, sample: {trim, fit…}}
   trackSlicing: {}, // the Breakbeat samples' slicing, per slot (1–8): {mode: whole|equal|transient, slices, sensitivity}
   breakTrim: { start: 0, end: 1 }, // the part of the loaded break that's used (fractions of the file)
   arpLevel: 100, // %: overall level of the arp (both voices)
@@ -268,7 +270,7 @@ Object.assign(DEFAULTS, { drumKitStore: {}, sampleLevels: {}, sampleTunes: {}, d
 const DEVICE_KEYS = [
   'theme', 'themeV2', 'collapsed', 'showHelp', 'midiIn', 'midiInCh', 'midiOut', 'midiOutCh', 'volume', 'synthOn',
   'midiInChord', 'midiInMono', 'midiInDrums', 'midiInBreak', 'aftertouch', 'aftertouchDepth', 'midiMap',
-  'sync', 'baseOctave', 'chordRoot', 'monoKbOctave', 'breakStepsOpen', 'breakTrimOpen', 'trackSlicing', 'audioOut', 'outputMode', 'stableMode',
+  'sync', 'baseOctave', 'chordRoot', 'monoKbOctave', 'breakStepsOpen', 'breakTrimOpen', 'breakLibLast', 'breakLibSettings', 'trackSlicing', 'audioOut', 'outputMode', 'stableMode',
 ];
 // Live scene recall: each part of the page registers how to re-read its settings,
 // in page order (repairs first, then controls, then drawing). See recallLive().
@@ -417,7 +419,7 @@ function ensureAudio() {
       throwIn[fx] = ctx.createGain();
       throwIn[fx].connect(input);
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=258', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=261', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -3743,9 +3745,13 @@ function updateBreakStatus(message = '') {
   $('break-status').textContent = `${breakName} · ${breakBuffer.duration.toFixed(2)} s · ${settings.breakBars} bar${settings.breakBars > 1 ? 's' : ''} ≈ ${orig} BPM as recorded${hits}`;
 }
 
-async function loadBreakFile(file) {
+/**
+ * Load a break. `path`: it's from your folder (its settings are remembered by that path and
+ * come back with it). `restore`: reloading the break that was playing (the pattern stays).
+ */
+async function loadBreakFile(file, { path = '', restore = false } = {}) {
   if (!file) return;
-  ensureAudio();
+  if (!restore) ensureAudio();
   const data = await file.arrayBuffer();
   let buffer;
   try {
@@ -3754,8 +3760,13 @@ async function loadBreakFile(file) {
     updateBreakStatus(`Couldn't read ${file.name}: this browser can't decode that format (WAV, AIFF, MP3, M4A, FLAC and Ogg all work).`);
     return;
   }
-  settings.breakPatternAuto = true; // a new break starts in order
-  setBreak(buffer, file.name);
+  if (!restore) rememberBreakSettings(); // the one we're leaving
+  settings.breakLibLast = path;
+  const mem = path && settings.breakLibSettings?.[path]?.break;
+  if (mem && !restore) applyBreakFileSettings(mem);
+  if (!restore) settings.breakPatternAuto = true; // a new break starts in order
+  setBreak(buffer, file.name, { keepTrim: restore || !!mem });
+  if (path) $('break-lib').value = String(Math.max(0, breakLib.findIndex((b) => b.path === path)));
   save();
   try { await saveBreak({ name: file.name, data }); } catch { /* storage unavailable: kept for this visit */ }
 }
@@ -4066,12 +4077,15 @@ const trackLevel = (n) => settings.trackLevels[n] ?? 100;
 async function decodeTrackSample(data) {
   return decodeAudioFile(data);
 }
-async function setTrackSample(n, name, data) {
+async function setTrackSample(n, name, data, { path = '' } = {}) {
   let buffer;
   try { buffer = await decodeTrackSample(data); } catch { return false; }
+  rememberSampleSettings(n); // what it held, if that was a folder break
   trackSamples[n] = { name, data, source: buffer };
-  // A new sound starts untrimmed (its slicing and tempo settings stay).
-  settings.trackSlicing[n] = { ...slicingOf(n), trim: { start: 0, end: 1 } };
+  // A new sound starts untrimmed (its slicing and tempo settings stay), unless it's a folder
+  // break that's been in a slot before: then its own settings come back.
+  const mem = path && settings.breakLibSettings[path]?.sample;
+  settings.trackSlicing[n] = { ...slicingOf(n), trim: { start: 0, end: 1 }, ...(mem || {}), path };
   applySampleTrim(n);
   save();
   try { await saveTrackSample(String(n), { name, data }); } catch { /* storage unavailable: kept for this visit */ }
@@ -4284,6 +4298,8 @@ $('track-file').addEventListener('change', async () => {
 });
 $('track-clear').addEventListener('click', async () => {
   const n = Number($('track-slot').value);
+  rememberSampleSettings(n);
+  if (settings.trackSlicing[n]) settings.trackSlicing[n].path = '';
   delete trackSamples[n];
   if (trimTarget === 'sample' && trimSlot() === n) { trimTarget = 'break'; renderTrim(); }
   try { await deleteTrackSample(String(n)); } catch { /* nothing stored */ }
@@ -4834,6 +4850,150 @@ document.querySelectorAll('[data-gen]').forEach((b) => b.addEventListener('click
   save();
 }));
 $('break-load').addEventListener('click', () => $('break-file').click());
+
+// ---- Each folder break's own settings, remembered by its path in the folder.
+const BREAK_FILE_KEYS = ['breakTrim', 'breakBars', 'breakFit', 'breakPitch', 'breakSliceMode', 'breakSlices', 'breakSensitivity', 'breakCustom'];
+if (!settings.breakLibSettings || typeof settings.breakLibSettings !== 'object') settings.breakLibSettings = {};
+function rememberBreakSettings() {
+  const path = settings.breakLibLast;
+  if (!path) return;
+  const entry = settings.breakLibSettings[path] || {};
+  entry.break = Object.fromEntries(BREAK_FILE_KEYS.map((k) => [k, structuredClone(settings[k])]));
+  settings.breakLibSettings[path] = entry;
+}
+function applyBreakFileSettings(mem) {
+  for (const k of BREAK_FILE_KEYS) if (mem[k] !== undefined) settings[k] = structuredClone(mem[k]);
+  // The controls show them.
+  $('break-mode').value = settings.breakSliceMode;
+  $('break-slices').value = String(settings.breakSlices);
+  $('break-sensitivity').value = String(settings.breakSensitivity);
+  $('break-sensitivity-val').textContent = `${settings.breakSensitivity}%`;
+  $('break-bars').value = String(settings.breakBars);
+  $('break-fit').checked = settings.breakFit;
+  $('break-pitch').value = String(settings.breakPitch);
+  $('break-pitch-val').textContent = `${settings.breakPitch > 0 ? '+' : ''}${Number(settings.breakPitch).toFixed(1)} st`;
+}
+/** A sample slot's settings, kept with the folder break it holds. */
+function rememberSampleSettings(n) {
+  const path = settings.trackSlicing?.[n]?.path;
+  if (!path) return;
+  const { trim, fit, bars, pitch, mode, slices, sensitivity } = slicingOf(n);
+  settings.breakLibSettings[path] = { ...(settings.breakLibSettings[path] || {}), sample: { trim, fit, bars, pitch, mode, slices, sensitivity } };
+}
+
+// ---- Your breaks folder: every audio file in it (and its folders) listed to pick from.
+// Chrome / Edge on a computer: a folder handle, remembered (the browser asks again for
+// permission on a later visit). Elsewhere: the folder (or files, on an iPhone) for this visit.
+let breakLib = []; // [{path, file?, handle?}]
+let breakDir = null;
+const naturally = (a, b) => a.path.localeCompare(b.path, undefined, { numeric: true, sensitivity: 'base' });
+async function listFolder(dir, prefix = '', depth = 0, out = []) {
+  for await (const entry of dir.values()) {
+    if (entry.name.startsWith('.')) continue;
+    if (entry.kind === 'directory' && depth < 4) await listFolder(entry, `${prefix}${entry.name}/`, depth + 1, out);
+    else if (entry.kind === 'file' && hasAudioExtension(entry.name)) out.push({ path: prefix + entry.name, handle: entry });
+  }
+  return out;
+}
+function renderBreakLib() {
+  const box = $('break-lib-box');
+  box.hidden = !breakLib.length;
+  const sel = $('break-lib');
+  sel.replaceChildren();
+  breakLib.forEach((b, i) => sel.add(new Option(b.path.replace(/\.[a-z0-9]+$/i, ''), String(i))));
+  const at = breakLib.findIndex((b) => b.path === settings.breakLibLast);
+  sel.value = String(Math.max(0, at));
+  $('break-lib-to-sample').textContent = `To S${Number($('track-slot').value) || 1}`;
+  $('break-folder').textContent = breakDir ? `${breakDir.name}…` : 'Folder…';
+}
+function setBreakLib(list, dir = null, { restoring = false } = {}) {
+  breakLib = list.sort(naturally);
+  breakDir = dir;
+  renderBreakLib();
+  if (restoring) reloadFromFolder();
+  updateBreakStatus(breakLib.length ? `${breakLib.length} break${breakLib.length > 1 ? 's' : ''} in ${dir ? dir.name : 'your folder'}: pick one from the list.` : 'No audio files in that folder.');
+}
+const libFile = async (b) => b.file || b.handle.getFile();
+/**
+ * The folder open again (a later visit): the break that was playing, and folder breaks in
+ * the sample slots, load from it (fresh), with their settings. Until then, the copies kept in
+ * this browser stand in.
+ */
+async function reloadFromFolder() {
+  const find = (path) => breakLib.find((b) => b.path === path);
+  const main = settings.breakLibLast && find(settings.breakLibLast);
+  if (main) { try { await loadBreakFile(await libFile(main), { path: main.path, restore: true }); } catch { /* the copy stays */ } }
+  for (let n = 1; n <= TRACK_SAMPLES; n++) {
+    const b = settings.trackSlicing?.[n]?.path && find(settings.trackSlicing[n].path);
+    if (!b) continue;
+    try {
+      const data = await (await libFile(b)).arrayBuffer();
+      const source = await decodeTrackSample(data);
+      trackSamples[n] = { name: b.path.split('/').pop(), data, source };
+      applySampleTrim(n, { quiet: true }); // its trim, fit and slicing as they were
+      try { await saveTrackSample(String(n), { name: trackSamples[n].name, data }); } catch { /* copy not updated */ }
+    } catch { /* the copy stays */ }
+  }
+  renderTrackSamples();
+  buildBreakRows();
+}
+async function pickFromLib(i) {
+  const b = breakLib[i];
+  if (!b) return;
+  $('break-lib').value = String(i);
+  try { await loadBreakFile(await libFile(b), { path: b.path }); } catch { updateBreakStatus(`Couldn't open ${b.path} (has the folder moved?).`); }
+}
+$('break-lib').addEventListener('change', () => pickFromLib(Number($('break-lib').value)));
+$('break-lib-prev').addEventListener('click', () => pickFromLib((Number($('break-lib').value) - 1 + breakLib.length) % breakLib.length));
+$('break-lib-next').addEventListener('click', () => pickFromLib((Number($('break-lib').value) + 1) % breakLib.length));
+$('break-lib-to-sample').addEventListener('click', async () => {
+  const b = breakLib[Number($('break-lib').value)];
+  const n = Number($('track-slot').value) || 1;
+  if (!b) return;
+  try {
+    const ok = await setTrackSample(n, b.path.split('/').pop(), await (await libFile(b)).arrayBuffer(), { path: b.path });
+    updateBreakStatus(ok ? `${b.path} is in S${n}: trim it, fit it and slice it in Samples, and play it on Tracks 2–4.` : `Couldn't read ${b.path}.`);
+  } catch { updateBreakStatus(`Couldn't open ${b.path}.`); }
+});
+$('track-slot').addEventListener('change', () => { $('break-lib-to-sample').textContent = `To S${Number($('track-slot').value) || 1}`; });
+const isTouchApple = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+$('break-folder').addEventListener('click', async () => {
+  if (window.showDirectoryPicker) {
+    try {
+      // A remembered folder: ask again for permission to read it (needs this tap).
+      if (breakDir && !breakLib.length && (await breakDir.requestPermission?.({ mode: 'read' })) === 'granted') {
+        setBreakLib(await listFolder(breakDir), breakDir, { restoring: true });
+        return;
+      }
+      const dir = await window.showDirectoryPicker({ id: 'arp-seq-breaks', mode: 'read' });
+      try { await saveBreakFolder(dir); } catch { /* not kept: for this visit */ }
+      setBreakLib(await listFolder(dir), dir);
+    } catch (e) {
+      if (e?.name !== 'AbortError') updateBreakStatus(`Couldn't open that folder${e?.message ? ` (${e.message})` : ''}.`);
+    }
+    return;
+  }
+  // No folder access in this browser: a folder upload (or, on an iPhone or iPad, choose the files).
+  $(isTouchApple ? 'break-files-input' : 'break-folder-input').click();
+});
+for (const id of ['break-folder-input', 'break-files-input']) {
+  $(id).addEventListener('change', () => {
+    const files = [...$(id).files].filter((f) => looksLikeAudio(f) && !f.name.startsWith('.'));
+    $(id).value = '';
+    if (!files.length) { updateBreakStatus('No audio files there.'); return; }
+    setBreakLib(files.map((f) => ({ path: (f.webkitRelativePath || f.name).split('/').slice(f.webkitRelativePath ? 1 : 0).join('/'), file: f })), null, { restoring: true });
+  });
+}
+// The remembered folder: listed straight away if the browser still allows it, else on a tap.
+loadBreakFolder().then(async (dir) => {
+  if (!dir) return;
+  breakDir = dir;
+  try {
+    if ((await dir.queryPermission?.({ mode: 'read' })) === 'granted') { setBreakLib(await listFolder(dir), dir, { restoring: true }); return; }
+  } catch { /* gone */ }
+  renderBreakLib();
+  $('break-folder').title = `Tap to open your breaks folder (${dir.name}) again`;
+});
 $('break-file').addEventListener('change', () => {
   loadBreakFile($('break-file').files[0]);
   $('break-file').value = '';
@@ -4841,6 +5001,8 @@ $('break-file').addEventListener('change', () => {
 $('break-wave').addEventListener('dragover', (e) => e.preventDefault());
 $('break-wave').addEventListener('drop', (e) => { e.preventDefault(); loadBreakFile(e.dataTransfer.files[0]); });
 $('break-demo').addEventListener('click', async () => {
+  rememberBreakSettings();
+  settings.breakLibLast = '';
   settings.breakBars = 2;
   $('break-bars').value = '2';
   settings.breakPatternAuto = true;
