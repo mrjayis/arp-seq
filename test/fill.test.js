@@ -126,3 +126,44 @@ test('short or odd Tonnetz walks still come round, with a double move or two on 
     }
   }
 });
+
+import { negativePc, negativeChord, nameChord, negativeFill } from '../src/fill.js';
+import { CHORDS } from '../src/core.js';
+
+test('negative harmony: notes mirrored across the tonic–fifth axis', () => {
+  // In C: C↔G, D↔F, E↔E♭, A↔B♭, B↔A♭, F♯↔C♯
+  assert.deepEqual([0, 2, 4, 9, 11, 6].map((n) => negativePc(n, 0)), [7, 5, 3, 10, 8, 1]);
+  assert.equal(negativePc(9, 9), 4); // in A: A ↔ E
+  const neg = (root, type) => { const c = negativeChord({ root, type }, 0); return `${c.root}${c.type}`; };
+  assert.equal(neg(0, 'maj'), '0min'); // C → Cm
+  assert.equal(neg(7, 'maj'), '5min'); // G → Fm
+  assert.equal(neg(7, 'dom7'), '5min6'); // G7 → Fm6
+  assert.equal(neg(5, 'maj'), '7min'); // F → Gm
+  assert.equal(neg(9, 'min'), '3maj'); // Am → E♭
+  assert.equal(neg(0, 'maj7'), '8maj7'); // Cmaj7 → A♭maj7
+  assert.equal(neg(2, 'dom7'), '10min6'); // D7 → B♭m6
+  assert.equal(neg(0, 'sus4'), '0sus2');
+  // twice round: the same notes again (sometimes under another name: Bø comes back as Dm6)
+  const notes = (c) => CHORDS[c.type].intervals.map((i) => (c.root + i) % 12).sort((a, b) => a - b).join(',');
+  for (const [root, type] of [[0, 'maj'], [7, 'dom7'], [2, 'min7'], [11, 'hdim7'], [5, 'maj7'], [9, 'min9'], [4, 'min'], [0, 'sus4']]) {
+    assert.equal(notes(negativeChord(negativeChord({ root, type }, 0), 0)), notes({ root, type }), `${root}${type}`);
+  }
+  assert.deepEqual(nameChord(new Set([2, 5, 9, 0])), { root: 2, type: 'min7' });
+  assert.deepEqual(negativeChord({ root: 0, type: 'rest' }, 0), { root: 0, type: 'rest' });
+});
+
+test('the negative fill: the last chords mirrored (V7 → iv6: the minor plagal way home)', () => {
+  const slots = [[0, 'maj7'], [9, 'min7'], [2, 'min7'], [7, 'dom7']].map(([root, type]) => ({ root, type, beats: 4 }));
+  const f = fillRound(slots, 3, { style: 'negative', every: 4, length: 1, chance: 100, tonic: 0 }, (r) => seeded(r + 1));
+  assert.deepEqual([...f.filled], [3]);
+  assert.equal(f.slots[3].root, 5);
+  assert.equal(f.slots[3].type, 'min6');
+  assert.equal(negativeFill([{ root: 0, type: 'rest' }], 0), null);
+  // Mix can choose it, given a key; without one, only the other two
+  const kinds = new Set();
+  for (let r = 0; r < 60; r++) {
+    const m = fillRound(slots, r * 4 + 3, { style: 'mix', every: 4, length: 1, tonic: 0 }, (x) => seeded(x + 5));
+    kinds.add(`${m.slots[3].root}${m.slots[3].type}`);
+  }
+  assert.ok(kinds.has('5min6'));
+});

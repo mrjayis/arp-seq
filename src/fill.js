@@ -9,9 +9,9 @@
 //    iv–♭VII7, V/V–V, ♭III–♭II; or one chord: V7, ♭II7, ♭VII7, vii°7, iv.
 // Pure (seeded by an rng), unit-tested.
 
-import { CHORDS } from './core.js?v=265';
+import { CHORDS } from './core.js?v=267';
 
-export const PROG_FILL_STYLES = { off: 'Off', tonnetz: 'Tonnetz', turnaround: 'Turnaround', mix: 'Mix' };
+export const PROG_FILL_STYLES = { off: 'Off', tonnetz: 'Tonnetz', turnaround: 'Turnaround', negative: 'Negative harmony', mix: 'Mix' };
 export const PROG_FILL_EVERY = [1, 2, 4, 8];
 export const PROG_FILL_LENGTHS = [1, 2];
 
@@ -149,7 +149,7 @@ export function turnaroundFill(to, k, rng = Math.random) {
  * the `chance` 0–100 comes up). `rngFor(round)` gives that round's seeded rng. Returns
  * {slots, filled: Set of indexes} (the slots unchanged, filled empty, on other rounds).
  */
-export function fillRound(slots, round, { style = 'off', every = 4, length = 2, chance = 100 } = {}, rngFor) {
+export function fillRound(slots, round, { style = 'off', every = 4, length = 2, chance = 100, tonic = null } = {}, rngFor) {
   const none = { slots, filled: new Set() };
   if (style === 'off' || !slots.length || (round + 1) % Math.max(1, every) !== 0) return none;
   const rng = rngFor(round);
@@ -161,8 +161,11 @@ export function fillRound(slots, round, { style = 'off', every = 4, length = 2, 
   let from = null;
   for (let i = at - 1; i >= 0 && !from; i--) if (slots[i].type !== 'rest') from = slots[i];
   const replaced = slots.slice(at);
-  const kind = style === 'mix' ? (rng() < 0.5 ? 'tonnetz' : 'turnaround') : style;
-  const chords = (kind === 'tonnetz' ? tonnetzFill(from, to, k, replaced, rng) : null) || turnaroundFill(to, k, rng);
+  const kinds = tonic === null ? ['tonnetz', 'turnaround'] : ['tonnetz', 'turnaround', 'negative'];
+  const kind = style === 'mix' ? kinds[Math.min(kinds.length - 1, Math.floor(rng() * kinds.length))] : style;
+  const chords = (kind === 'tonnetz' ? tonnetzFill(from, to, k, replaced, rng) : null)
+    || (kind === 'negative' && tonic !== null ? negativeFill(replaced, tonic) : null)
+    || turnaroundFill(to, k, rng);
   if (!chords) return none;
   const out = slots.map((s) => s);
   const filled = new Set();
@@ -242,4 +245,64 @@ export function tonnetzProgression({ start = { root: 0, minor: false }, length =
     if (!best || score > best.score) best = { path, score };
   }
   return out(best.path);
+}
+
+
+// ---- Negative harmony: every note mirrored across the axis between the key's tonic and its
+// fifth (in C: C ↔ G, D ↔ F, E ↔ E♭, A ↔ B♭, B ↔ A♭, F♯ ↔ C♯). Major turns minor and back,
+// V7 becomes a minor iv6 (G7 → Fm6), and doing it twice gives back what you started with.
+
+/** A pitch class's mirror image, in the key of `tonic`. */
+export const negativePc = (n, tonic) => pc(2 * tonic + 7 - n);
+
+// Which chord to call a set of notes, most usual first.
+const NAME_ORDER = ['maj', 'min', 'dom7', 'min7', 'maj7', 'min6', 'maj6', 'hdim7', 'dim', 'dim7', 'aug', 'sus2', 'sus4',
+  'minmaj7', 'add9', 'dom9', 'min9', 'maj9', 'six9', 'dom7sus4', 'min11', 'dom13', 'dom7b9', 'dom7s9', 'dom7s11', 'dom7b5', 'aug7', 'maj7s11', 'maj7s5', 'alt'];
+const pcsOf = (root, type) => new Set((CHORDS[type]?.intervals || [0, 4, 7]).map((i) => pc(root + i)));
+const sameSet = (a, b) => a.size === b.size && [...a].every((x) => b.has(x));
+
+/**
+ * The chord for a set of pitch classes: preferring `rootHint` as its root, the usual chord
+ * names first; if no chord has exactly those notes, the closest.
+ */
+export function nameChord(set, rootHint = null) {
+  const roots = [...set];
+  if (rootHint !== null && set.has(rootHint)) roots.unshift(rootHint);
+  for (const root of roots) for (const type of NAME_ORDER) if (CHORDS[type] && sameSet(pcsOf(root, type), set)) return { root, type };
+  let best = null;
+  for (const root of roots) {
+    for (const [i, type] of NAME_ORDER.entries()) {
+      if (!CHORDS[type]) continue;
+      const c = pcsOf(root, type);
+      const shared = [...c].filter((x) => set.has(x)).length;
+      const score = shared * 2 - (c.size - shared) - (set.size - shared) - i * 0.01;
+      if (!best || score > best.score) best = { root, type, score };
+    }
+  }
+  return { root: best.root, type: best.type };
+}
+
+/**
+ * A chord's negative-harmony counterpart in the key of `tonic`. Its root is the mirror of
+ * the original's fifth (C → Cm, G → Fm, G7 → Fm6, F → Gm), as the theory usually names them;
+ * when no chord has its root there, the plainest name for the notes (Cmaj7 → A♭maj7).
+ */
+export function negativeChord(chord, tonic) {
+  if (!chord || chord.type === 'rest' || !CHORDS[chord.type]) return chord;
+  const iv = CHORDS[chord.type].intervals;
+  const set = new Set(iv.map((i) => negativePc(chord.root + i, tonic)));
+  const fifth = iv.find((i) => i === 7) ?? iv.find((i) => i === 6 || i === 8);
+  const hint = fifth === undefined ? null : negativePc(chord.root + fifth, tonic);
+  // The usual name at that root, else (an unusual one there) the plainest name anywhere.
+  const named = nameChord(set, hint);
+  const plain = hint !== null && named.root !== hint ? named : nameChord(set);
+  const out = hint !== null && named.root !== hint ? named : NAME_ORDER.indexOf(named.type) <= NAME_ORDER.indexOf(plain.type) + 2 ? named : plain;
+  // A major 6th is written as its relative minor 7th (E♭6 = Cm7), the more usual name.
+  return out.type === 'maj6' ? { root: pc(out.root + 9), type: 'min7' } : out;
+}
+
+/** The negative-harmony fill: the chords it replaces, mirrored. */
+export function negativeFill(replaced, tonic) {
+  if (replaced.every((c) => !c || c.type === 'rest')) return null;
+  return replaced.map((c) => (c && c.type !== 'rest' ? negativeChord(c, tonic) : { root: 0, type: 'rest' }));
 }

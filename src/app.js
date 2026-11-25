@@ -8,32 +8,32 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=265';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=265';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=265';
-import { Midi } from './midi.js?v=265';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=265';
+} from './core.js?v=267';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=267';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=267';
+import { Midi } from './midi.js?v=267';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=267';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, presetConds, presetLens, TRIPLET_FEEL, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=265';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=265';
-import { PROG_FILL_STYLES, PROG_FILL_EVERY, PROG_FILL_LENGTHS, fillRound, TONNETZ_WALKS, tonnetzProgression, triadOf, distance as tonnetzDistance, PLR } from './fill.js?v=265';
-import { AUDIO_ACCEPT, looksLikeAudio, hasAudioExtension, decodeAudioFile } from './audiofile.js?v=265';
-import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=265';
-import { Invention, parseSubject } from './invention.js?v=265';
-import { ColtraneSolo } from './coltrane.js?v=265';
-import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=265';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=265';
-import { saveBreakFolder, loadBreakFolder, saveTrackSample, deleteTrackSample, loadTrackSamples, saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=265';
+} from './percussion.js?v=267';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=267';
+import { PROG_FILL_STYLES, PROG_FILL_EVERY, PROG_FILL_LENGTHS, fillRound, negativeChord, TONNETZ_WALKS, tonnetzProgression, triadOf, distance as tonnetzDistance, PLR } from './fill.js?v=267';
+import { AUDIO_ACCEPT, looksLikeAudio, hasAudioExtension, decodeAudioFile } from './audiofile.js?v=267';
+import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=267';
+import { Invention, parseSubject } from './invention.js?v=267';
+import { ColtraneSolo } from './coltrane.js?v=267';
+import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=267';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=267';
+import { saveBreakFolder, loadBreakFolder, saveTrackSample, deleteTrackSample, loadTrackSamples, saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=267';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers, rowThisTime,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, migrateRow, TRACK_SAMPLES, EXTRA_TRACKS, emptyCell, trackColumn, keepTracks, reverseBuffer, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=265';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=265';
+} from './breaks.js?v=267';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=267';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=265';
+} from './mono.js?v=267';
 
 const $ = (id) => document.getElementById(id);
 // Every audio file picker offers any kind of audio (and video, for its sound).
@@ -222,6 +222,8 @@ const settings = {
   progFillEvery: 4, // on the last of every N rounds
   progFillLength: 2, // how many of the last chords it replaces
   progFillChance: 100, // % chance a fill round fills
+  progNegative: false, // the progression is mirrored (negative harmony)
+  progNegativeTonic: null, // around this key's tonic–fifth axis
   tonnetzGen: { walk: 'smooth', length: 4, beats: 4, start: 'first', sevenths: false, close: true }, // the Tonnetz generator's choices
   progModBy: 2, // semitones per modulation
   progModAll: true, // the mono synth and held keys change key with the progression too
@@ -425,7 +427,7 @@ function ensureAudio() {
       throwIn[fx] = ctx.createGain();
       throwIn[fx].connect(input);
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=265', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=267', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -1107,12 +1109,13 @@ const fillCache = new Map(); // signature -> {slots, filled, voicings}
 function roundPlay(round) {
   const slots = settings.progression.slice(0, settings.progLength);
   if (settings.progFill === 'off') return { slots, filled: NO_FILL, voicings: null };
-  const sig = [round, runSeed, settings.progFill, settings.progFillEvery, settings.progFillLength, settings.progFillChance,
+  const tonic = ['negative', 'mix'].includes(settings.progFill) ? writtenTonic(slots) : null; // negative harmony's axis
+  const sig = [round, runSeed, tonic, settings.progFill, settings.progFillEvery, settings.progFillLength, settings.progFillChance,
     settings.progOctave, settings.progVoicing, slots.map((s) => `${s.root}.${s.type}.${s.beats}.${s.inv || 0}.${s.oct || 0}`).join(',')].join('|');
   let hit = fillCache.get(sig);
   if (!hit) {
     const f = fillRound(slots, round, {
-      style: settings.progFill, every: settings.progFillEvery, length: settings.progFillLength, chance: settings.progFillChance,
+      style: settings.progFill, every: settings.progFillEvery, length: settings.progFillLength, chance: settings.progFillChance, tonic,
     }, (r) => barRng(runSeed, r, 977));
     // A filled round is voiced as a whole (smooth voicing leads into and out of the fill).
     hit = { ...f, voicings: f.filled.size ? progressionVoicings(f.slots, settings.progOctave, settings.progVoicing) : null };
@@ -1120,6 +1123,12 @@ function roundPlay(round) {
     fillCache.set(sig, hit);
   }
   return hit;
+}
+/** The key the progression is written in: the tuning Key if one is set, else worked out from its chords. */
+function writtenTonic(slots = settings.progression.slice(0, settings.progLength)) {
+  if (settings.progNegative && Number.isInteger(settings.progNegativeTonic)) return settings.progNegativeTonic; // mirrored: its own key
+  if (settings.tuningKey !== 'auto' && Number.isInteger(Number(settings.tuningKey))) return Number(settings.tuningKey);
+  return autoTonic(slots);
 }
 /** The chord slot `i` plays on `round`. */
 const slotOn = (i, round = progRound) => roundPlay(round).slots[i];
@@ -2268,6 +2277,7 @@ function buildProgression() {
     settings.progLength = chords.length;
     settings.progSong = '';
     settings.progStyle = '';
+    notNegative();
     renderProgression();
     progEdited();
   });
@@ -2279,6 +2289,7 @@ function buildProgression() {
     settings.progStyle = '';
     settings.progModEvery = 0;
     $('prog-mod-every').value = '0';
+    notNegative();
     renderModBy();
     progIndex = -1;
     resetProgression();
@@ -2452,6 +2463,7 @@ function renderIrealList() {
   if (hits.length > 300) list.append(Object.assign(document.createElement('p'), { className: 'hint', textContent: `…and ${hits.length - 300} more: search to narrow it down.` }));
 }
 function loadIrealSong(song) {
+  notNegative();
   const { slots } = songSlots(song);
   if (!slots.length) { $('ireal-status').textContent = `Couldn't read any chords in ${song.title}.`; return; }
   const used = slots.slice(0, MAX_PROGRESSION);
@@ -2489,6 +2501,37 @@ function showIrealBox(open) {
   requestAnimationFrame(() => box.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
 }
 $('ireal-btn').addEventListener('click', () => showIrealBox($('ireal-box').hidden));
+
+function renderNegative() {
+  $('prog-negative').setAttribute('aria-pressed', String(!!settings.progNegative));
+  $('prog-negative').textContent = settings.progNegative ? 'Negative ✓' : 'Negative';
+}
+onRecall(renderNegative)();
+/** A new progression (a preset, a tune, a generated one, cleared) isn't mirrored. */
+function notNegative() {
+  settings.progNegative = false;
+  settings.progNegativeTonic = null;
+  renderNegative();
+  $('prog-negative-status').textContent = '';
+}
+// ---- Negative harmony: the whole progression mirrored across the key's tonic–fifth axis
+// (fill.js). Again turns it back.
+$('prog-negative').addEventListener('click', () => {
+  const slots = settings.progression.slice(0, settings.progLength);
+  const tonic = writtenTonic(slots);
+  if (tonic === null) { $('prog-negative-status').textContent = 'No chords to mirror.'; return; }
+  slots.forEach((s, i) => {
+    if (s.type === 'rest') return;
+    const n = negativeChord(s, tonic);
+    settings.progression[i] = { ...s, root: n.root, type: n.type, inv: 0, ...([1, 3, 8, 10].includes(n.root) ? { flat: true } : { flat: undefined }) };
+  });
+  settings.progNegative = !settings.progNegative;
+  settings.progNegativeTonic = settings.progNegative ? tonic : null; // mirrored back over the same axis
+  renderNegative();
+  $('prog-negative-status').textContent = `${settings.progNegative ? 'Negative harmony' : 'Back as written'}, around ${NOTE_CLASSES[tonic]}–${NOTE_CLASSES[(tonic + 7) % 12]}: ${slots.map((_, i) => slotName(settings.progression[i])).join(' ')}`;
+  renderProgression();
+  progEdited();
+});
 
 // ---- The Tonnetz generator: a progression from a walk on the grid of triads (fill.js).
 {
@@ -2535,6 +2578,7 @@ $('ireal-btn').addEventListener('click', () => showIrealBox($('ireal-box').hidde
     settings.progSong = '';
     settings.progStyle = '';
     if (!settings.progOn) { settings.progOn = true; progIndex = -1; } // (renderProgression shows it on)
+    notNegative();
     // The path, move by move (P, L, R, or two together), so you can see the walk.
     const tri = chords.map((c) => triadOf(c));
     const moveName = (a, b) => {
@@ -7099,7 +7143,7 @@ function frame() {
 // playing, a switch comes in on the next bar line. Section (top bar) switches them all.
 const SECTION_KEYS = {
   seq: ['steps', 'length'],
-  prog: ['progression', 'progLength', 'progSong', 'progStyle', 'progFill', 'progFillEvery', 'progFillLength', 'progFillChance'],
+  prog: ['progression', 'progLength', 'progSong', 'progStyle', 'progFill', 'progFillEvery', 'progFillLength', 'progFillChance', 'progNegative', 'progNegativeTonic'],
   chords: ['chordRate', 'chordSteps', 'chordHits', 'chordRotate', 'chordMode', 'chordSyncopate', 'chordTie'],
   mono: ['monoSeq'],
   // The Arpeggiator: on/off, mode (a solo or invention too), rate, octaves, gate, swing, and the
