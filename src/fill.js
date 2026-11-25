@@ -9,7 +9,7 @@
 //    iv–♭VII7, V/V–V, ♭III–♭II; or one chord: V7, ♭II7, ♭VII7, vii°7, iv.
 // Pure (seeded by an rng), unit-tested.
 
-import { CHORDS } from './core.js?v=262';
+import { CHORDS } from './core.js?v=265';
 
 export const PROG_FILL_STYLES = { off: 'Off', tonnetz: 'Tonnetz', turnaround: 'Turnaround', mix: 'Mix' };
 export const PROG_FILL_EVERY = [1, 2, 4, 8];
@@ -172,4 +172,74 @@ export function fillRound(slots, round, { style = 'off', every = 4, length = 2, 
     filled.add(i);
   });
   return { slots: out, filled };
+}
+
+// ---- A whole progression from a walk on the Tonnetz.
+
+export const TONNETZ_WALKS = {
+  smooth: 'Smooth: one move a chord',
+  wide: 'Wide: one or two moves',
+  hexatonic: 'Hexatonic: P and L in turn',
+  octatonic: 'Octatonic: P and R in turn',
+  fifths: 'Fifths: L and R in turn',
+};
+
+/**
+ * `length` chords walking the Tonnetz from `start` ({root, minor}). Smooth and Wide pick
+ * moves at random (never straight back where they came from, and not to a chord just
+ * played); with `close`, the last chord is a move from the start, so the loop comes round
+ * smoothly (a Smooth walk too short or odd to get there one move at a time takes a double
+ * move or two on the way). The cycles alternate two moves (hexatonic: C Cm A♭ A♭m E Em…;
+ * octatonic: C Cm E♭ E♭m F♯ F♯m…; fifths: C Em G Bm D…), starting with either.
+ * `sevenths`: maj7 / min7 instead of triads. Returns [{root, type}].
+ */
+export function tonnetzProgression({ start = { root: 0, minor: false }, length = 4, walk = 'smooth', close = true, sevenths = false, rng = Math.random } = {}) {
+  const n = Math.max(1, Math.round(length));
+  const out = (path) => path.map((t) => ({ root: t.root, type: sevenths ? (t.minor ? 'min7' : 'maj7') : (t.minor ? 'min' : 'maj') }));
+  const cycles = { hexatonic: ['P', 'L'], octatonic: ['P', 'R'], fifths: ['L', 'R'] };
+  if (cycles[walk]) {
+    const pair = rng() < 0.5 ? cycles[walk] : [...cycles[walk]].reverse();
+    const path = [start];
+    for (let i = 1; i < n; i++) path.push(PLR[pair[(i - 1) % 2]](path[i - 1]));
+    return out(path);
+  }
+  const reach = (t) => (walk === 'wide' ? neighbours(t) : Object.entries(PLR).map(([m, f]) => ({ t: f(t), moves: m })));
+  // Single moves form a honeycomb: every loop is an even number of moves, the smallest 6. So a
+  // Smooth walk that can't come round one move at a time takes a double move or two on the
+  // way: one for an odd number of chords, two for 4 (2+2+1+1: round a hexagon).
+  const doubles = walk === 'wide' || !close || n <= 2 ? 0 : n % 2 === 1 ? 1 : n < 6 ? 6 - n : 0;
+  let best = null;
+  for (let tries = 0; tries < 400; tries++) {
+    const path = [start];
+    let last = '';
+    // Where the double moves go (never the last step, which comes back next to the start).
+    const spots = Array.from({ length: n - 2 }, (_, k) => k + 1);
+    const doubleAt = new Set();
+    while (doubleAt.size < Math.min(doubles, spots.length)) doubleAt.add(spots[Math.floor(rng() * spots.length)]);
+    for (let i = 1; i < n; i++) {
+      const recent = new Set(path.slice(-3).map(key));
+      const from = path[i - 1];
+      let pool;
+      if (doubleAt.has(i)) pool = neighbours(from).filter((x) => x.moves.length === 2 && !recent.has(key(x.t)));
+      else {
+        pool = reach(from).filter((x) => x.moves !== last && !recent.has(key(x.t)));
+        // The last chord, looping back: one move from the start, if it can be.
+        if (close && i === n - 1) {
+          const ends = pool.filter((x) => distance(x.t, start) === 1);
+          if (ends.length) pool = ends;
+        }
+      }
+      if (!pool.length) pool = reach(from);
+      const pick = pool[Math.floor(rng() * pool.length)];
+      path.push(pick.t);
+      last = pick.moves.length === 1 ? pick.moves : [...pick.moves].reverse().join(''); // undoing it is the reverse
+    }
+    // How it comes round: a move from the start is best (two will do, if that's all there is).
+    const back = n > 1 ? distance(path[n - 1], start) : 1;
+    const distinct = new Set(path.map(key)).size;
+    const score = (close ? (back === 1 ? 20 : back === 2 ? 10 : 0) : 20) + distinct;
+    if (score >= 20 + n) return out(path);
+    if (!best || score > best.score) best = { path, score };
+  }
+  return out(best.path);
 }
