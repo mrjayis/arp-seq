@@ -464,6 +464,13 @@ input[type="range"]::-moz-range-thumb {
   background: var(--mod);
 }
 .slot.current .name { color: var(--mod); }
+/* A fill playing: the slot shows the fill's chord (its own comes back after), tagged "fill". */
+.slot.filling { outline: 2px dashed var(--mod); outline-offset: -3px; }
+.slot.filling::after {
+  content: "fill"; position: absolute; left: 4px; right: 4px; top: 3px;
+  font-size: 11px; font-weight: 700; color: var(--mod); background: var(--plate); text-align: center;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none;
+}
 
 /* ---------- chord rhythm ---------- */
 .rhythm.off .row > :not(#chord-on):not(.gate-arp) { opacity: 0.45; }
