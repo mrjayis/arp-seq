@@ -87,3 +87,42 @@ test('fill rounds: the last of every N, the last chords swapped, the rest left a
   assert.equal(fillRound(slots.slice(0, 1), 3, opts, rngFor).filled.size, 0); // one chord: nothing to fill
   assert.deepEqual([...fillRound(slots, 1, { ...opts, every: 2, length: 1, style: 'turnaround' }, rngFor).filled], [3]);
 });
+
+import { tonnetzProgression } from '../src/fill.js';
+const tri = (c) => triadOf(c);
+
+test('Tonnetz progressions: a move a chord, and round to the start', () => {
+  const rng = seeded(9);
+  for (let i = 0; i < 100; i++) {
+    const p = tonnetzProgression({ start: { root: 0, minor: false }, length: 8, walk: 'smooth', rng });
+    assert.equal(p.length, 8);
+    assert.deepEqual(p[0], { root: 0, type: 'maj' });
+    for (let k = 1; k < 8; k++) assert.equal(distance(tri(p[k - 1]), tri(p[k])), 1, 'one move each');
+    assert.equal(distance(tri(p[7]), tri(p[0])), 1, 'the loop closes smoothly');
+  }
+  const wide = tonnetzProgression({ length: 6, walk: 'wide', sevenths: true, rng });
+  assert.ok(wide.every((c) => c.type === 'maj7' || c.type === 'min7'));
+  for (let k = 1; k < 6; k++) assert.ok(distance(tri(wide[k - 1]), tri(wide[k])) >= 1);
+});
+
+test('Tonnetz cycles', () => {
+  const names = (p) => p.map((c) => `${c.root}${c.type === 'min' ? 'm' : ''}`).join(' ');
+  const first = () => 0; // starts with the first of the pair
+  assert.equal(names(tonnetzProgression({ length: 6, walk: 'hexatonic', rng: first })), '0 0m 8 8m 4 4m'); // C Cm Ab Abm E Em
+  assert.equal(names(tonnetzProgression({ length: 8, walk: 'octatonic', rng: first })), '0 0m 3 3m 6 6m 9 9m'); // C Cm Eb Ebm F# F#m A Am
+  assert.equal(names(tonnetzProgression({ length: 5, walk: 'fifths', rng: first })), '0 4m 7 11m 2'); // C Em G Bm D
+  assert.equal(tonnetzProgression({ length: 1 }).length, 1);
+});
+
+test('short or odd Tonnetz walks still come round, with a double move or two on the way (loops are even, the smallest 6)', () => {
+  const rng = seeded(4);
+  for (const n of [3, 4, 5, 7]) {
+    for (let r = 0; r < 30; r++) {
+      const p = tonnetzProgression({ length: n, walk: 'smooth', rng });
+      assert.equal(p.length, n);
+      assert.equal(distance(tri(p[n - 1]), tri(p[0])), 1, `${n} chords come round`);
+      const steps = p.slice(1).map((c, k) => distance(tri(p[k]), tri(c)));
+      assert.ok(steps.every((d) => d >= 1) && steps.filter((d) => d === 2).length <= (n === 4 ? 2 : 1), 'single moves, and the doubles it needs');
+    }
+  }
+});

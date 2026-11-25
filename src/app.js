@@ -8,32 +8,32 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=262';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=262';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=262';
-import { Midi } from './midi.js?v=262';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=262';
+} from './core.js?v=265';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=265';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=265';
+import { Midi } from './midi.js?v=265';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=265';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, presetConds, presetLens, TRIPLET_FEEL, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=262';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=262';
-import { PROG_FILL_STYLES, PROG_FILL_EVERY, PROG_FILL_LENGTHS, fillRound } from './fill.js?v=262';
-import { AUDIO_ACCEPT, looksLikeAudio, hasAudioExtension, decodeAudioFile } from './audiofile.js?v=262';
-import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=262';
-import { Invention, parseSubject } from './invention.js?v=262';
-import { ColtraneSolo } from './coltrane.js?v=262';
-import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=262';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=262';
-import { saveBreakFolder, loadBreakFolder, saveTrackSample, deleteTrackSample, loadTrackSamples, saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=262';
+} from './percussion.js?v=265';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=265';
+import { PROG_FILL_STYLES, PROG_FILL_EVERY, PROG_FILL_LENGTHS, fillRound, TONNETZ_WALKS, tonnetzProgression, triadOf, distance as tonnetzDistance, PLR } from './fill.js?v=265';
+import { AUDIO_ACCEPT, looksLikeAudio, hasAudioExtension, decodeAudioFile } from './audiofile.js?v=265';
+import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=265';
+import { Invention, parseSubject } from './invention.js?v=265';
+import { ColtraneSolo } from './coltrane.js?v=265';
+import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=265';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=265';
+import { saveBreakFolder, loadBreakFolder, saveTrackSample, deleteTrackSample, loadTrackSamples, saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=265';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers, rowThisTime,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, migrateRow, TRACK_SAMPLES, EXTRA_TRACKS, emptyCell, trackColumn, keepTracks, reverseBuffer, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=262';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=262';
+} from './breaks.js?v=265';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=265';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=262';
+} from './mono.js?v=265';
 
 const $ = (id) => document.getElementById(id);
 // Every audio file picker offers any kind of audio (and video, for its sound).
@@ -222,6 +222,7 @@ const settings = {
   progFillEvery: 4, // on the last of every N rounds
   progFillLength: 2, // how many of the last chords it replaces
   progFillChance: 100, // % chance a fill round fills
+  tonnetzGen: { walk: 'smooth', length: 4, beats: 4, start: 'first', sevenths: false, close: true }, // the Tonnetz generator's choices
   progModBy: 2, // semitones per modulation
   progModAll: true, // the mono synth and held keys change key with the progression too
   progVoicing: 'set', // 'set': each chord's own inversion; 'smooth': nearest inversion to the last chord
@@ -275,7 +276,7 @@ Object.assign(DEFAULTS, { drumKitStore: {}, sampleLevels: {}, sampleTunes: {}, d
 const DEVICE_KEYS = [
   'theme', 'themeV2', 'collapsed', 'showHelp', 'midiIn', 'midiInCh', 'midiOut', 'midiOutCh', 'volume', 'synthOn',
   'midiInChord', 'midiInMono', 'midiInDrums', 'midiInBreak', 'aftertouch', 'aftertouchDepth', 'midiMap',
-  'sync', 'baseOctave', 'chordRoot', 'monoKbOctave', 'breakStepsOpen', 'breakTrimOpen', 'breakLibLast', 'breakLibSettings', 'trackSlicing', 'audioOut', 'outputMode', 'stableMode',
+  'sync', 'baseOctave', 'chordRoot', 'monoKbOctave', 'breakStepsOpen', 'breakTrimOpen', 'breakLibLast', 'breakLibSettings', 'tonnetzGen', 'trackSlicing', 'audioOut', 'outputMode', 'stableMode',
 ];
 // Live scene recall: each part of the page registers how to re-read its settings,
 // in page order (repairs first, then controls, then drawing). See recallLive().
@@ -424,7 +425,7 @@ function ensureAudio() {
       throwIn[fx] = ctx.createGain();
       throwIn[fx].connect(input);
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=262', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=265', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -2488,6 +2489,66 @@ function showIrealBox(open) {
   requestAnimationFrame(() => box.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
 }
 $('ireal-btn').addEventListener('click', () => showIrealBox($('ireal-box').hidden));
+
+// ---- The Tonnetz generator: a progression from a walk on the grid of triads (fill.js).
+{
+  const g = () => ({ walk: 'smooth', length: 4, beats: 4, start: 'first', sevenths: false, close: true, ...(settings.tonnetzGen || {}) });
+  for (const [k, label] of Object.entries(TONNETZ_WALKS)) $('tonnetz-walk').add(new Option(label, k));
+  for (const n of [2, 3, 4, 5, 6, 8, 12, 16]) $('tonnetz-length').add(new Option(String(n), String(n)));
+  for (const n of [1, 2, 4, 8]) $('tonnetz-beats').add(new Option(`${n} beat${n > 1 ? 's' : ''}`, String(n)));
+  const show = () => {
+    const o = g();
+    $('tonnetz-walk').value = o.walk;
+    $('tonnetz-length').value = String(o.length);
+    $('tonnetz-beats').value = String(o.beats);
+    $('tonnetz-start').value = o.start;
+    $('tonnetz-sevenths').checked = o.sevenths;
+    $('tonnetz-close').checked = o.close;
+    $('tonnetz-close').disabled = !['smooth', 'wide'].includes(o.walk);
+  };
+  const store = () => {
+    settings.tonnetzGen = {
+      walk: $('tonnetz-walk').value, length: Number($('tonnetz-length').value), beats: Number($('tonnetz-beats').value),
+      start: $('tonnetz-start').value, sevenths: $('tonnetz-sevenths').checked, close: $('tonnetz-close').checked,
+    };
+    show();
+    save();
+  };
+  for (const id of ['tonnetz-walk', 'tonnetz-length', 'tonnetz-beats', 'tonnetz-start', 'tonnetz-sevenths', 'tonnetz-close']) $(id).addEventListener('change', store);
+  show();
+  $('tonnetz-btn').addEventListener('click', () => {
+    const box = $('tonnetz-box');
+    box.hidden = !box.hidden;
+    $('tonnetz-btn').setAttribute('aria-pressed', String(!box.hidden));
+  });
+  $('tonnetz-go').addEventListener('click', () => {
+    const o = g();
+    const first = settings.progression[0];
+    const start = o.start === 'first' && first && first.type !== 'rest'
+      ? triadOf(first)
+      : { root: Math.floor(Math.random() * 12), minor: Math.random() < 0.5 };
+    const chords = tonnetzProgression({ start, length: o.length, walk: o.walk, close: o.close, sevenths: o.sevenths });
+    chords.forEach(({ root, type }, i) => {
+      settings.progression[i] = { root, type, beats: o.beats, inv: 0, oct: 0, ...([1, 3, 8, 10].includes(root) ? { flat: true } : {}) };
+    });
+    settings.progLength = chords.length;
+    settings.progSong = '';
+    settings.progStyle = '';
+    if (!settings.progOn) { settings.progOn = true; progIndex = -1; } // (renderProgression shows it on)
+    // The path, move by move (P, L, R, or two together), so you can see the walk.
+    const tri = chords.map((c) => triadOf(c));
+    const moveName = (a, b) => {
+      for (const [m, f] of Object.entries(PLR)) if (JSON.stringify(f(a)) === JSON.stringify(b)) return m;
+      for (const [m1, f1] of Object.entries(PLR)) for (const [m2, f2] of Object.entries(PLR)) if (m1 !== m2 && JSON.stringify(f2(f1(a))) === JSON.stringify(b)) return m1 + m2;
+      return '?';
+    };
+    const steps = chords.map((c, i) => (i ? ` –${moveName(tri[i - 1], tri[i])}→ ` : '') + slotName(settings.progression[i]));
+    const back = tonnetzDistance(tri[tri.length - 1], tri[0]);
+    $('tonnetz-path').textContent = steps.join('') + (chords.length > 1 && back ? ` (–${moveName(tri[tri.length - 1], tri[0])}→ back to ${slotName(settings.progression[0])})` : '');
+    renderProgression();
+    progEdited();
+  });
+}
 $('ireal-open').addEventListener('click', () => $('ireal-file').click());
 $('ireal-file').addEventListener('change', async () => {
   const file = $('ireal-file').files[0];
