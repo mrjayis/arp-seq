@@ -8,31 +8,32 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=261';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=261';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=261';
-import { Midi } from './midi.js?v=261';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=261';
+} from './core.js?v=262';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=262';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=262';
+import { Midi } from './midi.js?v=262';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=262';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, presetConds, presetLens, TRIPLET_FEEL, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=261';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=261';
-import { AUDIO_ACCEPT, looksLikeAudio, hasAudioExtension, decodeAudioFile } from './audiofile.js?v=261';
-import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=261';
-import { Invention, parseSubject } from './invention.js?v=261';
-import { ColtraneSolo } from './coltrane.js?v=261';
-import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=261';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=261';
-import { saveBreakFolder, loadBreakFolder, saveTrackSample, deleteTrackSample, loadTrackSamples, saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=261';
+} from './percussion.js?v=262';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=262';
+import { PROG_FILL_STYLES, PROG_FILL_EVERY, PROG_FILL_LENGTHS, fillRound } from './fill.js?v=262';
+import { AUDIO_ACCEPT, looksLikeAudio, hasAudioExtension, decodeAudioFile } from './audiofile.js?v=262';
+import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=262';
+import { Invention, parseSubject } from './invention.js?v=262';
+import { ColtraneSolo } from './coltrane.js?v=262';
+import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=262';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=262';
+import { saveBreakFolder, loadBreakFolder, saveTrackSample, deleteTrackSample, loadTrackSamples, saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=262';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers, rowThisTime,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, migrateRow, TRACK_SAMPLES, EXTRA_TRACKS, emptyCell, trackColumn, keepTracks, reverseBuffer, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=261';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=261';
+} from './breaks.js?v=262';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=262';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=261';
+} from './mono.js?v=262';
 
 const $ = (id) => document.getElementById(id);
 // Every audio file picker offers any kind of audio (and video, for its sound).
@@ -217,6 +218,10 @@ const settings = {
   progStyle: '', // that tune's style ("Up Tempo Swing"), for the bass line's Auto style
   progOctave: 3,
   progModEvery: 0, // modulate every N rounds of the progression (0 = off)
+  progFill: 'off', // a fill every few rounds: off | tonnetz | turnaround | mix
+  progFillEvery: 4, // on the last of every N rounds
+  progFillLength: 2, // how many of the last chords it replaces
+  progFillChance: 100, // % chance a fill round fills
   progModBy: 2, // semitones per modulation
   progModAll: true, // the mono synth and held keys change key with the progression too
   progVoicing: 'set', // 'set': each chord's own inversion; 'smooth': nearest inversion to the last chord
@@ -419,7 +424,7 @@ function ensureAudio() {
       throwIn[fx] = ctx.createGain();
       throwIn[fx].connect(input);
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=261', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=262', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -546,7 +551,7 @@ function chordRoot() {
   if (!notes.length && liveChord.size) notes = [...liveChord.keys()]; // chords played on the chord synth's channel
   if (!notes.length && scoreSounding.length) notes = scoreSounding.map((s) => s.n); // the score's own harmony
   if (settings.progOn && progIndex >= 0) {
-    const slot = settings.progression[progIndex];
+    const slot = slotOn(progIndex);
     if (slot && slot.type !== 'rest') {
       const root = (((slot.root + progShift) % 12) + 12) % 12;
       return tuningId(root, notes, DIM_TYPES.includes(slot.type));
@@ -674,7 +679,7 @@ const solo = new ColtraneSolo();
 /** The chord sounding now as {root, type}: the progression's, else worked out from held keys. */
 function currentChord() {
   if (settings.progOn && progIndex >= 0) {
-    const slot = settings.progression[progIndex];
+    const slot = slotOn(progIndex);
     if (!slot || slot.type === 'rest') return null;
     return { root: (((slot.root + progShift) % 12) + 12) % 12, type: slot.type };
   }
@@ -795,10 +800,13 @@ function progSlotAt(pulse) {
   while (i < slots.length - 1 && at + slots[i].beats * PPQN <= t) { at += slots[i].beats * PPQN; i++; }
   const start = pulse - (t - at);
   const end = start + slots[i].beats * PPQN;
-  const nextSlot = slots[(i + 1) % slots.length];
+  // The chords as they play on their rounds (a fill round's, if it's one).
+  const round = progressionRound(start, slots);
+  const here = slotOn(i, round);
+  const nextSlot = i + 1 < slots.length ? slotOn(i + 1, round) : slotOn(0, round + 1);
   return {
-    i, start, end,
-    chord: { root: (slots[i].root + progShiftAt(start) + 120) % 12, type: slots[i].type },
+    i, start, end, round,
+    chord: { root: (here.root + progShiftAt(start) + 120) % 12, type: here.type },
     next: { root: (nextSlot.root + progShiftAt(end) + 120) % 12, type: nextSlot.type },
     progress: pulse / total, // rounds played, with the fraction through this one
   };
@@ -811,7 +819,7 @@ function planBass(pulse) {
     const at = progSlotAt(pulse);
     if (!at) return null;
     const { start, end, chord, next, i } = at;
-    return makePlan(start, end, chord, next, `p${i}|${start}`, barBeats);
+    return makePlan(start, end, chord, next, `p${i}|${start}|${chord.root}${chord.type}`, barBeats);
   }
   // No progression: follow the keys held, a bar at a time (a new chord starts a new line).
   const held = heldChord(engine.notes.map((n) => n.note));
@@ -997,7 +1005,7 @@ function chordSource(step) {
   // The pushed chord is in the key of the round it belongs to (it may be the next one).
   const shift = progShiftAt(pulse + PPQN / 2);
   chordPushed = true;
-  return engine.notesWith(progressionChord(shifted(progVoicings()[next]?.notes || [], shift)));
+  return engine.notesWith(progressionChord(shifted(voicingsOn(progressionRound(pulse + PPQN / 2, slots))[next]?.notes || [], shift)));
 }
 
 function playChord(step) {
@@ -1088,6 +1096,34 @@ function playChord(step) {
 
 // ---- chord progression: swaps the chord the arp and chord layer play, on the clock.
 let progIndex = -1;
+let progRound = 0; // which time round the progression is on (fills change some rounds' chords)
+
+// ---- Fills: on a fill round the last chord or two are swapped (fill.js). Only the chords
+// change, never the timing, so everything that times the progression reads the slots as set;
+// what a slot plays on a round comes from roundPlay.
+const NO_FILL = new Set();
+const fillCache = new Map(); // signature -> {slots, filled, voicings}
+function roundPlay(round) {
+  const slots = settings.progression.slice(0, settings.progLength);
+  if (settings.progFill === 'off') return { slots, filled: NO_FILL, voicings: null };
+  const sig = [round, runSeed, settings.progFill, settings.progFillEvery, settings.progFillLength, settings.progFillChance,
+    settings.progOctave, settings.progVoicing, slots.map((s) => `${s.root}.${s.type}.${s.beats}.${s.inv || 0}.${s.oct || 0}`).join(',')].join('|');
+  let hit = fillCache.get(sig);
+  if (!hit) {
+    const f = fillRound(slots, round, {
+      style: settings.progFill, every: settings.progFillEvery, length: settings.progFillLength, chance: settings.progFillChance,
+    }, (r) => barRng(runSeed, r, 977));
+    // A filled round is voiced as a whole (smooth voicing leads into and out of the fill).
+    hit = { ...f, voicings: f.filled.size ? progressionVoicings(f.slots, settings.progOctave, settings.progVoicing) : null };
+    if (fillCache.size > 24) fillCache.clear();
+    fillCache.set(sig, hit);
+  }
+  return hit;
+}
+/** The chord slot `i` plays on `round`. */
+const slotOn = (i, round = progRound) => roundPlay(round).slots[i];
+/** The voicings on `round` (the fill's, on a fill round). */
+const voicingsOn = (round = progRound) => roundPlay(round).voicings || progVoicings();
 
 let progShift = 0; // semitones the progression is modulated by right now
 
@@ -1105,12 +1141,16 @@ function stepProgression(time, pulse) {
   const slots = settings.progression.slice(0, settings.progLength);
   const i = progressionAt(pulse, slots);
   const shift = progShiftAt(pulse);
-  if (i === progIndex && shift === progShift) return;
+  const round = progressionRound(pulse, slots);
+  const play = roundPlay(round);
+  const fill = play.filled.has(i);
+  if (i === progIndex && shift === progShift && (round === progRound || !fill)) return;
   progIndex = i;
   progShift = shift;
+  progRound = round;
   engine.heldShift = settings.progModAll ? shift : 0;
-  engine.setProgressionNotes(shifted(progVoicings()[i]?.notes || [], shift));
-  uiEvents.push({ kind: 'prog', time, index: i, shift });
+  engine.setProgressionNotes(shifted((play.voicings || progVoicings())[i]?.notes || [], shift));
+  uiEvents.push({ kind: 'prog', time, index: i, shift, fill: fill ? play.slots[i] : null });
 }
 
 /** Stop the progression feeding notes; it restarts from the current clock position. */
@@ -2208,6 +2248,10 @@ function buildProgression() {
   bindSelect('prog-voicing', 'progVoicing', Object.entries(PROG_VOICINGS), () => progEdited());
   bindSelect('prog-mod-every', 'progModEvery',
     MOD_EVERY.map((n) => [String(n), n === 0 ? 'Off' : `every ${n === 1 ? 'round' : `${n} rounds`}`]), () => { renderModBy(); progEdited(); });
+  bindSelect('prog-fill', 'progFill', Object.entries(PROG_FILL_STYLES), () => progEdited());
+  bindSelect('prog-fill-every', 'progFillEvery', PROG_FILL_EVERY.map((n) => [String(n), n === 1 ? 'every round' : `every ${n} rounds`]), () => progEdited());
+  bindSelect('prog-fill-length', 'progFillLength', PROG_FILL_LENGTHS.map((n) => [String(n), n === 1 ? 'last chord' : `last ${n} chords`]), () => progEdited());
+  bindRange('prog-fill-chance', 'progFillChance', (v) => `${v}%`, () => progEdited());
   bindSelect('prog-mod-by', 'progModBy',
     Object.entries(MOD_INTERVALS).sort((a, b) => (Number(a[0]) < 0) - (Number(b[0]) < 0) || Math.abs(a[0]) - Math.abs(b[0])),
     () => progEdited());
@@ -2346,10 +2390,27 @@ function showProgKey(shift = 0) {
 }
 
 let lastSlotEl = null;
-function showProgSlot(i) {
-  lastSlotEl?.classList.remove('current');
+/** The playing slot lit; on a fill, it shows the fill's chord for as long as it plays. */
+function showProgSlot(i, fill = null) {
+  if (lastSlotEl) {
+    lastSlotEl.classList.remove('current');
+    if (lastSlotEl.classList.contains('filling')) {
+      lastSlotEl.classList.remove('filling');
+      const name = lastSlotEl.querySelector('.name');
+      if (name && name.dataset.set !== undefined) { name.innerHTML = name.dataset.set; delete name.dataset.set; }
+    }
+  }
   lastSlotEl = slotEls[i] || null;
   lastSlotEl?.classList.add('current');
+  if (lastSlotEl && fill) {
+    lastSlotEl.classList.add('filling');
+    const name = lastSlotEl.querySelector('.name');
+    if (name) {
+      name.dataset.set = name.innerHTML; // the chord as set, back when the fill's over
+      name.textContent = slotName(fill);
+      name.classList.toggle('long', name.textContent.length > 4);
+    }
+  }
 }
 
 buildProgression();
@@ -6863,7 +6924,7 @@ function showTuning(nowMs) {
   if (key) {
     const [, r, d] = key.split('|');
     const root = Number(r);
-    const slot = settings.progOn && progIndex >= 0 ? settings.progression[progIndex] : null;
+    const slot = settings.progOn && progIndex >= 0 ? slotOn(progIndex) : null;
     const name = slot && slot.type !== 'rest'
       ? rootName(root, slot.flat) + CHORD_SUFFIX[slot.type]
       : NOTE_CLASSES[root] + (d === '1' ? '°' : '');
@@ -6921,7 +6982,7 @@ function frame() {
       continue;
     }
     if (ev.kind === 'prog') {
-      showProgSlot(ev.index);
+      showProgSlot(ev.index, ev.fill);
       showProgKey(ev.shift);
       renderKeyState();
       continue;
@@ -6977,7 +7038,7 @@ function frame() {
 // playing, a switch comes in on the next bar line. Section (top bar) switches them all.
 const SECTION_KEYS = {
   seq: ['steps', 'length'],
-  prog: ['progression', 'progLength', 'progSong', 'progStyle'],
+  prog: ['progression', 'progLength', 'progSong', 'progStyle', 'progFill', 'progFillEvery', 'progFillLength', 'progFillChance'],
   chords: ['chordRate', 'chordSteps', 'chordHits', 'chordRotate', 'chordMode', 'chordSyncopate', 'chordTie'],
   mono: ['monoSeq'],
   // The Arpeggiator: on/off, mode (a solo or invention too), rate, octaves, gate, swing, and the
