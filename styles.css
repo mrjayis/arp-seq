@@ -562,6 +562,9 @@ input[type="range"]::-moz-range-thumb {
 /* ---------- breakbeat slicer ---------- */
 .brk.off .tracker, .brk.off .break-wave { opacity: 0.6; }
 .break-tools { margin-bottom: 8px; }
+
+/* Editing Break 2: the waveform outlined in the accent, so it's clear which break it is. */
+.brk.editing-b2 .break-wave { border-color: var(--mod); box-shadow: inset 0 0 0 1px var(--mod); }
 .break-lib { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; }
 .break-lib select { min-width: 0; max-width: min(320px, 60vw); }
 .break-lib button { min-width: 30px; }
