@@ -8,32 +8,32 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=267';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=267';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=267';
-import { Midi } from './midi.js?v=267';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=267';
+} from './core.js?v=270';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=270';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=270';
+import { Midi } from './midi.js?v=270';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=270';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, presetConds, presetLens, TRIPLET_FEEL, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=267';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=267';
-import { PROG_FILL_STYLES, PROG_FILL_EVERY, PROG_FILL_LENGTHS, fillRound, negativeChord, TONNETZ_WALKS, tonnetzProgression, triadOf, distance as tonnetzDistance, PLR } from './fill.js?v=267';
-import { AUDIO_ACCEPT, looksLikeAudio, hasAudioExtension, decodeAudioFile } from './audiofile.js?v=267';
-import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=267';
-import { Invention, parseSubject } from './invention.js?v=267';
-import { ColtraneSolo } from './coltrane.js?v=267';
-import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=267';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=267';
-import { saveBreakFolder, loadBreakFolder, saveTrackSample, deleteTrackSample, loadTrackSamples, saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=267';
+} from './percussion.js?v=270';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=270';
+import { PROG_FILL_STYLES, PROG_FILL_EVERY, PROG_FILL_LENGTHS, fillRound, negativeChord, TONNETZ_WALKS, tonnetzProgression, triadOf, distance as tonnetzDistance, PLR } from './fill.js?v=270';
+import { AUDIO_ACCEPT, looksLikeAudio, hasAudioExtension, decodeAudioFile } from './audiofile.js?v=270';
+import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=270';
+import { Invention, parseSubject } from './invention.js?v=270';
+import { ColtraneSolo } from './coltrane.js?v=270';
+import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=270';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=270';
+import { saveBreakFolder, loadBreakFolder, saveTrackSample, deleteTrackSample, loadTrackSamples, saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=270';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers, rowThisTime,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
-  trimSamples, fadeEdges, migrateRow, TRACK_SAMPLES, EXTRA_TRACKS, emptyCell, trackColumn, keepTracks, reverseBuffer, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=267';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=267';
+  trimSamples, fadeEdges, migrateRow, B2_TRACK, TRACK_SAMPLES, EXTRA_TRACKS, emptyCell, trackColumn, keepTracks, reverseBuffer, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
+} from './breaks.js?v=270';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=270';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=267';
+} from './mono.js?v=270';
 
 const $ = (id) => document.getElementById(id);
 // Every audio file picker offers any kind of audio (and video, for its sound).
@@ -264,6 +264,7 @@ const settings = {
   breakPitch: 0,
   breakLevel: 80,
   breakTrack1Level: 100, // Track 1 (the break's slices) on its own, % (the Level is the whole Breakbeat)
+  break2: {}, // the second break's settings (BREAK_SET_KEYS), for the Break 2 track
   breakPattern: null, // tracker rows: {slice, vol, pitch, chance, roll, rollType, fx}
   breakSliceMode: 'equal', // 'equal' | 'transient' (slices start on detected hits)
   breakSensitivity: 50,
@@ -311,10 +312,27 @@ onRecall(breakSendsFromDrums);
 
 let saveTimer;
 /** Save settings, debounced for slider drags; `now` writes immediately. */
+// ---- Two breaks. The Breakbeat's controls edit one at a time: its settings (BREAK_SET_KEYS)
+// are in `settings` as usual, the other break's in settings.break2. While Break 2 is being
+// edited they're swapped over, so what's saved (and put in scenes) is always put back the
+// right way round first: Break 1's in `settings`, Break 2's in settings.break2.
+let editBreak = 1;
+const BREAK_SET_KEYS = ['breakTrim', 'breakBars', 'breakFit', 'breakPitch', 'breakSliceMode', 'breakSlices', 'breakSensitivity', 'breakCustom', 'breakOff', 'breakLibLast', 'breakTrack1Level'];
+function canonicalSettings() {
+  if (editBreak === 1) return settings;
+  const out = { ...settings, break2: {} };
+  for (const k of BREAK_SET_KEYS) { out[k] = settings.break2?.[k]; out.break2[k] = settings[k]; }
+  return out;
+}
+/** One of Break 1's settings (wherever it is just now). */
+const b1Setting = (k) => (editBreak === 1 ? settings[k] : settings.break2?.[k] ?? DEFAULTS[k]);
+/** One of Break 2's settings. */
+const b2Setting = (k) => (editBreak === 2 ? settings[k] : settings.break2?.[k] ?? DEFAULTS[k]);
+
 function save(now = false) {
   clearTimeout(saveTimer);
   const write = () => {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(settings)); } catch { /* ignore */ }
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(canonicalSettings())); } catch { /* ignore */ }
   };
   if (now) write();
   else saveTimer = setTimeout(write, 200);
@@ -427,7 +445,7 @@ function ensureAudio() {
       throwIn[fx] = ctx.createGain();
       throwIn[fx].connect(input);
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=267', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=270', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -438,9 +456,13 @@ function ensureAudio() {
     monoSynth = new MonoSynth(ctx, buses.bass);
     applyMono();
     breakPlayer = new BreakPlayer(ctx, buses.break);
-    breakPlayer.setLevel(settings.breakTrack1Level / 100); // Track 1's own volume (the break fader is the Level)
+    breakPlayer.setLevel(settings.breakTrack1Level / 100); // its own volume, Break vol (the break fader is the Level)
     for (let k = 0; k < EXTRA_TRACKS; k++) trackPlayers[k] = new BreakPlayer(ctx, buses.break);
     if (breakBuffer) breakPlayer.setBuffer(breakBuffer);
+    // The other break's player (Break 2, unless that's the one being edited).
+    parked.player = new BreakPlayer(ctx, buses.break);
+    parked.player.setLevel((editBreak === 1 ? b2Setting : b1Setting)('breakTrack1Level') / 100);
+    if (parked.buffer) parked.player.setBuffer(parked.buffer);
     decodeAllSamples();
     chorus = new Chorus(ctx, buses.chords);
     applyChorusMix();
@@ -3249,7 +3271,75 @@ let breakNowStep = -1;
 let breakNowSlice = null;
 const breakRowEls = [];
 const trackSamples = {}; // the Breakbeat's sample slots (1–8) -> {name, data, source (the file), buffer (trimmed), reversed, points}
-let trackView = 1; // the tracker track on show: 1 (the break's slices) or 2–4 (samples)
+let trackView = 1; // the tracker track on show: 1 (Break 1's slices), B2_TRACK (Break 2's) or 2–4 (samples)
+const isSampleTrack = (t = trackView) => t >= 2 && t <= 4;
+const breakOfTrack = (t = trackView) => (t === B2_TRACK ? 2 : 1); // which break a break track plays
+
+// The break not being edited: its file, trimmed buffer, slice points, name and player.
+const parked = { source: null, buffer: null, name: '', points: [0], player: null };
+/** A break's audio and play settings, wherever they are just now (the edited one is in the globals). */
+function breakAudio(n) {
+  const get = n === 1 ? b1Setting : b2Setting;
+  const live = n === editBreak;
+  return {
+    buffer: live ? breakBuffer : parked.buffer,
+    points: live ? breakPoints : parked.points,
+    player: live ? breakPlayer : parked.player,
+    name: live ? breakName : parked.name,
+    bars: get('breakBars'), pitch: get('breakPitch'), fit: get('breakFit'), off: get('breakOff') || [],
+  };
+}
+/** Edit the other break: swap its settings and audio into the controls. */
+function selectEditBreak(n) {
+  if (n === editBreak || (n !== 1 && n !== 2)) return;
+  if (!settings.break2 || typeof settings.break2 !== 'object') settings.break2 = {};
+  const mine = {};
+  for (const k of BREAK_SET_KEYS) {
+    mine[k] = settings[k];
+    const v = settings.break2[k];
+    settings[k] = v === undefined ? structuredClone(DEFAULTS[k]) : v;
+  }
+  settings.break2 = mine;
+  [breakSource, parked.source] = [parked.source, breakSource];
+  [breakBuffer, parked.buffer] = [parked.buffer, breakBuffer];
+  [breakName, parked.name] = [parked.name, breakName];
+  [breakPoints, parked.points] = [parked.points, breakPoints];
+  [breakPlayer, parked.player] = [parked.player, breakPlayer];
+  editBreak = n;
+  breakStutter = null;
+  renderEditBreak();
+}
+
+/**
+ * Get a break ready that isn't being edited (Break 2 restored at start-up, say): trim its file
+ * and slice it, from its own settings, into `parked`.
+ */
+function prepareParked() {
+  const src = parked.source;
+  if (!src) return;
+  const get = editBreak === 1 ? b2Setting : b1Setting;
+  const t = get('breakTrim') || { start: 0, end: 1 };
+  let buf = src;
+  if (t.start > 0 || t.end < 1) {
+    const [from, to] = trimSamples(src.length, src.sampleRate, t.start, t.end);
+    buf = new AudioBuffer({ length: to - from, numberOfChannels: src.numberOfChannels, sampleRate: src.sampleRate });
+    for (let c = 0; c < src.numberOfChannels; c++) {
+      const data = src.getChannelData(c).slice(from, to);
+      fadeEdges(data, Math.round(src.sampleRate * 0.003));
+      buf.copyToChannel(data, c);
+    }
+  }
+  parked.buffer = buf;
+  let points = get('breakSliceMode') === 'transient'
+    ? detectTransients(buf.getChannelData(0), buf.sampleRate, { sensitivity: get('breakSensitivity') / 100 })
+    : equalPoints(get('breakSlices'), buf.duration);
+  const custom = get('breakCustom');
+  const how = get('breakSliceMode') === 'transient' ? `t${get('breakSensitivity')}` : `e${get('breakSlices')}`;
+  const key = `${parked.name}|${t.start.toFixed(5)}|${t.end.toFixed(5)}|${how}`;
+  if (custom && custom.key === key && Array.isArray(custom.points) && custom.points.length === points.length) points = custom.points.map((f) => f * buf.duration);
+  parked.points = points;
+  parked.player?.setBuffer(buf);
+}
 
 onRecall(repairBreak)();
 function repairBreak() {
@@ -3300,20 +3390,23 @@ function slicingKey() {
   return `${breakName}|${t.start.toFixed(5)}|${t.end.toFixed(5)}|${how}`;
 }
 
+/** Track 1 (Break 1's slices) in the order they come in the break. */
 function orderedPattern() {
-  return keepTracks(inOrder(settings.breakSteps, breakPoints, breakBuffer ? breakBuffer.duration : 1, settings.breakBars * 16), settings.breakPattern);
+  const b = breakAudio(1);
+  return keepTracks(inOrder(settings.breakSteps, b.points, b.buffer ? b.buffer.duration : 1, b.bars * 16), settings.breakPattern);
 }
 
 /** The playing slot's volumes, from its step on (a song chain plays slots without switching to them). */
 function breakVolumesAt(v, time) {
   if (!ctx || !faders.break) return;
   const level = Number.isFinite(v.level) ? v.level : settings.breakLevel;
-  const track1 = Number.isFinite(v.track1) ? v.track1 : settings.breakTrack1Level;
+  const track1 = Number.isFinite(v.track1) ? v.track1 : b1Setting('breakTrack1Level');
   if (breakVolumesNow && breakVolumesNow.level === level && breakVolumesNow.track1 === track1) return;
   breakVolumesNow = { level, track1 };
   faders.break.gain.setTargetAtTime(level / 100, time, 0.01);
-  breakPlayer?.out.gain.setTargetAtTime(track1 / 100, time, 0.01);
-  if (breakPlayer) breakPlayer.level = track1 / 100;
+  const p1 = breakAudio(1).player; // Break vol is Break 1's (Break 2 keeps its own)
+  p1?.out.gain.setTargetAtTime(track1 / 100, time, 0.01);
+  if (p1) p1.level = track1 / 100;
 }
 
 let breakRoll = null; // a roll carrying on through empty rows: {row, span, part}
@@ -3327,12 +3420,13 @@ function playBreakStep(step) {
   // Pads: Erase held wipes each row as the playhead reaches it.
   if (padErasing && !songSlot(step.stepNumber)) eraseRow(idx);
   const pattern = breakPatternFor(songSlot(step.stepNumber) || settings.breakSlot);
-  const off = settings.breakOff || [];
+  const b1 = breakAudio(1); // Track 1 plays Break 1, whichever break is being edited
+  const off = b1.off;
   const variation = breakSlotVariation(songSlot(step.stepNumber) || settings.breakSlot);
   breakVolumesAt(variation, step.time);
   const evolved = evolveBreakRow(pattern[idx], variation.evolve / 100,
     barRng(runSeed, Math.floor(step.stepNumber / settings.breakSteps), idx + 101),
-    off.length ? usableSlices(sliceCount(), off) : sliceCount(),
+    off.length ? usableSlices(b1.points.length, off) : b1.points.length,
     { rolls: variation.rolls, reverse: variation.reverse });
   // A row on a switched-off slice counts as empty: whatever was playing carries on.
   const offed = evolved && off.includes(evolved.slice) && evolved.fx !== 'cut' ? { ...evolved, slice: null } : evolved;
@@ -3376,15 +3470,16 @@ function playBreakStep(step) {
     triggers = [];
   }
   playExtraTracks(pattern, idx, step);
+  const shown2 = playBreak2(pattern, idx, step);
   let shown = null;
-  if (breakPlayer && breakBuffer) {
-    const rate = fitRate(breakBuffer.duration, settings.breakBars, currentBpm(), settings.breakPitch, settings.breakFit);
+  if (b1.player && b1.buffer) {
+    const rate = fitRate(b1.buffer.duration, b1.bars, currentBpm(), b1.pitch, b1.fit);
     for (const tr of triggers) {
-      if (tr.cut) { breakPlayer.stop(step.time); continue; }
-      const slice = Math.min(tr.slice, sliceCount() - 1);
+      if (tr.cut) { b1.player.stop(step.time); continue; }
+      const slice = Math.min(tr.slice, b1.points.length - 1);
       shown = slice;
-      breakPlayer.trigger(step.time + tr.at, {
-        offset: sliceOffset(slice, breakPoints, breakBuffer.duration, tr.reverse),
+      b1.player.trigger(step.time + tr.at, {
+        offset: sliceOffset(slice, b1.points, b1.buffer.duration, tr.reverse),
         reverse: tr.reverse,
         rate: rate * Math.pow(2, tr.pitch / 12),
         gain: tr.gain,
@@ -3393,7 +3488,50 @@ function playBreakStep(step) {
       });
     }
   }
-  uiEvents.push({ kind: 'break', time: step.time, step: idx, slice: shown, change: rolling ? 'roll…' : breakRowChange(pattern[idx], row) });
+  // The waveform shows the break being edited: the slice its track played.
+  uiEvents.push({ kind: 'break', time: step.time, step: idx, slice: editBreak === 2 ? shown2 : shown, change: rolling ? 'roll…' : breakRowChange(pattern[idx], row) });
+}
+
+// The Break 2 track: the second break's slices, one channel, with chance, rolls (held until
+// the next filled row with Roll until next), FX and switched-off slices, as Track 1 (no Evolve).
+let break2Roll = null;
+const padSkip2 = new Set(); // as padSkip, for pads recorded into the Break 2 track
+function playBreak2(pattern, idx, step) {
+  const b = breakAudio(2);
+  const column = trackColumn(pattern, B2_TRACK);
+  const base = column[idx];
+  const cell = base && b.off.includes(base.slice) && base.fx !== 'cut' ? { ...base, slice: null } : base;
+  const row = rowThisTime(cell);
+  let triggers;
+  if (padSkip2.has(idx)) { padSkip2.delete(idx); break2Roll = null; triggers = []; }
+  else if (isFilled(row)) {
+    const span = settings.breakRollHold && row.roll > 0 && row.fx !== 'cut' ? rollSpan(column, idx) : 1;
+    triggers = rowTriggers(row, step.duration, Math.random, { span, part: 0 });
+    break2Roll = span > 1 && triggers.length ? { row, span, part: 0 } : null;
+  } else if (break2Roll && break2Roll.part + 1 < break2Roll.span) {
+    break2Roll.part += 1;
+    triggers = rowTriggers(break2Roll.row, step.duration, Math.random, { span: break2Roll.span, part: break2Roll.part });
+  } else {
+    break2Roll = null;
+    triggers = [];
+  }
+  if (!b.player || !b.buffer) return null;
+  const rate = fitRate(b.buffer.duration, b.bars, currentBpm(), b.pitch, b.fit);
+  let shown = null;
+  for (const tr of triggers) {
+    if (tr.cut) { b.player.stop(step.time); continue; }
+    const slice = Math.min(tr.slice, b.points.length - 1);
+    shown = slice;
+    b.player.trigger(step.time + tr.at, {
+      offset: sliceOffset(slice, b.points, b.buffer.duration, tr.reverse),
+      reverse: tr.reverse,
+      rate: rate * Math.pow(2, tr.pitch / 12),
+      gain: tr.gain,
+      send: tr.send ? throwIn[tr.send] : null,
+      sendLevel: tr.sendLevel,
+    });
+  }
+  return shown;
 }
 
 // Tracks 2–4: samples (S1–S8) on a step, each track one channel (a new hit cuts its last),
@@ -3472,29 +3610,32 @@ function recordPadHit(slice, vel, t) {
   // Between known steps (just started): the next step to come.
   const idx = at ? at.idx : null;
   if (idx === null) return;
-  padUndo.push({ idx, row: { ...settings.breakPattern[idx] } });
+  // Into the track of the break being edited (Track 1, or the Break 2 track).
+  const b2 = editBreak === 2;
+  padUndo.push({ idx, b2, row: { ...(b2 ? settings.breakPattern[idx].b2 : settings.breakPattern[idx]) } });
   if (padUndo.length > 128) padUndo.shift();
-  writeBreakRow(idx, { slice, vol: Math.round((vel / 127) * 100), roll: 0, fx: '', chance: 100 });
+  writeBreakRow(idx, { slice, vol: Math.round((vel / 127) * 100), roll: 0, fx: '', chance: 100 }, { b2 });
   // If that step hasn't played yet, the pad already did: skip it this time round.
-  if (at.time > ctx.currentTime) padSkip.add(idx);
+  if (at.time > ctx.currentTime) (b2 ? padSkip2 : padSkip).add(idx);
   renderPadButtons();
 }
 
 function eraseRow(idx) {
-  const r = settings.breakPattern[idx];
+  const b2 = editBreak === 2;
+  const r = b2 ? settings.breakPattern[idx]?.b2 : settings.breakPattern[idx];
   if (!r || (!isFilled(r) && !(r.roll > 0))) return;
-  padUndo.push({ idx, row: { ...r } });
+  padUndo.push({ idx, b2, row: { ...r } });
   if (padUndo.length > 128) padUndo.shift();
-  writeBreakRow(idx, { slice: null, roll: 0, fx: '', chance: 100, vol: 100, pitch: 0 });
+  writeBreakRow(idx, { slice: null, roll: 0, fx: '', chance: 100, vol: 100, pitch: 0 }, { b2 });
   renderPadButtons();
 }
 
-/** Change a tracker row and show it (the pads write here). */
-function writeBreakRow(idx, patch) {
-  editBreakRow(idx, patch);
-  const el = trackView === 1 ? breakRowEls[idx] : null; // another track on show: just the data
+/** Change a tracker row (or, `b2`, its Break 2 cell) and show it (the pads write here). */
+function writeBreakRow(idx, patch, { b2 = false } = {}) {
+  if (b2) editB2Cell(idx, patch); else editBreakRow(idx, patch);
+  const el = trackView === (b2 ? B2_TRACK : 1) ? breakRowEls[idx] : null; // another track on show: just the data
   if (el) {
-    const r = settings.breakPattern[idx];
+    const r = b2 ? settings.breakPattern[idx].b2 : settings.breakPattern[idx];
     const sel = el.querySelector('select');
     if (sel) sel.value = r.slice === null ? '' : String(r.slice);
     const nums = el.querySelectorAll('input[type="number"]');
@@ -3575,7 +3716,7 @@ $('pad-erase').addEventListener('pointerdown', eraseOn);
 for (const type of ['pointerup', 'pointerleave', 'pointercancel']) $('pad-erase').addEventListener(type, eraseOff);
 $('pad-undo').addEventListener('click', () => {
   const last = padUndo.pop();
-  if (last) writeBreakRow(last.idx, last.row);
+  if (last) writeBreakRow(last.idx, last.row, { b2: !!last.b2 });
   renderPadButtons();
 });
 $('pad-bank').addEventListener('click', () => { padBank = padBank ? 0 : 1; buildPads(); });
@@ -3905,10 +4046,10 @@ renderBreakStepsFold();
 
 function updateBreakStatus(message = '') {
   if (message) { $('break-status').textContent = message; return; }
-  if (!breakBuffer) { $('break-status').textContent = 'Loading…'; return; }
+  if (!breakBuffer) { $('break-status').textContent = editBreak === 2 ? 'Break 2: none yet. Load break…, Folder… (pick one) or Demo break.' : 'Loading…'; return; }
   const orig = Math.round((settings.breakBars * 4 * 60) / breakBuffer.duration);
   const hits = settings.breakSliceMode === 'transient' ? ` · ${sliceCount()} hits found` : '';
-  $('break-status').textContent = `${breakName} · ${breakBuffer.duration.toFixed(2)} s · ${settings.breakBars} bar${settings.breakBars > 1 ? 's' : ''} ≈ ${orig} BPM as recorded${hits}`;
+  $('break-status').textContent = `${editBreak === 2 ? 'Break 2: ' : ''}${breakName} · ${breakBuffer.duration.toFixed(2)} s · ${settings.breakBars} bar${settings.breakBars > 1 ? 's' : ''} ≈ ${orig} BPM as recorded${hits}`;
 }
 
 /**
@@ -3930,11 +4071,12 @@ async function loadBreakFile(file, { path = '', restore = false } = {}) {
   settings.breakLibLast = path;
   const mem = path && settings.breakLibSettings?.[path]?.break;
   if (mem && !restore) applyBreakFileSettings(mem);
-  if (!restore) settings.breakPatternAuto = true; // a new break starts in order
+  if (!restore && editBreak === 1) settings.breakPatternAuto = true; // a new break starts in order
   setBreak(buffer, file.name, { keepTrim: restore || !!mem });
+  if (!restore && editBreak === 2) fillB2InOrderIfEmpty();
   if (path) $('break-lib').value = String(Math.max(0, breakLib.findIndex((b) => b.path === path)));
   save();
-  try { await saveBreak({ name: file.name, data }); } catch { /* storage unavailable: kept for this visit */ }
+  try { await saveBreak({ name: file.name, data }, editBreak === 2 ? 'break2' : 'break'); } catch { /* storage unavailable: kept for this visit */ }
 }
 
 // ---------------------------------------------------------------- Recorder
@@ -4331,7 +4473,7 @@ function applySampleTrim(n, { quiet = false } = {}) {
   sliceTrackSample(n);
   if (quiet) return;
   if (Number($('track-slot').value) === n) renderTrackSlicing();
-  if (trackView > 1) buildBreakRows(); // the slices may have changed
+  if (isSampleTrack()) buildBreakRows(); // the slices may have changed
 }
 /** The sample's slice points (seconds), or none when it's played whole. */
 function sliceTrackSample(n) {
@@ -4371,7 +4513,7 @@ function setTrackSlicing(patch) {
   settings.trackSlicing[n] = { ...slicingOf(n), ...patch };
   sliceTrackSample(n);
   renderTrackSlicing();
-  if (trackView > 1) buildBreakRows(); // the Sample menus list the slices
+  if (isSampleTrack()) buildBreakRows(); // the Sample menus list the slices
   save();
 }
 $('track-slicing').addEventListener('change', () => setTrackSlicing({ mode: $('track-slicing').value }));
@@ -4613,7 +4755,7 @@ function buildBreakRows() {
   wrap.style.setProperty('--trows', String(half + 1));
   const head = document.createElement('div');
   head.className = 'trow thead';
-  const sampleTrack = trackView > 1;
+  const sampleTrack = isSampleTrack();
   const rows = trackColumn(settings.breakPattern, trackView);
   wrap.classList.toggle('sample-track', sampleTrack);
   head.innerHTML = `<span>Step</span><span${sampleTrack ? ' title="The sample (S1–S8, loaded in Samples above or from the Recorder)"' : ''}>${sampleTrack ? 'Sample' : 'Slice'}</span><span>Vol</span><span>Pitch</span>`
@@ -4623,7 +4765,7 @@ function buildBreakRows() {
     + '<span title="FX: Dly / Rvb / Hrm send the step into the Delay, Reverb or Harmonizer (at FX %, on top of the section\'s own send); Rev plays it backwards; Cut stops the sound">FX</span>'
     + '<span title="FX %: for Dly / Rvb / Hrm, how much of the step is sent to the effect (0–100%). For Rev and Cut, the chance they happen.">FX %</span>';
   wrap.append(head);
-  const count = sliceCount();
+  const count = breakAudio(breakOfTrack()).points.length; // the slices of the break this track plays
   const number = (value, min, max, step, label, onChange) => {
     const el = document.createElement('input');
     el.type = 'number'; el.min = String(min); el.max = String(max); el.step = String(step);
@@ -4633,7 +4775,7 @@ function buildBreakRows() {
     return el;
   };
   // Edits go to the track on show.
-  const edit = (i, patch) => (sampleTrack ? editTrackCell(i, trackView, patch) : editBreakRow(i, patch));
+  const edit = (i, patch) => (sampleTrack ? editTrackCell(i, trackView, patch) : trackView === B2_TRACK ? editB2Cell(i, patch) : editBreakRow(i, patch));
   rows.forEach((row, i) => {
     if (settings.breakSteps > 16 && i === half) wrap.append(head.cloneNode(true)); // the second column's header
     const el = document.createElement('div');
@@ -4721,7 +4863,18 @@ document.querySelectorAll('#break-track-tabs [data-track]').forEach((b) => b.add
   buildBreakRows();
 }));
 /** The cell on show at step k (Track 1's row, or a Tracks 2–4 cell). */
-const viewRow = (k) => (trackView === 1 ? settings.breakPattern[k] : settings.breakPattern[k]?.tracks?.[trackView - 2]);
+const viewRow = (k) => (trackView === 1 ? settings.breakPattern[k] : trackView === B2_TRACK ? settings.breakPattern[k]?.b2 : settings.breakPattern[k]?.tracks?.[trackView - 2]);
+
+/** Change a Break 2 track cell. */
+function editB2Cell(i, patch) {
+  const row = settings.breakPattern[i];
+  row.b2 = { ...(row.b2 || emptyCell()), ...patch };
+  markRow(i);
+  if (trackView === B2_TRACK) breakRowEls[i]?.classList.toggle('slice-off', row.b2.slice !== null && breakAudio(2).off.includes(row.b2.slice));
+  renderTrackTabs();
+  drawBreak();
+  save();
+}
 
 /** Change a Tracks 2–4 cell. */
 function editTrackCell(i, track, patch) {
@@ -4743,9 +4896,9 @@ function markRow(k) {
 
 /** Dim tracker rows whose slice is switched off. */
 function markOffRows() {
-  const off = trackView === 1 ? settings.breakOff || [] : [];
+  const off = isSampleTrack() ? [] : breakAudio(breakOfTrack()).off;
   breakRowEls.forEach((el, i) => {
-    const s = settings.breakPattern[i]?.slice;
+    const s = viewRow(i)?.slice;
     el.classList.toggle('slice-off', s !== null && s !== undefined && off.includes(s));
   });
 }
@@ -4756,7 +4909,7 @@ function editBreakRow(i, patch) {
   const r = settings.breakPattern[i];
   if (trackView === 1) {
     markRow(i);
-    breakRowEls[i]?.classList.toggle('slice-off', r.slice !== null && (settings.breakOff || []).includes(r.slice));
+    breakRowEls[i]?.classList.toggle('slice-off', r.slice !== null && breakAudio(1).off.includes(r.slice));
   }
   renderTrackTabs();
   drawBreak();
@@ -4947,7 +5100,7 @@ bindSelect('break-steps', 'breakSteps', null, () => {
 bindSelect('break-bars', 'breakBars', null, () => {
   // An in-order pattern needs room for the whole break: lengthen it (never shorten) if needed.
   const want = settings.breakBars * 16;
-  if (settings.breakPatternAuto && settings.breakSteps < want) {
+  if (editBreak === 1 && settings.breakPatternAuto && settings.breakSteps < want) {
     settings.breakSteps = BREAK_STEPS.find((n) => n >= want) || BREAK_STEPS[BREAK_STEPS.length - 1];
     $('break-steps').value = String(settings.breakSteps);
   }
@@ -4990,14 +5143,42 @@ function sampleTrackPattern(gen, n) {
   });
 }
 
+/** In order / Chop / Randomize for the Break 2 track: from the second break's slices. */
+function break2TrackCells(gen) {
+  const b = breakAudio(2);
+  const steps = settings.breakSteps;
+  const dur = b.buffer ? b.buffer.duration : 1;
+  const slices = b.off.length ? usableSlices(b.points.length, b.off) : b.points.length;
+  const ordered = () => inOrder(steps, b.points, dur, b.bars * 16);
+  const rows = gen === 'order' ? ordered() : gen === 'chop' ? chop(ordered()) : randomize(steps, slices);
+  return rows.map((r) => { const { tracks, b2, ...cell } = migrateRow(r); return { ...emptyCell(), ...cell, part: null }; });
+}
+function setB2Cells(cells) {
+  settings.breakPattern = settings.breakPattern.map((r, i) => ({ ...r, b2: cells[i] || emptyCell() }));
+}
+/** A break newly loaded as Break 2: its track in order, if there's nothing on it yet. */
+function fillB2InOrderIfEmpty() {
+  if (trackColumn(settings.breakPattern, B2_TRACK).some(isFilled)) { buildBreakRows(); return; }
+  setB2Cells(break2TrackCells('order'));
+  buildBreakRows();
+}
+
 document.querySelectorAll('[data-gen]').forEach((b) => b.addEventListener('click', () => {
   const steps = settings.breakSteps;
-  if (trackView > 1 && b.dataset.gen !== 'clear') {
+  if (trackView === B2_TRACK) {
+    if (b.dataset.gen === 'clear') setB2Cells([]);
+    else if (!breakAudio(2).buffer) { updateBreakStatus('Load a second break first (Editing: Break 2, then Load break…, Folder… or Demo).'); return; }
+    else setB2Cells(break2TrackCells(b.dataset.gen));
+    buildBreakRows();
+    save();
+    return;
+  }
+  if (isSampleTrack() && b.dataset.gen !== 'clear') {
     const n = Number($('track-slot').value);
-    if (!trackSamples[n]?.buffer) { updateBreakStatus(`Track ${trackView}: load a sample into S${n} (Samples) first.`); return; }
+    if (!trackSamples[n]?.buffer) { updateBreakStatus(`Sample ${trackView - 1}: load a sample into S${n} (Samples) first.`); return; }
     const cells = sampleTrackPattern(b.dataset.gen, n);
     settings.breakPattern = settings.breakPattern.map((r, i) => ({ ...r, tracks: r.tracks.map((c, k) => (k === trackView - 2 ? cells[i] : c)) }));
-    updateBreakStatus(`Track ${trackView}: ${b.textContent.trim()} from S${n}${trackSamples[n].points ? ` (${trackSamples[n].points.length} slices)` : ' (unsliced: the whole sample)'}.`);
+    updateBreakStatus(`Sample ${trackView - 1}: ${b.textContent.trim()} from S${n}${trackSamples[n].points ? ` (${trackSamples[n].points.length} slices)` : ' (unsliced: the whole sample)'}.`);
     buildBreakRows();
     save();
     return;
@@ -5005,7 +5186,7 @@ document.querySelectorAll('[data-gen]').forEach((b) => b.addEventListener('click
   settings.breakPattern = {
     order: () => orderedPattern(),
     chop: () => chop(orderedPattern()),
-    random: () => keepTracks(randomize(steps, (settings.breakOff || []).length ? usableSlices(sliceCount(), settings.breakOff) : sliceCount()), settings.breakPattern),
+    random: () => { const b1 = breakAudio(1); return keepTracks(randomize(steps, b1.off.length ? usableSlices(b1.points.length, b1.off) : b1.points.length), settings.breakPattern); },
     // Clear empties the track on show (Track 1: the slices; the others: their samples).
     clear: () => (trackView === 1
       ? keepTracks(resizePattern([], steps), settings.breakPattern)
@@ -5089,6 +5270,18 @@ async function reloadFromFolder() {
   const find = (path) => breakLib.find((b) => b.path === path);
   const main = settings.breakLibLast && find(settings.breakLibLast);
   if (main) { try { await loadBreakFile(await libFile(main), { path: main.path, restore: true }); } catch { /* the copy stays */ } }
+  // The other break, if it's from the folder too.
+  const otherPath = (editBreak === 1 ? b2Setting : b1Setting)('breakLibLast');
+  const other = otherPath && find(otherPath);
+  if (other) {
+    try {
+      const file = await libFile(other);
+      parked.source = await decodeAudioFile(await file.arrayBuffer());
+      parked.name = file.name;
+      prepareParked();
+      renderEditBreak();
+    } catch { /* the copy stays */ }
+  }
   for (let n = 1; n <= TRACK_SAMPLES; n++) {
     const b = settings.trackSlicing?.[n]?.path && find(settings.trackSlicing[n].path);
     if (!b) continue;
@@ -5171,12 +5364,42 @@ $('break-demo').addEventListener('click', async () => {
   settings.breakLibLast = '';
   settings.breakBars = 2;
   $('break-bars').value = '2';
-  settings.breakPatternAuto = true;
+  if (editBreak === 1) settings.breakPatternAuto = true;
   setBreak(await renderDemoBreak(), 'Demo break (synthesized)');
+  if (editBreak === 2) fillB2InOrderIfEmpty();
   save();
-  try { await saveBreak({ name: 'demo', data: null }); } catch { /* ignore */ }
+  try { await saveBreak({ name: 'demo', data: null }, editBreak === 2 ? 'break2' : 'break'); } catch { /* ignore */ }
 });
 window.addEventListener('resize', () => { drawBreak(); drawTrimOverview(); });
+
+// ---- Editing: Break 1 or Break 2. The controls, waveform, trim and pads show that break.
+function renderEditBreak() {
+  $('break-edit').querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(Number(b.dataset.break) === editBreak)));
+  const other = breakAudio(editBreak === 1 ? 2 : 1);
+  $('break-edit-info').textContent = other.buffer ? `Break ${editBreak === 1 ? 2 : 1}: ${other.name}` : (editBreak === 1 ? 'Break 2: none yet' : '');
+  $('break-panel').classList.toggle('editing-b2', editBreak === 2);
+  applyBreakFileSettings(settings); // the controls show this break's settings
+  $('break-track1-level').value = String(settings.breakTrack1Level);
+  $('break-track1-level-val').textContent = `${settings.breakTrack1Level}%`;
+  const trimBreak = $('trim-target').querySelector('[data-target="break"]');
+  if (trimBreak) trimBreak.textContent = `Break ${editBreak}`;
+  if (trimTarget === 'break') renderTrim();
+  const at = breakLib.findIndex((b) => b.path === settings.breakLibLast);
+  if (at >= 0) $('break-lib').value = String(at);
+  $('break-points-reset').hidden = !settings.breakCustom;
+  updateBreakStatus();
+  drawBreak();
+  if (padEls.length) buildPads();
+  // Show the track that plays it.
+  if (!isSampleTrack()) trackView = editBreak === 2 ? B2_TRACK : 1;
+  buildBreakRows();
+}
+$('break-edit').querySelectorAll('button').forEach((b) => b.addEventListener('click', () => {
+  selectEditBreak(Number(b.dataset.break));
+  save();
+}));
+$('break-edit').querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.break === '1')));
+$('break-edit-info').textContent = 'Break 2: none yet';
 
 $('break-sensitivity').disabled = settings.breakSliceMode !== 'transient';
 $('break-slices').disabled = settings.breakSliceMode === 'transient';
@@ -5191,6 +5414,20 @@ onRecall(() => {
   renderBreakPanel();
 });
 // Your saved break, decoded without needing an audio context yet; else the demo.
+// Break 2, likewise (it waits, ready, for the Break 2 track and for editing).
+loadBreak('break2').then(async (stored) => {
+  let buffer = null;
+  let name = '';
+  if (stored?.data) {
+    try { buffer = await decodeAudioFile(stored.data); name = stored.name; } catch { /* unreadable: none */ }
+  } else if (stored?.name === 'demo') { buffer = await renderDemoBreak(); name = 'Demo break (synthesized)'; }
+  if (!buffer) return;
+  if (editBreak === 2) { setBreak(buffer, name, { keepTrim: true }); return; } // being edited already
+  parked.source = buffer;
+  parked.name = name;
+  prepareParked();
+  renderEditBreak();
+});
 loadBreak().then(async (stored) => {
   if (stored?.data) {
     try {
@@ -5216,7 +5453,7 @@ function breakPatternFor(slot) {
 }
 
 // A break slot's Evolve settings (the edited slot's are the live ones).
-const breakVariationNow = () => ({ evolve: settings.breakEvolve, rolls: settings.breakEvolveRolls, reverse: settings.breakEvolveReverse, level: settings.breakLevel, track1: settings.breakTrack1Level });
+const breakVariationNow = () => ({ evolve: settings.breakEvolve, rolls: settings.breakEvolveRolls, reverse: settings.breakEvolveReverse, level: settings.breakLevel, track1: b1Setting('breakTrack1Level') });
 function breakSlotVariation(slot) {
   return (slot && slot !== settings.breakSlot && settings.breakSlotEvolve?.[slot]) || breakVariationNow();
 }
@@ -5241,11 +5478,11 @@ function selectBreakSlot(slot) {
     Object.assign(settings, { breakEvolve: v.evolve, breakEvolveRolls: v.rolls, breakEvolveReverse: v.reverse });
     // Its volumes too (slots saved before they had them keep the current ones).
     if (Number.isFinite(v.level)) settings.breakLevel = v.level;
-    if (Number.isFinite(v.track1)) settings.breakTrack1Level = v.track1;
+    if (Number.isFinite(v.track1)) { if (editBreak === 1) settings.breakTrack1Level = v.track1; else settings.break2.breakTrack1Level = v.track1; }
   }
   renderBreakEvolve();
   applyFaders();
-  breakPlayer?.setLevel(settings.breakTrack1Level / 100);
+  breakAudio(1).player?.setLevel(b1Setting('breakTrack1Level') / 100);
   breakStutter = null;
   settings.breakSlots[settings.breakSlot] = structuredClone(settings.breakPattern);
   const next = settings.breakSlots[slot] ? structuredClone(settings.breakSlots[slot]) : structuredClone(settings.breakPattern);
@@ -7308,7 +7545,7 @@ if (!Array.isArray(scenes)) scenes = [];
 const sceneId = () => Math.random().toString(36).slice(2, 10);
 
 function sceneSnapshot() {
-  const copy = JSON.parse(JSON.stringify(settings));
+  const copy = JSON.parse(JSON.stringify(canonicalSettings()));
   for (const k of DEVICE_KEYS) delete copy[k];
   return copy;
 }
@@ -7347,6 +7584,7 @@ function applyPendingScene() {
   const undo = sceneSnapshot();
   const keep = {};
   for (const k of DEVICE_KEYS) if (k in settings) keep[k] = settings[k];
+  if (editBreak === 2) selectEditBreak(1); // the scene's settings are the right way round: edit Break 1 again
   for (const k of Object.keys(settings)) delete settings[k];
   Object.assign(settings, structuredClone(DEFAULTS), structuredClone(data), keep);
   uiEvents.length = 0; // queued display updates refer to the old patterns

@@ -59,20 +59,21 @@ export async function loadSamples(dbName = DB_NAME) {
 // ---- The breakbeat slicer's break, in its own database: {name, data, bars}.
 const BREAK_DB = 'arp-seq-breaks';
 
-export function saveBreak(entry) {
-  return run('readwrite', (store) => store.put(entry, 'break'), BREAK_DB);
+// ('break' is Break 1's; 'break2' the second break's.)
+export function saveBreak(entry, key = 'break') {
+  return run('readwrite', (store) => store.put(entry, key), BREAK_DB);
 }
 
 export function clearBreak() {
   return run('readwrite', (store) => store.delete('break'), BREAK_DB);
 }
 
-export async function loadBreak() {
+export async function loadBreak(key = 'break') {
   try {
     const db = await openDb(BREAK_DB);
     return await new Promise((resolve, reject) => {
       const tx = db.transaction(STORE, 'readonly');
-      const req = tx.objectStore(STORE).get('break');
+      const req = tx.objectStore(STORE).get(key);
       tx.oncomplete = () => { db.close(); resolve(req.result || null); };
       tx.onerror = () => { db.close(); reject(tx.error); };
     });

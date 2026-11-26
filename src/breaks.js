@@ -29,7 +29,8 @@ export const EXTRA_TRACKS = 3;
 // without it are older, when R counted hits per 16th step: their R is doubled on the way in.
 // part (Tracks 2–4): which slice of a sliced sample (0-based), or null for the whole sample.
 export const emptyCell = () => ({ slice: null, vol: 100, pitch: 0, chance: 100, roll: 0, rollType: 'R', fx: '', rollChance: 100, fxChance: 100, rr: 8, part: null });
-export const emptyRow = () => ({ ...emptyCell(), tracks: Array.from({ length: EXTRA_TRACKS }, emptyCell) });
+// b2: the same step on the Break 2 track (its "slice" is a slice of the second break).
+export const emptyRow = () => ({ ...emptyCell(), tracks: Array.from({ length: EXTRA_TRACKS }, emptyCell), b2: emptyCell() });
 
 /** One cell's fields made current: old Ratchet ×2/×3/×4 effects become R rolls. */
 function migrateCell(row) {
@@ -57,6 +58,13 @@ export function migrateRow(row) {
     c.part = c.part === null || c.part === undefined || c.slice === null ? null : Math.max(0, Math.min(MAX_TRANSIENT_SLICES - 1, Math.round(Number(c.part) || 0)));
     return c;
   });
+  // The Break 2 track's cell.
+  const b2 = migrateCell(row?.b2);
+  delete b2.tracks;
+  delete b2.b2;
+  b2.part = null;
+  if (b2.slice !== null) b2.slice = Math.max(0, Math.min(MAX_TRANSIENT_SLICES - 1, Math.round(Number(b2.slice) || 0)));
+  out.b2 = b2;
   // The old Smp column (a one-shot beside the slice) moves to Track 2.
   const smp = Math.round(Number(out.smp) || 0);
   if (smp > 0 && out.tracks[0].slice === null) out.tracks[0] = { ...out.tracks[0], slice: Math.min(TRACK_SAMPLES, smp) - 1, vol: out.vol, chance: out.chance };
@@ -66,12 +74,15 @@ export function migrateRow(row) {
 
 /** One track of a pattern as rows: track 1 is the rows themselves, 2–4 their cells. */
 export function trackColumn(pattern, track) {
+  if (track === B2_TRACK) return pattern.map((r) => r?.b2 || emptyCell());
   return track <= 1 ? pattern : pattern.map((r) => r?.tracks?.[track - 2] || emptyCell());
 }
+/** The Break 2 track's number (the tracker shows it second: Break 1, Break 2, then the sample tracks 2–4). */
+export const B2_TRACK = 5;
 
-/** Rows from a generator, keeping the Tracks 2–4 cells of `from` (step by step). */
+/** Rows from a generator, keeping the other tracks' cells of `from` (step by step). */
 export function keepTracks(rows, from) {
-  return rows.map((r, i) => ({ ...r, tracks: structuredClone(from?.[i]?.tracks || emptyRow().tracks) }));
+  return rows.map((r, i) => ({ ...r, tracks: structuredClone(from?.[i]?.tracks || emptyRow().tracks), b2: structuredClone(from?.[i]?.b2 || emptyCell()) }));
 }
 
 /** A buffer played backwards (for Reverse). */
