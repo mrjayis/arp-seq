@@ -872,6 +872,9 @@ h2.collapsible { cursor: pointer; user-select: none; }
 /* A fold inside a window (the Breakbeat's tracker steps): a triangle and a label. */
 .sends-row .sends-toggle { margin-bottom: 0; }
 .sends-row.folded { padding-top: 4px; padding-bottom: 4px; }
+.tonnetz-steps { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.tonnetz-step-start { font-weight: 700; padding: 0 4px; }
+.tonnetz-steps select { min-width: 0; }
 .tracker-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; margin-bottom: 6px; }
 .tracker-head .fold-toggle { margin-bottom: 0; }
 .fold-toggle {

@@ -9,7 +9,7 @@
 //    iv–♭VII7, V/V–V, ♭III–♭II; or one chord: V7, ♭II7, ♭VII7, vii°7, iv.
 // Pure (seeded by an rng), unit-tested.
 
-import { CHORDS } from './core.js?v=273';
+import { CHORDS } from './core.js?v=275';
 
 export const PROG_FILL_STYLES = { off: 'Off', tonnetz: 'Tonnetz', turnaround: 'Turnaround', negative: 'Negative harmony', mix: 'Mix' };
 export const PROG_FILL_EVERY = [1, 2, 4, 8];
@@ -305,4 +305,75 @@ export function negativeChord(chord, tonic) {
 export function negativeFill(replaced, tonic) {
   if (replaced.every((c) => !c || c.type === 'rest')) return null;
   return replaced.map((c) => (c && c.type !== 'rest' ? negativeChord(c, tonic) : { root: 0, type: 'rest' }));
+}
+
+// ---- A Tonnetz path chosen step by step: how far each chord moves from the one before.
+
+export const TONNETZ_STEPS = {
+  close: 'Close: 1 move (shares 2 notes)',
+  P: 'P: parallel (C ↔ Cm)',
+  L: 'L: leading-tone (C ↔ Em)',
+  R: 'R: relative (C ↔ Am)',
+  near: 'Near: 2 moves (shares 1 note)',
+  jump: 'Jump: 3 moves, across a hexagon',
+  far: 'Far: 4–5 moves, the other side',
+  back: 'Back: to where the last jump left from',
+  home: 'Home: the first chord',
+  same: 'Same chord again',
+};
+/** Short names for the steps (on the menus). */
+export const TONNETZ_STEP_SHORT = { close: 'Close', P: 'P', L: 'L', R: 'R', near: 'Near', jump: 'Jump', far: 'Far', back: 'Back', home: 'Home', same: 'Same' };
+
+/** How many moves every triad is from `t` (a map of key → moves), searching the P/L/R grid. */
+export function tonnetzDistances(t) {
+  const dist = new Map([[key(t), { t, d: 0 }]]);
+  const queue = [t];
+  while (queue.length) {
+    const here = queue.shift();
+    const d = dist.get(key(here)).d;
+    for (const f of Object.values(PLR)) {
+      const n = f(here);
+      if (!dist.has(key(n))) { dist.set(key(n), { t: n, d: d + 1 }); queue.push(n); }
+    }
+  }
+  return dist;
+}
+/** The number of P/L/R moves between two triads (0–5). */
+export const tonnetzDistance = (a, b) => tonnetzDistances(a).get(key(b)).d;
+
+/**
+ * A progression from `start` ({root, minor}) taking `steps` (one per chord after the first,
+ * from TONNETZ_STEPS): Close / Near / Jump / Far pick, at random, a chord that many moves away
+ * (preferring one not just played); P, L and R make that move; Back returns to where the last
+ * Jump (or Far or Near) left from; Home to the first chord. Returns [{root, type}] (triads, or
+ * maj7 / min7 with `sevenths`), and the moves each step took.
+ */
+export function tonnetzSteps({ start = { root: 0, minor: false }, steps = [], sevenths = false, rng = Math.random } = {}) {
+  const path = [start];
+  const anchors = []; // where each jump left from, for Back
+  const pickAt = (from, ds) => {
+    const cands = [...tonnetzDistances(from).values()].filter((x) => ds.includes(x.d)).map((x) => x.t);
+    const recent = new Set(path.slice(-3).map(key));
+    const fresh = cands.filter((t) => !recent.has(key(t)));
+    const pool = fresh.length ? fresh : cands;
+    return pool[Math.floor(rng() * pool.length)];
+  };
+  for (const step of steps) {
+    const from = path[path.length - 1];
+    let next;
+    if (PLR[step]) next = PLR[step](from);
+    else if (step === 'same') next = from;
+    else if (step === 'home') next = start;
+    else if (step === 'back') next = anchors.pop() || path[path.length - 2] || start;
+    else {
+      const ds = { close: [1], near: [2], jump: [3], far: [4, 5] }[step] || [1];
+      if (step !== 'close') anchors.push(from);
+      next = pickAt(from, ds);
+    }
+    path.push(next);
+  }
+  return {
+    chords: path.map((t) => ({ root: t.root, type: sevenths ? (t.minor ? 'min7' : 'maj7') : (t.minor ? 'min' : 'maj') })),
+    moves: path.slice(1).map((t, i) => tonnetzDistance(path[i], t)),
+  };
 }
