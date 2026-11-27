@@ -8,32 +8,32 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=271';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=271';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=271';
-import { Midi } from './midi.js?v=271';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=271';
+} from './core.js?v=272';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=272';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=272';
+import { Midi } from './midi.js?v=272';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=272';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, presetConds, presetLens, TRIPLET_FEEL, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=271';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=271';
-import { PROG_FILL_STYLES, PROG_FILL_EVERY, PROG_FILL_LENGTHS, fillRound, negativeChord, TONNETZ_WALKS, tonnetzProgression, triadOf, distance as tonnetzDistance, PLR } from './fill.js?v=271';
-import { AUDIO_ACCEPT, looksLikeAudio, hasAudioExtension, decodeAudioFile } from './audiofile.js?v=271';
-import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=271';
-import { Invention, parseSubject } from './invention.js?v=271';
-import { ColtraneSolo } from './coltrane.js?v=271';
-import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=271';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=271';
-import { saveBreakFolder, loadBreakFolder, saveTrackSample, deleteTrackSample, loadTrackSamples, saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=271';
+} from './percussion.js?v=272';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=272';
+import { PROG_FILL_STYLES, PROG_FILL_EVERY, PROG_FILL_LENGTHS, fillRound, negativeChord, TONNETZ_WALKS, tonnetzProgression, triadOf, distance as tonnetzDistance, PLR } from './fill.js?v=272';
+import { AUDIO_ACCEPT, looksLikeAudio, hasAudioExtension, decodeAudioFile } from './audiofile.js?v=272';
+import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=272';
+import { Invention, parseSubject } from './invention.js?v=272';
+import { ColtraneSolo } from './coltrane.js?v=272';
+import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=272';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=272';
+import { saveBreakFolder, loadBreakFolder, saveTrackSample, deleteTrackSample, loadTrackSamples, saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=272';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers, rowThisTime,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, migrateRow, B2_TRACK, TRACK_SAMPLES, EXTRA_TRACKS, emptyCell, trackColumn, keepTracks, reverseBuffer, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=271';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=271';
+} from './breaks.js?v=272';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=272';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=271';
+} from './mono.js?v=272';
 
 const $ = (id) => document.getElementById(id);
 // Every audio file picker offers any kind of audio (and video, for its sound).
@@ -130,6 +130,7 @@ const settings = {
   outputMode: 'mix', // 'mix': one stereo pair; 'split': each module on its own pair of a multichannel output
   breakStepsOpen: true, // the Breakbeat tracker's steps shown (a view choice, not part of scenes)
   breakTrimOpen: true, // the Breakbeat's trim controls shown (likewise)
+  sendsOpen: {}, // each window's Sends row shown (false: folded), by section
   breakLibLast: '', // the break playing, if it's from your folder (its path in it)
   breakLibSettings: {}, // each folder break's own settings, by path: {break: {trim, bars…}, sample: {trim, fit…}}
   trackSlicing: {}, // the Breakbeat samples' slicing, per slot (1–8): {mode: whole|equal|transient, slices, sensitivity}
@@ -279,7 +280,7 @@ Object.assign(DEFAULTS, { drumKitStore: {}, sampleLevels: {}, sampleTunes: {}, d
 const DEVICE_KEYS = [
   'theme', 'themeV2', 'collapsed', 'showHelp', 'midiIn', 'midiInCh', 'midiOut', 'midiOutCh', 'volume', 'synthOn',
   'midiInChord', 'midiInMono', 'midiInDrums', 'midiInBreak', 'aftertouch', 'aftertouchDepth', 'midiMap',
-  'sync', 'baseOctave', 'chordRoot', 'monoKbOctave', 'breakStepsOpen', 'breakTrimOpen', 'breakLibLast', 'breakLibSettings', 'tonnetzGen', 'trackSlicing', 'audioOut', 'outputMode', 'stableMode',
+  'sync', 'baseOctave', 'chordRoot', 'monoKbOctave', 'breakStepsOpen', 'breakTrimOpen', 'sendsOpen', 'breakLibLast', 'breakLibSettings', 'tonnetzGen', 'trackSlicing', 'audioOut', 'outputMode', 'stableMode',
 ];
 // Live scene recall: each part of the page registers how to re-read its settings,
 // in page order (repairs first, then controls, then drawing). See recallLive().
@@ -451,7 +452,7 @@ function ensureAudio() {
       throwIn[fx] = ctx.createGain();
       throwIn[fx].connect(input);
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=271', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=272', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -6851,11 +6852,25 @@ for (const fx of ['delay', 'reverb']) {
     if (!panel) continue;
     const row = document.createElement('div');
     row.className = 'row sends-row';
-    const head = document.createElement('span');
-    head.className = 'row-label';
-    head.textContent = 'Sends';
-    head.title = 'This section\'s sends into the Effects: the same sends as in the Effects window';
+    // The label folds the sends away (remembered per window, on this device); folded, it shows their levels.
+    const head = document.createElement('button');
+    head.className = 'fold-toggle sends-toggle';
+    head.title = 'This section\'s sends into the Effects (the same sends as in the Effects window). Tap to show or hide them.';
     row.append(head);
+    const sliders = [];
+    const renderFold = () => {
+      const open = settings.sendsOpen?.[src] !== false;
+      head.setAttribute('aria-expanded', String(open));
+      row.classList.toggle('folded', !open);
+      for (const l of sliders) l.hidden = !open;
+      head.textContent = open ? 'Sends' : `Sends: ${Object.keys(FX_LABELS).map((fx) => `${{ delay: 'Dly', reverb: 'Rvb', harm: 'Hrm' }[fx]} ${settings[`${fx}Send${SEND_SOURCES[src]}`] ?? 0}`).join(' · ')}`;
+    };
+    head.addEventListener('click', () => {
+      if (!settings.sendsOpen || typeof settings.sendsOpen !== 'object') settings.sendsOpen = {};
+      settings.sendsOpen[src] = settings.sendsOpen[src] === false;
+      renderFold();
+      save();
+    });
     for (const [fx, name] of Object.entries(FX_LABELS)) {
       const twin = $(`${fx}-send-${src}`);
       const key = `${fx}Send${SEND_SOURCES[src]}`;
@@ -6868,7 +6883,7 @@ for (const fx of ['delay', 'reverb']) {
       input.max = '100';
       input.id = `${src}-${fx}-send`;
       label.append(`${name} `, out, input);
-      const show = () => { input.value = String(settings[key] ?? 0); out.textContent = `${settings[key] ?? 0}%`; };
+      const show = () => { input.value = String(settings[key] ?? 0); out.textContent = `${settings[key] ?? 0}%`; renderFold(); };
       input.addEventListener('input', () => {
         twin.value = input.value;
         twin.dispatchEvent(new Event('input')); // the Effects window's slider does the rest
@@ -6876,8 +6891,9 @@ for (const fx of ['delay', 'reverb']) {
       });
       twin.addEventListener('input', show);
       onRecall(show);
-      show();
+      sliders.push(label);
       row.append(label);
+      show();
     }
     const before = src === 'break' ? panel.querySelector('.track-samples') : null;
     if (before) before.before(row); else panel.append(row);
