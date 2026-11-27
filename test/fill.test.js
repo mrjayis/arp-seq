@@ -167,3 +167,28 @@ test('the negative fill: the last chords mirrored (V7 → iv6: the minor plagal 
   }
   assert.ok(kinds.has('5min6'));
 });
+
+import { tonnetzSteps, tonnetzDistance as moves } from '../src/fill.js';
+
+test('a Tonnetz path step by step: each chord as far as asked', () => {
+  const rng = seeded(21);
+  const C = { root: 0, minor: false };
+  for (let r = 0; r < 50; r++) {
+    const { chords, moves: m } = tonnetzSteps({ start: C, steps: ['jump', 'close', 'back', 'near', 'far', 'home', 'R', 'same'], rng });
+    assert.equal(chords.length, 9);
+    const tri = chords.map((c) => triadOf(c));
+    assert.equal(m[0], 3, 'jump: 3 moves');
+    assert.equal(m[1], 1, 'close: 1');
+    assert.deepEqual(tri[3], tri[0], 'back: to where the jump left from');
+    assert.equal(m[3], 2, 'near: 2');
+    assert.ok(m[4] >= 4, 'far: 4 or 5');
+    assert.deepEqual(tri[6], C, 'home');
+    assert.deepEqual(tri[7], { root: 9, minor: true }, 'R from C: Am');
+    assert.deepEqual(tri[8], tri[7], 'same');
+  }
+  // the grid: every triad within 5 moves; C's farthest is B♭m
+  assert.equal(moves(C, { root: 10, minor: true }), 5);
+  assert.equal(moves(C, { root: 8, minor: true }), 3); // A♭m, the hexatonic pole
+  const seventh = tonnetzSteps({ start: C, steps: ['close'], sevenths: true, rng });
+  assert.ok(seventh.chords.every((c) => c.type === 'maj7' || c.type === 'min7'));
+});

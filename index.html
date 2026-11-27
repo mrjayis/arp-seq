@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=273" />
-  <link rel="stylesheet" href="mac.css?v=273" />
+  <link rel="stylesheet" href="styles.css?v=275" />
+  <link rel="stylesheet" href="mac.css?v=275" />
 </head>
 <body>
   <main class="device">
@@ -382,6 +382,11 @@
         <label class="check" title="The last chord a move from the first, so the loop comes round smoothly (the cycles always do their own thing)"><input id="tonnetz-close" type="checkbox" checked /> Loop back</label>
         <button id="tonnetz-go" title="A new progression each time (it replaces the one there)">Generate</button>
         <span class="status" id="tonnetz-path"></span>
+      </div>
+      <div id="tonnetz-steps-row" class="row tonnetz-steps-row" hidden>
+        <span class="row-label" title="How far each chord moves on the Tonnetz from the one before: Close (1 move, 2 notes shared), P/L/R (that move), Near (2 moves, 1 note shared), Jump (3: across a hexagon, no notes shared), Far (4–5: the other side), Back (to where the last jump left from), Home (the first chord), Same. Generate picks the chords; again for others with the same moves.">Moves</span>
+        <div id="tonnetz-steps" class="tonnetz-steps"></div>
+        <label class="field inline">Pattern <select id="tonnetz-pattern"><option value="">Fill with…</option></select></label>
       </div>
       <div id="ireal-box" class="ireal-box" hidden>
         <div class="ireal-row">
@@ -1074,6 +1079,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=273"></script>
+  <script type="module" src="src/app.js?v=275"></script>
 </body>
 </html>
