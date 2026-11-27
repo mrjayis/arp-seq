@@ -8,32 +8,33 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=272';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=272';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=272';
-import { Midi } from './midi.js?v=272';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=272';
+} from './core.js?v=273';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=273';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=273';
+import { Midi } from './midi.js?v=273';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=273';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, presetConds, presetLens, TRIPLET_FEEL, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=272';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=272';
-import { PROG_FILL_STYLES, PROG_FILL_EVERY, PROG_FILL_LENGTHS, fillRound, negativeChord, TONNETZ_WALKS, tonnetzProgression, triadOf, distance as tonnetzDistance, PLR } from './fill.js?v=272';
-import { AUDIO_ACCEPT, looksLikeAudio, hasAudioExtension, decodeAudioFile } from './audiofile.js?v=272';
-import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=272';
-import { Invention, parseSubject } from './invention.js?v=272';
-import { ColtraneSolo } from './coltrane.js?v=272';
-import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=272';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=272';
-import { saveBreakFolder, loadBreakFolder, saveTrackSample, deleteTrackSample, loadTrackSamples, saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=272';
+} from './percussion.js?v=273';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=273';
+import { PROG_FILL_STYLES, PROG_FILL_EVERY, PROG_FILL_LENGTHS, fillRound, negativeChord, TONNETZ_WALKS, tonnetzProgression, triadOf, distance as tonnetzDistance, PLR } from './fill.js?v=273';
+import { ProdigyVoice, PRODIGY_WAVES, prodigyDefaults } from './prodigy.js?v=273';
+import { AUDIO_ACCEPT, looksLikeAudio, hasAudioExtension, decodeAudioFile } from './audiofile.js?v=273';
+import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=273';
+import { Invention, parseSubject } from './invention.js?v=273';
+import { ColtraneSolo } from './coltrane.js?v=273';
+import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=273';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=273';
+import { saveBreakFolder, loadBreakFolder, saveTrackSample, deleteTrackSample, loadTrackSamples, saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=273';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers, rowThisTime,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, migrateRow, B2_TRACK, TRACK_SAMPLES, EXTRA_TRACKS, emptyCell, trackColumn, keepTracks, reverseBuffer, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=272';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=272';
+} from './breaks.js?v=273';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=273';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=272';
+} from './mono.js?v=273';
 
 const $ = (id) => document.getElementById(id);
 // Every audio file picker offers any kind of audio (and video, for its sound).
@@ -136,7 +137,8 @@ const settings = {
   trackSlicing: {}, // the Breakbeat samples' slicing, per slot (1–8): {mode: whole|equal|transient, slices, sensitivity}
   breakTrim: { start: 0, end: 1 }, // the part of the loaded break that's used (fractions of the file)
   arpLevel: 100, // %: overall level of the arp (both voices)
-  osc2Sound: 'west', // 'west' (the west-coast voice) | 'bass' (upright bass)
+  osc2Sound: 'west', // 'west' (the west-coast voice) | 'bass' (upright bass) | 'prodigy' (Moog Prodigy-style mono synth)
+  ...prodigyDefaults, // the Prodigy's oscillators (with sync), filter, contours and glide
   bassTone: 45, // %
   bassDecay: 2200, // ms: how long a low E rings
   osc1Level: 100, // %: oscillator 1's own level (oscillator 2 has osc2Level)
@@ -392,6 +394,7 @@ const throwIn = {}; // the tracker's FX throws, per effect: gated with the break
 const trackPlayers = []; // Tracks 2–4 of the breakbeat tracker: one channel each
 let harmOut = null;
 let harmNode = null;
+let prodigy = null; // oscillator 2's Prodigy voice (once its worklet has loaded)
 let delayFx = null;
 let ctxStable = false; // whether the audio was started with the bigger (steadier) buffer
 let outRouter = null; // separate outputs: {merger, gains: Map key -> gain} while split (see applyOutputRouting)
@@ -452,11 +455,14 @@ function ensureAudio() {
       throwIn[fx] = ctx.createGain();
       throwIn[fx].connect(input);
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=272', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=273', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
     }).catch(() => { /* no AudioWorklet: the harmonizer stays silent */ });
+    ctx.audioWorklet?.addModule(new URL('./prodigy-worklet.js?v=273', import.meta.url)).then(() => {
+      prodigy = new ProdigyVoice(ctx, buses.arp);
+    }).catch(() => { /* no AudioWorklet: the Prodigy plays as the west-coast voice */ });
     applyFx();
     applySolo(true);
     drums = new DrumSynth(ctx, buses.perc);
@@ -684,7 +690,9 @@ function playVoice(note, note2, velocity, time, gateLen, modNote, press = 0) {
   midi.noteOff(note, off);
   if (note2 === null) return;
   if (settings.synthOn && synth && settings.osc2Level > 0) {
-    if (settings.osc2Sound === 'bass') {
+    if (settings.osc2Sound === 'prodigy' && prodigy) {
+      prodigy.play(tuned(note2), velocity, time, gateLen, settings, settings.osc2Level / 100);
+    } else if (settings.osc2Sound === 'bass') {
       // Upright bass: each note rings on until the next one (a bassist's legato), gate or not.
       synth.playBass(tuned(note2), velocity, time, Math.max(gateLen, settings.bassDecay / 1000), {
         level: settings.osc2Level / 100, out: buses.arp, mono: 'osc2',
@@ -891,7 +899,9 @@ function bassPulse(time, pulse, pulseDuration) {
 function playBassNote(note, velocity, time, len) {
   if (note < 0 || note > 127) return;
   if (settings.synthOn && synth && settings.osc2Level > 0) {
-    if (settings.osc2Sound === 'bass') {
+    if (settings.osc2Sound === 'prodigy' && prodigy) {
+      prodigy.play(tuned(note), velocity, time, Math.max(len, 0.05), settings, settings.osc2Level / 100);
+    } else if (settings.osc2Sound === 'bass') {
       synth.playBass(tuned(note), velocity, time, Math.max(len, 0.05), {
         level: settings.osc2Level / 100, out: buses.arp, mono: 'osc2',
         tone: settings.bassTone / 100, decay: settings.bassDecay / 1000,
@@ -2075,19 +2085,46 @@ function showPwm() {
 }
 bindRange('arp-level', 'arpLevel', (v) => `${v}%`, applyFaders);
 bindRange('osc1-level', 'osc1Level', (v) => `${v}%`);
-bindSelect('osc2-sound', 'osc2Sound', [['west', 'West-coast'], ['bass', 'Upright bass']], renderOsc2Sound);
+bindSelect('osc2-sound', 'osc2Sound', [['west', 'West-coast'], ['bass', 'Upright bass'], ['prodigy', 'Prodigy (Moog-style)']], renderOsc2Sound);
+// The Prodigy's controls.
+bindSelect('prod-wave1', 'prodWave1', PRODIGY_WAVES);
+bindSelect('prod-wave2', 'prodWave2', PRODIGY_WAVES);
+bindSelect('prod-interval', 'prodInterval', Array.from({ length: 37 }, (_, k) => k - 12).map((n) => [String(n), `${n > 0 ? '+' : ''}${n}${n === 7 ? ' (5th)' : n === 12 ? ' (octave)' : n === 0 ? ' (unison)' : ''}`]));
+bindRange('prod-fine', 'prodFine', (v) => `${v > 0 ? '+' : ''}${v} ¢`);
+bindRange('prod-mix', 'prodMix', (v) => (v === 0 ? 'Osc 1' : v === 100 ? 'Osc 2' : `${100 - v}/${v}`));
+$('prod-sync').checked = !!settings.prodSync;
+$('prod-sync').addEventListener('change', () => { settings.prodSync = $('prod-sync').checked; renderProdigy(); save(); });
+bindRange('prod-sweep', 'prodSweep', (v) => `${Math.round((v / 100) * 36)} st`);
+bindLog('prod-cutoff', 'prodCutoff', 40, 8000, formatHz);
+bindRange('prod-emphasis', 'prodEmphasis', (v) => `${v}%`);
+bindRange('prod-contour', 'prodContour', (v) => `${v}%`);
+const msOrS = (v) => (v < 1000 ? `${Math.round(v)} ms` : `${(v / 1000).toFixed(1)} s`);
+bindLog('prod-attack', 'prodAttack', 1, 2000, msOrS);
+bindLog('prod-fdecay', 'prodFDecay', 10, 4000, msOrS);
+bindRange('prod-fsustain', 'prodFSustain', (v) => `${v}%`);
+bindLog('prod-decay', 'prodDecay', 10, 4000, msOrS);
+bindRange('prod-sustain', 'prodSustain', (v) => `${v}%`);
+bindLog('prod-release', 'prodRelease', 5, 3000, msOrS);
+bindRange('prod-glide', 'prodGlide', (v) => (v ? `${v} ms` : 'off'));
+function renderProdigy() {
+  $('prod-sync').checked = !!settings.prodSync;
+  $('prod-sweep').disabled = !settings.prodSync;
+}
+onRecall(renderProdigy)();
 bindRange('bass-tone', 'bassTone', (v) => `${v}%`);
 bindLog('bass-decay', 'bassDecay', 300, 6000, (v) => (v < 1000 ? `${v} ms` : `${(v / 1000).toFixed(1)} s`));
 /** The upright bass has its own Tone and Decay; the west-coast controls don't apply to it. */
 function renderOsc2Sound() {
   const bass = settings.osc2Sound === 'bass';
-  $('osc2-panel').classList.toggle('bass', bass);
+  const prod = settings.osc2Sound === 'prodigy';
+  $('osc2-panel').classList.toggle('bass', bass || prod); // the west-coast controls don't apply
   $('bass-row').hidden = !bass;
+  $('prodigy-box').hidden = !prod;
 }
 onRecall(renderOsc2Sound)();
 // Choosing the bass by hand: put it in a bass register if it's still up with the arp.
 $('osc2-sound').addEventListener('change', () => {
-  if (settings.osc2Sound === 'bass' && settings.osc2Transpose > -12) {
+  if (['bass', 'prodigy'].includes(settings.osc2Sound) && settings.osc2Transpose > -12) {
     settings.osc2Transpose = -12;
     $('osc2-transpose').value = '-12';
     save();
@@ -7452,7 +7489,7 @@ const SECTION_KEYS = {
   osc2: [
     'osc2On', 'osc2Mode', 'osc2Sound', 'osc2Wave', 'osc2Transpose', 'osc2Detune', 'osc2Level', 'osc2Shape', 'osc2Timbre',
     'osc2Lpg', 'osc2Cutoff', 'osc2SyncCutoff', 'osc2Resonance', 'osc2Mod', 'osc2ModDepth', 'osc2Attack', 'osc2Release',
-    'bassTone', 'bassDecay', 'osc2BassStyle', 'osc2BassRate',
+    'bassTone', 'bassDecay', 'osc2BassStyle', 'osc2BassRate', ...Object.keys(prodigyDefaults),
   ],
 };
 const SECTION_HOME = { arp: 'arp-on', seq: 'length', prog: 'prog-length', chords: 'chord-on', mono: 'mono-on', osc1: 'wave', osc2: 'osc2-on' }; // where the buttons go
