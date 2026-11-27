@@ -9,7 +9,7 @@
 //    iv–♭VII7, V/V–V, ♭III–♭II; or one chord: V7, ♭II7, ♭VII7, vii°7, iv.
 // Pure (seeded by an rng), unit-tested.
 
-import { CHORDS } from './core.js?v=271';
+import { CHORDS } from './core.js?v=272';
 
 export const PROG_FILL_STYLES = { off: 'Off', tonnetz: 'Tonnetz', turnaround: 'Turnaround', negative: 'Negative harmony', mix: 'Mix' };
 export const PROG_FILL_EVERY = [1, 2, 4, 8];

@@ -870,6 +870,8 @@ h2.collapsible { cursor: pointer; user-select: none; }
 .panel.collapsed .collapse-btn::before { transform: translate(-30%, -50%) rotate(-90deg); }
 .panel.collapsed { padding-bottom: 10px; }
 /* A fold inside a window (the Breakbeat's tracker steps): a triangle and a label. */
+.sends-row .sends-toggle { margin-bottom: 0; }
+.sends-row.folded { padding-top: 4px; padding-bottom: 4px; }
 .tracker-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; margin-bottom: 6px; }
 .tracker-head .fold-toggle { margin-bottom: 0; }
 .fold-toggle {
