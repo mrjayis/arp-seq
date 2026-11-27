@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=272" />
-  <link rel="stylesheet" href="mac.css?v=272" />
+  <link rel="stylesheet" href="styles.css?v=273" />
+  <link rel="stylesheet" href="mac.css?v=273" />
 </head>
 <body>
   <main class="device">
@@ -244,7 +244,7 @@
         <div class="field">Sequence
           <div class="seg" id="osc2-mode" role="radiogroup" aria-label="Oscillator 2 sequence"></div>
         </div>
-        <label class="field" title="West-coast: the same kind of voice as Oscillator 1. Upright bass: a plucked double bass that rings on until the next note.">Sound <select id="osc2-sound"></select></label>
+        <label class="field" title="West-coast: the same kind of voice as Oscillator 1. Upright bass: a plucked double bass that rings on until the next note. Prodigy: a Moog Prodigy-style mono synth (two oscillators with sync, a 24 dB filter, glide) for fat analog bass.">Sound <select id="osc2-sound"></select></label>
         <label class="field west-only">Wave
           <select id="osc2-wave">
             <option value="sawtooth">Saw</option>
@@ -277,6 +277,34 @@
           <input id="bass-tone" type="range" min="0" max="100" /></label>
         <label class="field slider" title="How long a low E rings when left alone (higher notes ring a little shorter)">Decay <output id="bass-decay-val"></output>
           <input id="bass-decay" type="range" min="0" max="1000" step="1" /></label>
+      </div>
+      <div id="prodigy-box" class="prodigy-box" hidden>
+        <div class="row">
+          <span class="row-label" title="Two oscillators, as on a Moog Prodigy">Oscillators</span>
+          <label class="field">Osc 1 <select id="prod-wave1"></select></label>
+          <label class="field">Osc 2 <select id="prod-wave2"></select></label>
+          <label class="field" title="Osc 2's interval from Osc 1, in semitones (with Sync: its harmonic colour, not a second pitch)">Interval <select id="prod-interval"></select></label>
+          <label class="field slider" title="Osc 2 detuned against Osc 1, for a beating, fatter sound">Fine <output id="prod-fine-val"></output><input id="prod-fine" type="range" min="-50" max="50" /></label>
+          <label class="field slider" title="The oscillator mix: Osc 1 (left) to Osc 2 (right)">Mix <output id="prod-mix-val"></output><input id="prod-mix" type="range" min="0" max="100" /></label>
+          <label class="check" title="Hard sync: Osc 2 restarts its cycle with every cycle of Osc 1, so it sounds at Osc 1's pitch with Osc 2's interval as a bright, tearing tone colour"><input id="prod-sync" type="checkbox" /> Sync</label>
+          <label class="field slider" title="With Sync: the filter contour sweeps Osc 2 up by this much as each note starts, then back as it decays (the classic sync sweep)">Sync sweep <output id="prod-sweep-val"></output><input id="prod-sweep" type="range" min="0" max="100" /></label>
+          <label class="field slider" title="Slide from note to note (when they overlap): portamento">Glide <output id="prod-glide-val"></output><input id="prod-glide" type="range" min="0" max="500" step="5" /></label>
+        </div>
+        <div class="row">
+          <span class="row-label" title="A 24 dB low-pass, as the Moog ladder, with its own contour">Filter</span>
+          <label class="field slider">Cutoff <output id="prod-cutoff-val"></output><input id="prod-cutoff" type="range" min="0" max="1000" /></label>
+          <label class="field slider" title="Resonance">Emphasis <output id="prod-emphasis-val"></output><input id="prod-emphasis" type="range" min="0" max="100" /></label>
+          <label class="field slider" title="How far the contour opens the filter (velocity adds to it)">Contour <output id="prod-contour-val"></output><input id="prod-contour" type="range" min="0" max="100" /></label>
+          <label class="field slider" title="Attack, for both contours">Attack <output id="prod-attack-val"></output><input id="prod-attack" type="range" min="0" max="1000" /></label>
+          <label class="field slider">Decay <output id="prod-fdecay-val"></output><input id="prod-fdecay" type="range" min="0" max="1000" /></label>
+          <label class="field slider">Sustain <output id="prod-fsustain-val"></output><input id="prod-fsustain" type="range" min="0" max="100" /></label>
+        </div>
+        <div class="row">
+          <span class="row-label">Loudness</span>
+          <label class="field slider">Decay <output id="prod-decay-val"></output><input id="prod-decay" type="range" min="0" max="1000" /></label>
+          <label class="field slider">Sustain <output id="prod-sustain-val"></output><input id="prod-sustain" type="range" min="0" max="100" /></label>
+          <label class="field slider" title="How long it takes to die away after the note (both contours)">Release <output id="prod-release-val"></output><input id="prod-release" type="range" min="0" max="1000" /></label>
+        </div>
       </div>
       <div class="row west-row">
         <label class="field slider">Shape <output id="osc2-shape-val"></output>
@@ -1046,6 +1074,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=272"></script>
+  <script type="module" src="src/app.js?v=273"></script>
 </body>
 </html>
