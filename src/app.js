@@ -8,32 +8,32 @@ import {
   MOD_EVERY, MOD_INTERVALS, progressionRound, modulationShift, TUNINGS, justCents, chordRootPc, isDimChord, sweeten, autoTonic, arrangeMutes,
   INVERSIONS, PROG_VOICINGS, progressionVoicings,
   defaultProgression, sliderToFreq, freqToSlider, formatHz,
-} from './core.js?v=270';
-import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=270';
-import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=270';
-import { Midi } from './midi.js?v=270';
-import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=270';
+} from './core.js?v=271';
+import { InternalClock, ExternalClock, pulseToStep } from './clock.js?v=271';
+import { Synth, Chorus, LPG_MODES, MOD_TYPES, MAX_FM_INDEX, blendGains, pulseOffsets } from './synth.js?v=271';
+import { Midi } from './midi.js?v=271';
+import { Delay, Reverb, delaySeconds, DELAY_TIMES } from './fx.js?v=271';
 import {
   DrumSynth, DRUM_STEPS, KITS, KIT_ORDER, parsePattern, presetConds, presetLens, TRIPLET_FEEL, assignSamples, CONDITIONS, FILL_EVERY, isFillBar, drumHits, addFill,
-} from './percussion.js?v=270';
-import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=270';
-import { PROG_FILL_STYLES, PROG_FILL_EVERY, PROG_FILL_LENGTHS, fillRound, negativeChord, TONNETZ_WALKS, tonnetzProgression, triadOf, distance as tonnetzDistance, PLR } from './fill.js?v=270';
-import { AUDIO_ACCEPT, looksLikeAudio, hasAudioExtension, decodeAudioFile } from './audiofile.js?v=270';
-import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=270';
-import { Invention, parseSubject } from './invention.js?v=270';
-import { ColtraneSolo } from './coltrane.js?v=270';
-import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=270';
-import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=270';
-import { saveBreakFolder, loadBreakFolder, saveTrackSample, deleteTrackSample, loadTrackSamples, saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=270';
+} from './percussion.js?v=271';
+import { parseMidi, scoreLength, monoLengths, firstAtOrAfter, tempoBpm } from './score.js?v=271';
+import { PROG_FILL_STYLES, PROG_FILL_EVERY, PROG_FILL_LENGTHS, fillRound, negativeChord, TONNETZ_WALKS, tonnetzProgression, triadOf, distance as tonnetzDistance, PLR } from './fill.js?v=271';
+import { AUDIO_ACCEPT, looksLikeAudio, hasAudioExtension, decodeAudioFile } from './audiofile.js?v=271';
+import { RECORDER_WORKLET, framesBetween, soundSpan, encodeWav, peakOf } from './recorder.js?v=271';
+import { Invention, parseSubject } from './invention.js?v=271';
+import { ColtraneSolo } from './coltrane.js?v=271';
+import { BASS_STYLES, BASS_RATES, styleForSong, bassLine } from './bass.js?v=271';
+import { readSongs, songSlots, EXAMPLE_SONGS } from './ireal.js?v=271';
+import { saveBreakFolder, loadBreakFolder, saveTrackSample, deleteTrackSample, loadTrackSamples, saveSample, deleteSample, clearSamples, loadSamples, saveBreak, loadBreak, saveScore, deleteScore, loadScores, clearScores } from './samples.js?v=271';
 import {
   BreakPlayer, SLICE_COUNTS, BREAK_STEPS, BREAK_BARS, BREAK_FX, ROLL_TYPES, MAX_ROLL, fitRate, rowTriggers, rowThisTime,
   inOrder, chop, randomize, resizePattern, peaks, equalPoints, sliceOffset, sliceAt, detectTransients,
   trimSamples, fadeEdges, migrateRow, B2_TRACK, TRACK_SAMPLES, EXTRA_TRACKS, emptyCell, trackColumn, keepTracks, reverseBuffer, isFilled, rollSpan, usableSlices, nearestStep, mpcOrder,
-} from './breaks.js?v=270';
-import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=270';
+} from './breaks.js?v=271';
+import { barRng, evolveDrums, evolveBreakRow, drumOverlay, breakRowChange } from './evolve.js?v=271';
 import {
   MonoSynth, stepAction, writeStep, backStep, stepLabel, noteStep, restStep, holdStep, MAX_MONO_STEPS, SUB_MODES, PORTA_MODES,
-} from './mono.js?v=270';
+} from './mono.js?v=271';
 
 const $ = (id) => document.getElementById(id);
 // Every audio file picker offers any kind of audio (and video, for its sound).
@@ -317,7 +317,8 @@ let saveTimer;
 // edited they're swapped over, so what's saved (and put in scenes) is always put back the
 // right way round first: Break 1's in `settings`, Break 2's in settings.break2.
 let editBreak = 1;
-const BREAK_SET_KEYS = ['breakTrim', 'breakBars', 'breakFit', 'breakPitch', 'breakSliceMode', 'breakSlices', 'breakSensitivity', 'breakCustom', 'breakOff', 'breakLibLast', 'breakTrack1Level'];
+const BREAK_SET_KEYS = ['breakTrim', 'breakBars', 'breakFit', 'breakPitch', 'breakSliceMode', 'breakSlices', 'breakSensitivity', 'breakCustom', 'breakOff', 'breakLibLast', 'breakTrack1Level',
+  'breakEvolve', 'breakEvolveRolls', 'breakEvolveReverse']; // each break has its own Evolve too
 function canonicalSettings() {
   if (editBreak === 1) return settings;
   const out = { ...settings, break2: {} };
@@ -328,6 +329,11 @@ function canonicalSettings() {
 const b1Setting = (k) => (editBreak === 1 ? settings[k] : settings.break2?.[k] ?? DEFAULTS[k]);
 /** One of Break 2's settings. */
 const b2Setting = (k) => (editBreak === 2 ? settings[k] : settings.break2?.[k] ?? DEFAULTS[k]);
+/** Set one of break `n`'s settings (wherever it is just now). */
+function setBreakSetting(n, k, v) {
+  if (n === editBreak) settings[k] = v;
+  else { if (!settings.break2 || typeof settings.break2 !== 'object') settings.break2 = {}; settings.break2[k] = v; }
+}
 
 function save(now = false) {
   clearTimeout(saveTimer);
@@ -445,7 +451,7 @@ function ensureAudio() {
       throwIn[fx] = ctx.createGain();
       throwIn[fx].connect(input);
     }
-    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=270', import.meta.url)).then(() => {
+    ctx.audioWorklet?.addModule(new URL('./harmonizer-worklet.js?v=271', import.meta.url)).then(() => {
       harmNode = new AudioWorkletNode(ctx, 'harmonizer', { numberOfInputs: 1, numberOfOutputs: 1, outputChannelCount: [2] });
       harmIn.connect(harmNode).connect(harmOut);
       applyHarm();
@@ -3470,7 +3476,7 @@ function playBreakStep(step) {
     triggers = [];
   }
   playExtraTracks(pattern, idx, step);
-  const shown2 = playBreak2(pattern, idx, step);
+  const b2 = playBreak2(pattern, idx, step, variation);
   let shown = null;
   if (b1.player && b1.buffer) {
     const rate = fitRate(b1.buffer.duration, b1.bars, currentBpm(), b1.pitch, b1.fit);
@@ -3489,33 +3495,60 @@ function playBreakStep(step) {
     }
   }
   // The waveform shows the break being edited: the slice its track played.
-  uiEvents.push({ kind: 'break', time: step.time, step: idx, slice: editBreak === 2 ? shown2 : shown, change: rolling ? 'roll…' : breakRowChange(pattern[idx], row) });
+  uiEvents.push(editBreak === 2
+    ? { kind: 'break', time: step.time, step: idx, slice: b2.shown, change: b2.change }
+    : { kind: 'break', time: step.time, step: idx, slice: shown, change: rolling ? 'roll…' : breakRowChange(pattern[idx], row) });
 }
 
 // The Break 2 track: the second break's slices, one channel, with chance, rolls (held until
 // the next filled row with Roll until next), FX and switched-off slices, as Track 1 (no Evolve).
 let break2Roll = null;
+let break2Stutter = null; // Break 2's own Evolve stutter (as breakStutter)
 const padSkip2 = new Set(); // as padSkip, for pads recorded into the Break 2 track
-function playBreak2(pattern, idx, step) {
+function playBreak2(pattern, idx, step, variation) {
   const b = breakAudio(2);
   const column = trackColumn(pattern, B2_TRACK);
   const base = column[idx];
-  const cell = base && b.off.includes(base.slice) && base.fx !== 'cut' ? { ...base, slice: null } : base;
+  // Its own Evolve (a slot saved before Break 2 had one uses Break 2's as set now).
+  const ev = variation.evolve2 === undefined
+    ? { amount: b2Setting('breakEvolve'), rolls: b2Setting('breakEvolveRolls'), reverse: b2Setting('breakEvolveReverse') }
+    : { amount: variation.evolve2, rolls: variation.rolls2, reverse: variation.reverse2 };
+  const slices = b.off.length ? usableSlices(b.points.length, b.off) : b.points.length;
+  const evolved = evolveBreakRow(base, ev.amount / 100, barRng(runSeed, Math.floor(step.stepNumber / settings.breakSteps), idx + 701),
+    slices, { rolls: ev.rolls, reverse: ev.reverse });
+  const cell = evolved && b.off.includes(evolved.slice) && evolved.fx !== 'cut' ? { ...evolved, slice: null } : evolved;
   const row = rowThisTime(cell);
   let triggers;
-  if (padSkip2.has(idx)) { padSkip2.delete(idx); break2Roll = null; triggers = []; }
-  else if (isFilled(row)) {
+  let rolling = false;
+  if (padSkip2.has(idx)) { padSkip2.delete(idx); break2Roll = null; break2Stutter = null; triggers = []; }
+  else if (break2Stutter) {
+    break2Stutter.k += 1;
+    if (break2Stutter.k % break2Stutter.every === 0) {
+      triggers = rowTriggers(break2Stutter.row, step.duration, Math.random);
+      rolling = true;
+      break2Stutter.left -= 1;
+      if (break2Stutter.left <= 0) break2Stutter = null;
+    } else triggers = [];
+  } else if (isFilled(row) && (row.eighths > 1 || row.sixteenths > 1) && row.fx !== 'cut') {
+    const hits = row.eighths > 1 ? row.eighths : row.sixteenths;
+    const plain = { ...row, eighths: 0, sixteenths: 0, roll: 0, chance: 100 };
+    triggers = rowTriggers(row.chance < 100 ? { ...plain, chance: row.chance } : plain, step.duration, Math.random);
+    break2Roll = null;
+    break2Stutter = triggers.length ? { row: plain, every: row.eighths > 1 ? 2 : 1, left: hits - 1, k: 0 } : null;
+  } else if (isFilled(row)) {
     const span = settings.breakRollHold && row.roll > 0 && row.fx !== 'cut' ? rollSpan(column, idx) : 1;
     triggers = rowTriggers(row, step.duration, Math.random, { span, part: 0 });
     break2Roll = span > 1 && triggers.length ? { row, span, part: 0 } : null;
   } else if (break2Roll && break2Roll.part + 1 < break2Roll.span) {
     break2Roll.part += 1;
     triggers = rowTriggers(break2Roll.row, step.duration, Math.random, { span: break2Roll.span, part: break2Roll.part });
+    rolling = true;
   } else {
     break2Roll = null;
     triggers = [];
   }
-  if (!b.player || !b.buffer) return null;
+  const change = rolling ? 'roll…' : breakRowChange(base, row);
+  if (!b.player || !b.buffer) return { shown: null, change };
   const rate = fitRate(b.buffer.duration, b.bars, currentBpm(), b.pitch, b.fit);
   let shown = null;
   for (const tr of triggers) {
@@ -3531,7 +3564,7 @@ function playBreak2(pattern, idx, step) {
       sendLevel: tr.sendLevel,
     });
   }
-  return shown;
+  return { shown, change };
 }
 
 // Tracks 2–4: samples (S1–S8) on a step, each track one channel (a new hit cuts its last),
@@ -5116,7 +5149,7 @@ bindRange('break-pitch', 'breakPitch', (v) => `${v > 0 ? '+' : ''}${v.toFixed(1)
 bindRange('break-level', 'breakLevel', (v) => `${v}%`, () => { applyFaders(); breakVolumesNow = null; });
 bindRange('break-track1-level', 'breakTrack1Level', (v) => `${v}%`, (v) => { breakPlayer?.setLevel(v / 100); breakVolumesNow = null; });
 bindRange('break-evolve', 'breakEvolve', (v) => (v ? `${v}%` : 'off'));
-bindSelect('break-evolve-rolls', 'breakEvolveRolls', [['fast', '32nds'], ['sixteenths', '16ths'], ['eighths', '8ths']], () => { breakStutter = null; });
+bindSelect('break-evolve-rolls', 'breakEvolveRolls', [['fast', '32nds'], ['sixteenths', '16ths'], ['eighths', '8ths']], () => { breakStutter = null; break2Stutter = null; });
 $('break-evolve-reverse').checked = settings.breakEvolveReverse !== false;
 $('break-evolve-reverse').addEventListener('change', () => { settings.breakEvolveReverse = $('break-evolve-reverse').checked; save(); });
 onRecall(() => { $('break-evolve-reverse').checked = settings.breakEvolveReverse !== false; });
@@ -5379,6 +5412,7 @@ function renderEditBreak() {
   $('break-edit-info').textContent = other.buffer ? `Break ${editBreak === 1 ? 2 : 1}: ${other.name}` : (editBreak === 1 ? 'Break 2: none yet' : '');
   $('break-panel').classList.toggle('editing-b2', editBreak === 2);
   applyBreakFileSettings(settings); // the controls show this break's settings
+  renderBreakEvolve(); // and its Evolve
   $('break-track1-level').value = String(settings.breakTrack1Level);
   $('break-track1-level-val').textContent = `${settings.breakTrack1Level}%`;
   const trimBreak = $('trim-target').querySelector('[data-target="break"]');
@@ -5453,7 +5487,12 @@ function breakPatternFor(slot) {
 }
 
 // A break slot's Evolve settings (the edited slot's are the live ones).
-const breakVariationNow = () => ({ evolve: settings.breakEvolve, rolls: settings.breakEvolveRolls, reverse: settings.breakEvolveReverse, level: settings.breakLevel, track1: b1Setting('breakTrack1Level') });
+// Each slot's Evolve (both breaks') and volumes.
+const breakVariationNow = () => ({
+  evolve: b1Setting('breakEvolve'), rolls: b1Setting('breakEvolveRolls'), reverse: b1Setting('breakEvolveReverse'),
+  evolve2: b2Setting('breakEvolve'), rolls2: b2Setting('breakEvolveRolls'), reverse2: b2Setting('breakEvolveReverse'),
+  level: settings.breakLevel, track1: b1Setting('breakTrack1Level'),
+});
 function breakSlotVariation(slot) {
   return (slot && slot !== settings.breakSlot && settings.breakSlotEvolve?.[slot]) || breakVariationNow();
 }
@@ -5475,7 +5514,12 @@ function selectBreakSlot(slot) {
   const v = settings.breakSlotEvolve[slot]; // (a new slot keeps the current ones: a copy)
   delete settings.breakSlotEvolve[slot];
   if (v) {
-    Object.assign(settings, { breakEvolve: v.evolve, breakEvolveRolls: v.rolls, breakEvolveReverse: v.reverse });
+    for (const [n, sfx] of [[1, ''], [2, '2']]) {
+      if (v[`evolve${sfx}`] === undefined) continue; // (saved before Break 2 had its own)
+      setBreakSetting(n, 'breakEvolve', v[`evolve${sfx}`]);
+      setBreakSetting(n, 'breakEvolveRolls', v[`rolls${sfx}`]);
+      setBreakSetting(n, 'breakEvolveReverse', v[`reverse${sfx}`]);
+    }
     // Its volumes too (slots saved before they had them keep the current ones).
     if (Number.isFinite(v.level)) settings.breakLevel = v.level;
     if (Number.isFinite(v.track1)) { if (editBreak === 1) settings.breakTrack1Level = v.track1; else settings.break2.breakTrack1Level = v.track1; }
@@ -5484,6 +5528,7 @@ function selectBreakSlot(slot) {
   applyFaders();
   breakAudio(1).player?.setLevel(b1Setting('breakTrack1Level') / 100);
   breakStutter = null;
+  break2Stutter = null;
   settings.breakSlots[settings.breakSlot] = structuredClone(settings.breakPattern);
   const next = settings.breakSlots[slot] ? structuredClone(settings.breakSlots[slot]) : structuredClone(settings.breakPattern);
   delete settings.breakSlots[slot];
