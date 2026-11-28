@@ -285,6 +285,14 @@ export const CHORDS = {
   dom7b5: { label: '7♭5', suffix: '7♭5', intervals: [0, 4, 6, 10] },
   aug7: { label: '7♯5', suffix: '7♯5', intervals: [0, 4, 8, 10] },
   alt: { label: '7alt', suffix: '7alt', intervals: [0, 4, 10, 13, 15, 20] },
+  // 11ths, and chords stacked in 4ths and 5ths (whose lowest note isn't always the root).
+  dom11: { label: '11', suffix: '11', intervals: [0, 7, 10, 14, 17] }, // C11: C G B♭ D F (no 3rd)
+  maj9s11: { label: 'maj9♯11', suffix: 'maj9♯11', intervals: [0, 4, 7, 11, 14, 18] }, // the major "11th" (a natural 11 clashes)
+  q4min: { label: 'm11 in 4ths', suffix: 'm11 (4ths)', intervals: [0, 5, 10, 15, 19], minor: true }, // D G C F A: the "So What" chord
+  q4maj: { label: '6/9 in 4ths', suffix: '6/9 (4ths)', intervals: [4, 9, 14, 19] }, // over C: E A D G
+  q4: { label: '4ths (quartal)', suffix: ' 4ths', intervals: [0, 5, 10, 15, 20] }, // C F B♭ E♭ A♭: pure stacked 4ths
+  q5maj: { label: '6/9 in 5ths', suffix: '6/9 (5ths)', intervals: [0, 7, 14, 21, 28] }, // C G D A E
+  q5min: { label: 'm11 in 5ths', suffix: 'm11 (5ths)', intervals: [3, 10, 17, 24, 31], minor: true }, // over C: E♭ B♭ F C G
 };
 /** Diminished-family types (tuned with a diminished fifth). */
 export const DIM_TYPES = ['dim', 'dim7', 'hdim7'];

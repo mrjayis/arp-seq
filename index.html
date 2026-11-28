@@ -18,8 +18,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Pixelify+Sans:wght@400;700&display=swap" />
-  <link rel="stylesheet" href="styles.css?v=275" />
-  <link rel="stylesheet" href="mac.css?v=275" />
+  <link rel="stylesheet" href="styles.css?v=276" />
+  <link rel="stylesheet" href="mac.css?v=276" />
 </head>
 <body>
   <main class="device">
@@ -378,7 +378,7 @@
         <label class="field inline">Chords <select id="tonnetz-length"></select></label>
         <label class="field inline">Beats <select id="tonnetz-beats"></select></label>
         <label class="field inline" title="Chord 1: start from the progression's first chord (as a major or minor triad). Random: anywhere.">Start <select id="tonnetz-start"><option value="first">Chord 1</option><option value="random">Random</option></select></label>
-        <label class="check"><input id="tonnetz-sevenths" type="checkbox" /> 7ths</label>
+        <label class="field inline" title="How the chords are voiced: triads, 7ths, 9ths, 11ths (maj9♯11 and m11), stacked 4ths (6/9 and m11 in 4ths, the So What sound) or stacked 5ths (6/9 and m11 in 5ths); Mixed picks among the richer ones chord by chord. The walk is the same: major chords stay major, minor stay minor.">Colour <select id="tonnetz-colour"></select></label>
         <label class="check" title="The last chord a move from the first, so the loop comes round smoothly (the cycles always do their own thing)"><input id="tonnetz-close" type="checkbox" checked /> Loop back</label>
         <button id="tonnetz-go" title="A new progression each time (it replaces the one there)">Generate</button>
         <span class="status" id="tonnetz-path"></span>
@@ -1079,6 +1079,6 @@
       </div>
     </section>
   </main>
-  <script type="module" src="src/app.js?v=275"></script>
+  <script type="module" src="src/app.js?v=276"></script>
 </body>
 </html>
