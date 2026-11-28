@@ -2,7 +2,7 @@
 // a walking line in quarter notes, a two-feel, a bossa pattern, or just roots. Each
 // chord's line is planned when it starts, knowing the chord that comes next.
 
-import { CHORDS } from './core.js?v=275';
+import { CHORDS } from './core.js?v=276';
 
 export const BASS_STYLES = {
   auto: 'Auto (from the song)', walk: 'Walking', two: 'Two-feel', bossa: 'Bossa', roots: 'Roots',
@@ -29,11 +29,13 @@ const SCALES = {
   dom7b9: [0, 1, 4, 5, 7, 8, 10], dom7s9: [0, 1, 3, 4, 6, 8, 10], alt: [0, 1, 3, 4, 6, 8, 10],
   dom7b5: [0, 2, 4, 6, 8, 10], aug7: [0, 2, 4, 6, 8, 10], aug: [0, 2, 4, 6, 8, 10],
   hdim7: [0, 1, 3, 5, 6, 8, 10], dim: [0, 2, 3, 5, 6, 8, 9, 11], dim7: [0, 2, 3, 5, 6, 8, 9, 11],
+  dom11: MIXO, maj9s11: [0, 2, 4, 6, 7, 9, 11], q4min: DORIAN, q5min: DORIAN, q4maj: IONIAN, q5maj: IONIAN, q4: MIXO,
 };
 
 /** A chord's tones (triad and seventh) and its scale, as pitch classes above its root. */
 export function chordScale(type) {
-  const tones = (CHORDS[type]?.intervals || [0, 4, 7]).slice(0, 4).map((i) => i % 12);
+  // (the root always counts: a chord voiced in 4ths or 5ths may not start on it)
+  const tones = [...new Set([0, ...(CHORDS[type]?.intervals || [0, 4, 7]).slice(0, 4).map((i) => i % 12)])];
   return { tones, scale: SCALES[type] || IONIAN };
 }
 

@@ -192,3 +192,27 @@ test('a Tonnetz path step by step: each chord as far as asked', () => {
   const seventh = tonnetzSteps({ start: C, steps: ['close'], sevenths: true, rng });
   assert.ok(seventh.chords.every((c) => c.type === 'maj7' || c.type === 'min7'));
 });
+
+import { colourType, TONNETZ_COLOURS } from '../src/fill.js';
+
+test('richer chords: 11ths and stacked 4ths and 5ths keep their major or minor quality', () => {
+  // read as pitch classes: their lowest note needn't be the root
+  assert.deepEqual(triadOf({ root: 0, type: 'q4maj' }), { root: 0, minor: false }); // E A D G over C
+  assert.deepEqual(triadOf({ root: 2, type: 'q4min' }), { root: 2, minor: true }); // D G C F A
+  assert.deepEqual(triadOf({ root: 0, type: 'q5min' }), { root: 0, minor: true }); // Eb Bb F C G over C
+  assert.deepEqual(triadOf({ root: 0, type: 'q5maj' }), { root: 0, minor: false });
+  assert.deepEqual(triadOf({ root: 0, type: 'maj9s11' }), { root: 0, minor: false });
+  assert.equal(colourType(false, 'fourths'), 'q4maj');
+  assert.equal(colourType(true, 'elevenths'), 'min11');
+  assert.equal(colourType(true, 'fifths'), 'q5min');
+  const rng = seeded(2);
+  const kinds = new Set(Array.from({ length: 60 }, () => colourType(false, 'mixed', rng)));
+  assert.ok(kinds.size >= 4 && ![...kinds].includes('maj'), 'mixed: the richer ones');
+  // a walk in 4ths moves the same way as in triads
+  const steps = tonnetzSteps({ start: { root: 0, minor: false }, steps: ['L', 'R', 'P'], colour: 'fourths', rng: () => 0 });
+  assert.deepEqual(steps.chords.map((c) => `${c.root}${c.type}`), ['0q4maj', '4q4min', '7q4maj', '7q4min']);
+  assert.ok(Object.keys(TONNETZ_COLOURS).includes('fifths'));
+  // a fill keeps the flavour
+  assert.equal(flavour('q4min', false), 'q4maj');
+  assert.equal(flavour('dom11', true), 'min11');
+});

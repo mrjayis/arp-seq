@@ -9,7 +9,7 @@
 //    iv–♭VII7, V/V–V, ♭III–♭II; or one chord: V7, ♭II7, ♭VII7, vii°7, iv.
 // Pure (seeded by an rng), unit-tested.
 
-import { CHORDS } from './core.js?v=275';
+import { CHORDS } from './core.js?v=276';
 
 export const PROG_FILL_STYLES = { off: 'Off', tonnetz: 'Tonnetz', turnaround: 'Turnaround', negative: 'Negative harmony', mix: 'Mix' };
 export const PROG_FILL_EVERY = [1, 2, 4, 8];
@@ -26,7 +26,7 @@ const key = (t) => `${t.root}${t.minor ? 'm' : ''}`;
  */
 export function triadOf(chord) {
   if (!chord || chord.type === 'rest') return null;
-  const iv = CHORDS[chord.type]?.intervals || [0, 4, 7];
+  const iv = (CHORDS[chord.type]?.intervals || [0, 4, 7]).map((i) => i % 12); // as pitch classes (4ths, 5ths, 11ths…)
   const has = (n) => iv.includes(n);
   if (chord.type === 'hdim7') return { root: pc(chord.root + 3), minor: true };
   if (has(3) && has(6) && !has(7)) return { root: pc(chord.root + 8), minor: false }; // dim, dim7
@@ -74,7 +74,10 @@ export function flavour(type, minor) {
     [['dom9', 'dom13', 'dom7s9', 'dom7b9', 'alt'], 'dom9', 'min9'],
     [['maj7', 'maj7s11', 'maj7s5', 'min7', 'hdim7', 'dim7', 'minmaj7'], 'maj7', 'min7'],
     [['maj6', 'six9', 'min6'], 'maj6', 'min6'],
-    [['maj9', 'min9', 'min11', 'add9'], 'maj9', 'min9'],
+    [['maj9', 'min9', 'add9'], 'maj9', 'min9'],
+    [['min11', 'dom11', 'maj9s11'], 'maj9s11', 'min11'],
+    [['q4min', 'q4maj', 'q4'], 'q4maj', 'q4min'],
+    [['q5maj', 'q5min'], 'q5maj', 'q5min'],
   ];
   for (const [types, maj, min] of families) if (types.includes(type)) return minor ? min : maj;
   return minor ? 'min' : 'maj';
@@ -196,9 +199,29 @@ export const TONNETZ_WALKS = {
  * octatonic: C Cm E♭ E♭m F♯ F♯m…; fifths: C Em G Bm D…), starting with either.
  * `sevenths`: maj7 / min7 instead of triads. Returns [{root, type}].
  */
-export function tonnetzProgression({ start = { root: 0, minor: false }, length = 4, walk = 'smooth', close = true, sevenths = false, rng = Math.random } = {}) {
+/** How a Tonnetz walk's chords are voiced: each colour's [major, minor] type ('mixed': any of them, chord by chord). */
+export const TONNETZ_COLOURS = {
+  triads: { label: 'Triads', types: ['maj', 'min'] },
+  sevenths: { label: '7ths', types: ['maj7', 'min7'] },
+  ninths: { label: '9ths', types: ['maj9', 'min9'] },
+  elevenths: { label: '11ths (maj9♯11 / m11)', types: ['maj9s11', 'min11'] },
+  fourths: { label: 'Stacked 4ths', types: ['q4maj', 'q4min'] },
+  fifths: { label: 'Stacked 5ths', types: ['q5maj', 'q5min'] },
+  mixed: { label: 'Mixed (any of these)', types: null },
+};
+/** A triad's chord type in a colour (`rng` picks one for Mixed). */
+export function colourType(minor, colour = 'triads', rng = Math.random) {
+  let c = TONNETZ_COLOURS[colour] || TONNETZ_COLOURS.triads;
+  if (!c.types) {
+    const rich = ['sevenths', 'ninths', 'elevenths', 'fourths', 'fifths'];
+    c = TONNETZ_COLOURS[rich[Math.floor(rng() * rich.length)]];
+  }
+  return c.types[minor ? 1 : 0];
+}
+
+export function tonnetzProgression({ start = { root: 0, minor: false }, length = 4, walk = 'smooth', close = true, sevenths = false, colour = sevenths ? 'sevenths' : 'triads', rng = Math.random } = {}) {
   const n = Math.max(1, Math.round(length));
-  const out = (path) => path.map((t) => ({ root: t.root, type: sevenths ? (t.minor ? 'min7' : 'maj7') : (t.minor ? 'min' : 'maj') }));
+  const out = (path) => path.map((t) => ({ root: t.root, type: colourType(t.minor, colour, rng) }));
   const cycles = { hexatonic: ['P', 'L'], octatonic: ['P', 'R'], fifths: ['L', 'R'] };
   if (cycles[walk]) {
     const pair = rng() < 0.5 ? cycles[walk] : [...cycles[walk]].reverse();
@@ -348,7 +371,7 @@ export const tonnetzDistance = (a, b) => tonnetzDistances(a).get(key(b)).d;
  * Jump (or Far or Near) left from; Home to the first chord. Returns [{root, type}] (triads, or
  * maj7 / min7 with `sevenths`), and the moves each step took.
  */
-export function tonnetzSteps({ start = { root: 0, minor: false }, steps = [], sevenths = false, rng = Math.random } = {}) {
+export function tonnetzSteps({ start = { root: 0, minor: false }, steps = [], sevenths = false, colour = sevenths ? 'sevenths' : 'triads', rng = Math.random } = {}) {
   const path = [start];
   const anchors = []; // where each jump left from, for Back
   const pickAt = (from, ds) => {
@@ -373,7 +396,7 @@ export function tonnetzSteps({ start = { root: 0, minor: false }, steps = [], se
     path.push(next);
   }
   return {
-    chords: path.map((t) => ({ root: t.root, type: sevenths ? (t.minor ? 'min7' : 'maj7') : (t.minor ? 'min' : 'maj') })),
+    chords: path.map((t) => ({ root: t.root, type: colourType(t.minor, colour, rng) })),
     moves: path.slice(1).map((t, i) => tonnetzDistance(path[i], t)),
   };
 }
